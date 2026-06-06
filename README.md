@@ -57,3 +57,17 @@ Angular CLI does not come with an end-to-end testing framework by default. You c
 ## Additional Resources
 
 For more information on using the Angular CLI, including detailed command references, visit the [Angular CLI Overview and Command Reference](https://angular.dev/tools/cli) page.
+
+## Production deployment
+
+Pushes to `main` are deployed to
+`/var/www/eat-it/dist/eat_it_ng/browser` after the build and tests pass. The
+GitHub repository must contain these Actions secrets:
+
+- `DEPLOY_HOST`: `94.103.13.116`
+- `DEPLOY_USER`: the unprivileged SSH deployment user
+- `DEPLOY_SSH_PRIVATE_KEY`: the private SSH key used by GitHub Actions
+- `DEPLOY_SSH_KNOWN_HOSTS`: the server host key from `ssh-keyscan 94.103.13.116`
+
+The server must have Nginx and rsync installed. Its Nginx virtual host is
+provided in `deploy/nginx-eat-it.space.conf`.

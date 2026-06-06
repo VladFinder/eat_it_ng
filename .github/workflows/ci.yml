@@ -18,3 +18,25 @@ jobs:
       - run: npm ci
       - run: npm run build -- --configuration production
       - run: npm test -- --watch=false
+
+      - name: Configure SSH
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.DEPLOY_SSH_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Deploy to server
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+        run: |
+          rsync -az --delete \
+            -e "ssh -i ~/.ssh/deploy_key" \
+            dist/eat_it_ng/browser/ \
+            "$DEPLOY_USER@$DEPLOY_HOST:/var/www/eat-it/dist/eat_it_ng/browser/"
