@@ -71,3 +71,23 @@ GitHub repository must contain these Actions secrets:
 
 The server must have Nginx and rsync installed. Its Nginx virtual host is
 provided in `deploy/nginx-eat-it.space.conf`.
+
+## Android APK
+
+The Android application uses Capacitor with application ID `space.eatit.app`.
+
+To synchronize the production web build with Android:
+
+```bash
+npm run android:sync
+```
+
+On Windows with Android Studio, JDK 21, and the Android SDK installed:
+
+```bash
+npm run android:apk
+```
+
+The APK is generated at `android/app/build/outputs/apk/debug/app-debug.apk`.
+GitHub Actions also publishes it as the `eat-it-debug-apk` artifact after a
+successful CI run.
