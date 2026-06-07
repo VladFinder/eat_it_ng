@@ -1,0 +1,21 @@
+[Unit]
+Description=Eat it API
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+Group=www-data
+WorkingDirectory=/opt/eat-it/app
+Environment=NODE_ENV=production
+Environment=PORT=3000
+Environment=DATABASE_URL=file:../data/eat-it.db
+ExecStart=/usr/bin/node server/index.mjs
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target
+

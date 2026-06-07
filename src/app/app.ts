@@ -1,28 +1,12 @@
 import { CommonModule } from '@angular/common';
-import { Component, computed, signal } from '@angular/core';
+import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { firstValueFrom } from 'rxjs';
+import { ApiService } from './core/api.service';
+import { FridgeItem, ShoppingItem, Unit } from './core/models';
 
 type TabId = 'fridge' | 'shopping' | 'dishes' | 'recipes' | 'profile';
 type RecipeTab = 'mine' | 'likes' | 'all';
-type Unit = 'шт' | 'г' | 'кг' | 'мл' | 'л' | 'упак' | 'банка' | 'бут';
-
-interface FridgeItem {
-  id: string;
-  name: string;
-  quantity: number;
-  unit: Unit;
-  expiresAt: string;
-  createdAt: string;
-}
-
-interface ShoppingItem {
-  id: string;
-  name: string;
-  quantity?: number;
-  unit?: Unit;
-  checked: boolean;
-  createdAt: string;
-}
 
 interface Recipe {
   id: string;
@@ -40,8 +24,6 @@ interface SwipeState {
 }
 
 const STORAGE_KEYS = {
-  fridge: 'eat-it.fridge',
-  shopping: 'eat-it.shopping',
   recipes: 'eat-it.recipes',
   partner: 'eat-it.partner',
 };
@@ -52,7 +34,9 @@ const STORAGE_KEYS = {
   templateUrl: './app.html',
   styleUrl: './app.scss',
 })
-export class App {
+export class App implements OnInit {
+  private readonly api = inject(ApiService);
+
   protected readonly tabs: { id: TabId; label: string; icon: string }[] = [
     { id: 'fridge', label: 'Холодильник', icon: 'fridge' },
     { id: 'shopping', label: 'Покупки', icon: 'cart' },
@@ -74,21 +58,13 @@ export class App {
   };
 
   protected readonly newShoppingName = signal('');
+  protected readonly loading = signal(true);
+  protected readonly saving = signal(false);
+  protected readonly apiError = signal('');
   protected readonly partnerEmail = signal('');
   protected readonly partnerConnected = signal(this.load<boolean>(STORAGE_KEYS.partner, false));
-  protected readonly fridgeItems = signal<FridgeItem[]>(
-    this.load<FridgeItem[]>(STORAGE_KEYS.fridge, [
-      this.createFridgeItem('Яйца', 10, 'шт', this.addDays(9)),
-      this.createFridgeItem('Молоко', 1, 'л', this.addDays(2)),
-      this.createFridgeItem('Куриное филе', 700, 'г', this.addDays(1)),
-    ]),
-  );
-  protected readonly shoppingItems = signal<ShoppingItem[]>(
-    this.load<ShoppingItem[]>(STORAGE_KEYS.shopping, [
-      this.createShoppingItem('Овощи для салата'),
-      this.createShoppingItem('Хлеб цельнозерновой'),
-    ]),
-  );
+  protected readonly fridgeItems = signal<FridgeItem[]>([]);
+  protected readonly shoppingItems = signal<ShoppingItem[]>([]);
   protected readonly recipes = signal<Recipe[]>(
     this.load<Recipe[]>(STORAGE_KEYS.recipes, [
       {
@@ -124,6 +100,9 @@ export class App {
   protected readonly shoppingOpenCount = computed(
     () => this.shoppingItems().filter((item) => !item.checked).length,
   );
+  protected readonly hasCompletedShoppingItems = computed(() =>
+    this.shoppingItems().some((item) => item.checked),
+  );
   protected readonly activeTabLabel = computed(
     () => this.tabs.find((tab) => tab.id === this.activeTab())?.label ?? 'Eat it',
   );
@@ -142,54 +121,133 @@ export class App {
 
   private swipe: SwipeState | null = null;
 
+  ngOnInit(): void {
+    void this.loadState();
+  }
+
   protected setTab(tab: TabId): void {
     this.activeTab.set(tab);
   }
 
-  protected addFridgeItem(): void {
+  protected async addFridgeItem(): Promise<void> {
     const name = this.newFridgeItem.name.trim();
+    if (!name || this.saving()) {
+      return;
+    }
+
+    await this.runMutation(async () => {
+      const item = await firstValueFrom(
+        this.api.createFridgeItem({
+          name,
+          quantity: Number(this.newFridgeItem.quantity) || 1,
+          unit: this.newFridgeItem.unit,
+          expiresAt: this.newFridgeItem.expiresAt || this.today,
+        }),
+      );
+      this.fridgeItems.update((items) => [item, ...items]);
+
+      this.newFridgeItem.name = '';
+      this.newFridgeItem.quantity = 1;
+      this.newFridgeItem.unit = 'шт';
+      this.newFridgeItem.expiresAt = this.addDays(5);
+    });
+  }
+
+  protected async editFridgeItem(item: FridgeItem): Promise<void> {
+    const name = window.prompt('Название продукта', item.name)?.trim();
     if (!name) {
       return;
     }
-
-    this.fridgeItems.update((items) => [
-      this.createFridgeItem(
-        name,
-        Number(this.newFridgeItem.quantity) || 1,
-        this.newFridgeItem.unit,
-        this.newFridgeItem.expiresAt || this.today,
-      ),
-      ...items,
-    ]);
-    this.persistFridge();
-
-    this.newFridgeItem.name = '';
-    this.newFridgeItem.quantity = 1;
-    this.newFridgeItem.unit = 'шт';
-    this.newFridgeItem.expiresAt = this.addDays(5);
-  }
-
-  protected addShoppingItem(name = this.newShoppingName()): void {
-    const trimmed = name.trim();
-    if (!trimmed) {
+    const quantity = Number(window.prompt('Количество', String(item.quantity)));
+    if (!Number.isFinite(quantity) || quantity <= 0) {
       return;
     }
 
-    this.shoppingItems.update((items) => [this.createShoppingItem(trimmed), ...items]);
-    this.persistShopping();
-    this.newShoppingName.set('');
+    await this.runMutation(async () => {
+      const updated = await firstValueFrom(this.api.updateFridgeItem(item.id, { name, quantity }));
+      this.replaceFridgeItem(updated);
+    });
   }
 
-  protected toggleShoppingItem(id: string): void {
-    this.shoppingItems.update((items) =>
-      items.map((item) => (item.id === id ? { ...item, checked: !item.checked } : item)),
-    );
-    this.persistShopping();
+  protected async consumeFridgeItem(item: FridgeItem): Promise<void> {
+    const quantity = Number(window.prompt(`Сколько израсходовано (${item.unit})?`, '1'));
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      return;
+    }
+
+    await this.runMutation(async () => {
+      const result = await firstValueFrom(this.api.consumeFridgeItem(item.id, quantity));
+      if (result.removed || !result.item) {
+        this.fridgeItems.update((items) => items.filter((current) => current.id !== item.id));
+      } else {
+        this.replaceFridgeItem(result.item);
+      }
+    });
   }
 
-  protected removeShoppingItem(id: string): void {
-    this.shoppingItems.update((items) => items.filter((item) => item.id !== id));
-    this.persistShopping();
+  protected async addShoppingItem(name = this.newShoppingName()): Promise<void> {
+    const trimmed = name.trim();
+    if (!trimmed || this.saving()) {
+      return;
+    }
+
+    await this.runMutation(async () => {
+      const item = await firstValueFrom(this.api.createShoppingItem({ name: trimmed }));
+      this.shoppingItems.update((items) => [item, ...items]);
+      this.newShoppingName.set('');
+    });
+  }
+
+  protected async toggleShoppingItem(item: ShoppingItem): Promise<void> {
+    await this.runMutation(async () => {
+      const updated = await firstValueFrom(
+        this.api.updateShoppingItem(item.id, { checked: !item.checked }),
+      );
+      this.replaceShoppingItem(updated);
+    });
+  }
+
+  protected async removeShoppingItem(id: string): Promise<void> {
+    if (!window.confirm('Удалить покупку из списка?')) {
+      return;
+    }
+    await this.runMutation(async () => {
+      await firstValueFrom(this.api.deleteShoppingItem(id));
+      this.shoppingItems.update((items) => items.filter((item) => item.id !== id));
+    });
+  }
+
+  protected async moveShoppingToFridge(item: ShoppingItem): Promise<void> {
+    const expiresAt = window.prompt('Годен до (ГГГГ-ММ-ДД)', this.addDays(5))?.trim() ?? '';
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(expiresAt)) {
+      return;
+    }
+
+    await this.runMutation(async () => {
+      const fridgeItem = await firstValueFrom(
+        this.api.moveShoppingToFridge(item.id, {
+          quantity: item.quantity ?? 1,
+          unit: item.unit ?? 'шт',
+          expiresAt,
+        }),
+      );
+      this.shoppingItems.update((items) => items.filter((current) => current.id !== item.id));
+      this.fridgeItems.update((items) => [fridgeItem, ...items]);
+    });
+  }
+
+  protected async clearCompletedShoppingItems(): Promise<void> {
+    if (!this.shoppingItems().some((item) => item.checked)) {
+      return;
+    }
+    await this.runMutation(async () => {
+      await firstValueFrom(this.api.clearCompletedShoppingItems());
+      this.shoppingItems.update((items) => items.filter((item) => !item.checked));
+    });
+  }
+
+  protected retryLoad(): void {
+    void this.loadState();
   }
 
   protected toggleRecipeLike(id: string): void {
@@ -239,15 +297,13 @@ export class App {
       return;
     }
 
-    this.fridgeItems.update((items) => items.filter((fridgeItem) => fridgeItem.id !== id));
-    this.persistFridge();
-
     if (deltaX > 0) {
-      this.shoppingItems.update((items) => [
-        this.createShoppingItem(item.name, item.quantity, item.unit),
-        ...items,
-      ]);
-      this.persistShopping();
+      void this.moveFridgeToShopping(item);
+      return;
+    }
+
+    if (window.confirm(`Удалить «${item.name}» из холодильника?`)) {
+      void this.deleteFridgeItem(item.id);
     }
   }
 
@@ -280,26 +336,57 @@ export class App {
     return 'fresh';
   }
 
-  private createFridgeItem(name: string, quantity: number, unit: Unit, expiresAt: string): FridgeItem {
-    return {
-      id: crypto.randomUUID(),
-      name,
-      quantity,
-      unit,
-      expiresAt,
-      createdAt: new Date().toISOString(),
-    };
+  private async loadState(): Promise<void> {
+    this.loading.set(true);
+    this.apiError.set('');
+    try {
+      const state = await firstValueFrom(this.api.getState());
+      this.fridgeItems.set(state.fridgeItems);
+      this.shoppingItems.set(state.shoppingItems);
+    } catch {
+      this.apiError.set('Не удалось загрузить данные. Проверьте подключение к серверу.');
+    } finally {
+      this.loading.set(false);
+    }
   }
 
-  private createShoppingItem(name: string, quantity?: number, unit?: Unit): ShoppingItem {
-    return {
-      id: crypto.randomUUID(),
-      name,
-      quantity,
-      unit,
-      checked: false,
-      createdAt: new Date().toISOString(),
-    };
+  private async deleteFridgeItem(id: string): Promise<void> {
+    await this.runMutation(async () => {
+      await firstValueFrom(this.api.deleteFridgeItem(id));
+      this.fridgeItems.update((items) => items.filter((item) => item.id !== id));
+    });
+  }
+
+  private async moveFridgeToShopping(item: FridgeItem): Promise<void> {
+    await this.runMutation(async () => {
+      const shoppingItem = await firstValueFrom(this.api.moveFridgeToShopping(item.id));
+      this.fridgeItems.update((items) => items.filter((current) => current.id !== item.id));
+      this.shoppingItems.update((items) => [shoppingItem, ...items]);
+    });
+  }
+
+  private async runMutation(action: () => Promise<void>): Promise<void> {
+    this.saving.set(true);
+    this.apiError.set('');
+    try {
+      await action();
+    } catch {
+      this.apiError.set('Изменение не сохранено. Повторите попытку.');
+    } finally {
+      this.saving.set(false);
+    }
+  }
+
+  private replaceFridgeItem(updated: FridgeItem): void {
+    this.fridgeItems.update((items) =>
+      items.map((item) => (item.id === updated.id ? updated : item)),
+    );
+  }
+
+  private replaceShoppingItem(updated: ShoppingItem): void {
+    this.shoppingItems.update((items) =>
+      items.map((item) => (item.id === updated.id ? updated : item)),
+    );
   }
 
   private daysUntil(date: string): number {
@@ -325,14 +412,6 @@ export class App {
     } catch {
       return fallback;
     }
-  }
-
-  private persistFridge(): void {
-    localStorage.setItem(STORAGE_KEYS.fridge, JSON.stringify(this.fridgeItems()));
-  }
-
-  private persistShopping(): void {
-    localStorage.setItem(STORAGE_KEYS.shopping, JSON.stringify(this.shoppingItems()));
   }
 
   private persistRecipes(): void {

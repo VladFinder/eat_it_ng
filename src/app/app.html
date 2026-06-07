@@ -10,6 +10,13 @@
     </div>
   </section>
 
+  @if (apiError()) {
+    <section class="network-banner" role="alert">
+      <span>{{ apiError() }}</span>
+      <button type="button" (click)="retryLoad()">Повторить</button>
+    </section>
+  }
+
   @if (activeTab() === 'fridge') {
     <section class="screen">
       <div class="panel fridge-form">
@@ -20,7 +27,11 @@
         <form class="form-grid" (ngSubmit)="addFridgeItem()">
           <label>
             Название
-            <input name="fridge-name" [(ngModel)]="newFridgeItem.name" placeholder="Например, творог" />
+            <input
+              name="fridge-name"
+              [(ngModel)]="newFridgeItem.name"
+              placeholder="Например, творог"
+            />
           </label>
           <label>
             Количество
@@ -58,31 +69,53 @@
         }
       </div>
 
-      <div class="list fridge-list">
-        @for (item of fridgeItems(); track item.id) {
-          <article
-            class="fridge-row"
-            [class.move-right]="swipeOffset(item.id) > 36"
-            [class.move-left]="swipeOffset(item.id) < -36"
-            [style.transform]="'translateX(' + swipeOffset(item.id) + 'px)'"
-            (pointerdown)="beginSwipe($event, item.id)"
-            (pointermove)="moveSwipe($event, item.id)"
-            (pointerup)="endSwipe(item.id)"
-            (pointercancel)="endSwipe(item.id)"
-          >
-            <div>
-              <h3>{{ item.name }}</h3>
-              <p>{{ item.quantity }} {{ item.unit }} · {{ expiryLabel(item.expiresAt) }}</p>
+      @if (loading()) {
+        <div class="empty-state"><p>Загружаем продукты...</p></div>
+      } @else {
+        <div class="list fridge-list">
+          @for (item of fridgeItems(); track item.id) {
+            <article
+              class="fridge-row"
+              [class.move-right]="swipeOffset(item.id) > 36"
+              [class.move-left]="swipeOffset(item.id) < -36"
+              [style.transform]="'translateX(' + swipeOffset(item.id) + 'px)'"
+              (pointerdown)="beginSwipe($event, item.id)"
+              (pointermove)="moveSwipe($event, item.id)"
+              (pointerup)="endSwipe(item.id)"
+              (pointercancel)="endSwipe(item.id)"
+            >
+              <div class="item-content">
+                <h3>{{ item.name }}</h3>
+                <p>{{ item.quantity }} {{ item.unit }} · {{ expiryLabel(item.expiresAt) }}</p>
+                <div class="row-actions">
+                  <button
+                    type="button"
+                    (pointerdown)="$event.stopPropagation()"
+                    (click)="editFridgeItem(item)"
+                  >
+                    Изменить
+                  </button>
+                  <button
+                    type="button"
+                    (pointerdown)="$event.stopPropagation()"
+                    (click)="consumeFridgeItem(item)"
+                  >
+                    Израсходовать
+                  </button>
+                </div>
+              </div>
+              <span class="status" [ngClass]="expiryClass(item.expiresAt)">{{
+                item.expiresAt
+              }}</span>
+            </article>
+          } @empty {
+            <div class="empty-state">
+              <h3>Холодильник пуст</h3>
+              <p>Добавь первый продукт, чтобы отслеживать остатки и сроки годности.</p>
             </div>
-            <span class="status" [ngClass]="expiryClass(item.expiresAt)">{{ item.expiresAt }}</span>
-          </article>
-        } @empty {
-          <div class="empty-state">
-            <h3>Холодильник пуст</h3>
-            <p>Добавь первый продукт, чтобы отслеживать остатки и сроки годности.</p>
-          </div>
-        }
-      </div>
+          }
+        </div>
+      }
     </section>
   }
 
@@ -102,31 +135,53 @@
           />
           <button class="primary-action" type="submit">+</button>
         </form>
-      </div>
-
-      <div class="list">
-        @for (item of shoppingItems(); track item.id) {
-          <article class="shopping-row" [class.done]="item.checked">
-            <button class="check-button" type="button" (click)="toggleShoppingItem(item.id)">
-              @if (item.checked) { ✓ }
-            </button>
-            <div>
-              <h3>{{ item.name }}</h3>
-              @if (item.quantity && item.unit) {
-                <p>{{ item.quantity }} {{ item.unit }}</p>
-              } @else {
-                <p>Добавлено вручную</p>
-              }
-            </div>
-            <button class="icon-button" type="button" (click)="removeShoppingItem(item.id)">×</button>
-          </article>
-        } @empty {
-          <div class="empty-state">
-            <h3>Список пуст</h3>
-            <p>Покупки появятся здесь вручную или после свайпа продукта вправо.</p>
-          </div>
+        @if (hasCompletedShoppingItems()) {
+          <button
+            class="secondary-action compact-action"
+            type="button"
+            (click)="clearCompletedShoppingItems()"
+          >
+            Очистить купленные
+          </button>
         }
       </div>
+
+      @if (loading()) {
+        <div class="empty-state"><p>Загружаем список покупок...</p></div>
+      } @else {
+        <div class="list">
+          @for (item of shoppingItems(); track item.id) {
+            <article class="shopping-row" [class.done]="item.checked">
+              <button class="check-button" type="button" (click)="toggleShoppingItem(item)">
+                @if (item.checked) {
+                  ✓
+                }
+              </button>
+              <div class="item-content">
+                <h3>{{ item.name }}</h3>
+                @if (item.quantity && item.unit) {
+                  <p>{{ item.quantity }} {{ item.unit }}</p>
+                } @else {
+                  <p>Добавлено вручную</p>
+                }
+                @if (item.checked) {
+                  <button class="move-button" type="button" (click)="moveShoppingToFridge(item)">
+                    В холодильник
+                  </button>
+                }
+              </div>
+              <button class="icon-button" type="button" (click)="removeShoppingItem(item.id)">
+                ×
+              </button>
+            </article>
+          } @empty {
+            <div class="empty-state">
+              <h3>Список пуст</h3>
+              <p>Покупки появятся здесь вручную или после свайпа продукта вправо.</p>
+            </div>
+          }
+        </div>
+      }
     </section>
   }
 
@@ -135,9 +190,7 @@
       <div class="dish-card">
         <p class="section-label">Tinder блюд</p>
         <h2>Матчи блюд скоро появятся</h2>
-        <p>
-          Здесь будут карточки блюд, лайки пары и подборки на основе продуктов из холодильника.
-        </p>
+        <p>Здесь будут карточки блюд, лайки пары и подборки на основе продуктов из холодильника.</p>
         <div class="dish-actions">
           <button type="button">Не хочу</button>
           <button type="button">Вкусно</button>
@@ -205,7 +258,9 @@
         <div>
           <p class="section-label">Личный кабинет</p>
           <h2>Пользователь Eat it</h2>
-          <p>Локальный MVP без авторизации. Настройки аккаунта будут подключены вместе с backend.</p>
+          <p>
+            Локальный MVP без авторизации. Настройки аккаунта будут подключены вместе с backend.
+          </p>
         </div>
       </div>
 
@@ -213,9 +268,7 @@
         <div>
           <p class="section-label">Совместное использование</p>
           <h2>{{ partnerConnected() ? 'Партнер подключен' : 'Пригласить партнера' }}</h2>
-          <p>
-            Общими станут покупки, рецепты, лайки и будущие матчи блюд.
-          </p>
+          <p>Общими станут покупки, рецепты, лайки и будущие матчи блюд.</p>
         </div>
         @if (!partnerConnected()) {
           <form class="inline-form" (ngSubmit)="connectPartner()">
@@ -229,7 +282,9 @@
             <button class="primary-action" type="submit">Пригласить</button>
           </form>
         } @else {
-          <button class="secondary-action" type="button" (click)="disconnectPartner()">Отключить режим пары</button>
+          <button class="secondary-action" type="button" (click)="disconnectPartner()">
+            Отключить режим пары
+          </button>
         }
       </div>
     </section>

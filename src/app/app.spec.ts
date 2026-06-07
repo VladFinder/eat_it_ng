@@ -1,10 +1,20 @@
 import { TestBed } from '@angular/core/testing';
+import { of } from 'rxjs';
 import { App } from './app';
+import { ApiService } from './core/api.service';
 
 describe('App', () => {
   beforeEach(async () => {
     await TestBed.configureTestingModule({
       imports: [App],
+      providers: [
+        {
+          provide: ApiService,
+          useValue: {
+            getState: () => of({ fridgeItems: [], shoppingItems: [] }),
+          },
+        },
+      ],
     }).compileComponents();
   });
 
