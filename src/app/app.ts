@@ -68,7 +68,7 @@ export class App implements OnInit {
   protected readonly recipes = signal<Recipe[]>(
     this.load<Recipe[]>(STORAGE_KEYS.recipes, [
       {
-        id: crypto.randomUUID(),
+        id: this.createId(),
         title: 'Паста с курицей и томатами',
         time: '25 мин',
         tags: ['ужин', 'быстро'],
@@ -76,7 +76,7 @@ export class App implements OnInit {
         mine: false,
       },
       {
-        id: crypto.randomUUID(),
+        id: this.createId(),
         title: 'Омлет с зеленью',
         time: '12 мин',
         tags: ['завтрак', 'из холодильника'],
@@ -84,7 +84,7 @@ export class App implements OnInit {
         mine: true,
       },
       {
-        id: crypto.randomUUID(),
+        id: this.createId(),
         title: 'Теплый салат с фасолью',
         time: '18 мин',
         tags: ['легко', 'обед'],
@@ -399,6 +399,10 @@ export class App implements OnInit {
     const date = new Date();
     date.setDate(date.getDate() + days);
     return date.toISOString().slice(0, 10);
+  }
+
+  private createId(): string {
+    return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
   }
 
   private load<T>(key: string, fallback: T): T {

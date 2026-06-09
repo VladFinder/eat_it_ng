@@ -89,7 +89,7 @@ Install and start the API service:
 sudo cp /opt/eat-it/app/deploy/eat-it-api.service /etc/systemd/system/eat-it-api.service
 sudo systemctl daemon-reload
 sudo systemctl enable --now eat-it-api
-curl http://127.0.0.1:3000/api/health
+curl http://127.0.0.1:3010/api/health
 ```
 
 Install the provided Nginx virtual host, which serves Angular and proxies

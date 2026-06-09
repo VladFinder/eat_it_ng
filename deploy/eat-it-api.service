@@ -8,7 +8,7 @@ User=www-data
 Group=www-data
 WorkingDirectory=/opt/eat-it/app
 Environment=NODE_ENV=production
-Environment=PORT=3000
+Environment=PORT=3010
 Environment=DATABASE_URL=file:../data/eat-it.db
 ExecStart=/usr/bin/node server/index.mjs
 Restart=on-failure
@@ -18,4 +18,3 @@ PrivateTmp=true
 
 [Install]
 WantedBy=multi-user.target
-
