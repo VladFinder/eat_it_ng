@@ -8,22 +8,81 @@ datasource db {
 }
 
 model FridgeItem {
-  id        String   @id @default(cuid())
-  name      String
-  quantity  Float
-  unit      String
-  expiresAt DateTime
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String    @id @default(cuid())
+  householdId String
+  name        String
+  quantity    Float
+  unit        String
+  expiresAt   DateTime
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  @@index([householdId])
 }
 
 model ShoppingItem {
-  id        String   @id @default(cuid())
-  name      String
-  quantity  Float?
-  unit      String?
-  checked   Boolean  @default(false)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String    @id @default(cuid())
+  householdId String
+  name        String
+  quantity    Float?
+  unit        String?
+  checked     Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  @@index([householdId])
 }
 
+model Household {
+  id            String         @id @default(cuid())
+  name          String
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  users         User[]
+  fridgeItems   FridgeItem[]
+  shoppingItems ShoppingItem[]
+}
+
+model User {
+  id              String         @id @default(cuid())
+  householdId     String
+  email           String         @unique
+  displayName     String
+  passwordHash    String?
+  authProvider    String         @default("password")
+  providerSubject String?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  household       Household      @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  sessions        Session[]
+  identities      AuthIdentity[]
+
+  @@unique([authProvider, providerSubject])
+  @@index([householdId])
+}
+
+model AuthIdentity {
+  id        String   @id @default(cuid())
+  userId    String
+  provider  String
+  subject   String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, subject])
+  @@index([userId])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}

@@ -25,6 +25,26 @@ export interface AppState {
   shoppingItems: ShoppingItem[];
 }
 
+export interface AuthUser {
+  id: string;
+  email: string;
+  displayName: string;
+  householdId: string;
+  authProvider: string;
+}
+
+export interface AuthResponse {
+  user: AuthUser;
+  token: string;
+  expiresAt: string;
+}
+
+export interface AuthProviders {
+  password: boolean;
+  google: boolean;
+  apple: boolean;
+}
+
 export type FridgeInput = Pick<FridgeItem, 'name' | 'quantity' | 'unit' | 'expiresAt'>;
 
 export type ShoppingInput = {

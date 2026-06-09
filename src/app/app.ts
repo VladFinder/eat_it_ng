@@ -1,12 +1,14 @@
 import { CommonModule } from '@angular/common';
+import { HttpErrorResponse } from '@angular/common/http';
 import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { ApiService } from './core/api.service';
-import { FridgeItem, ShoppingItem, Unit } from './core/models';
+import { AuthProviders, AuthUser, FridgeItem, ShoppingItem, Unit } from './core/models';
 
 type TabId = 'fridge' | 'shopping' | 'dishes' | 'recipes' | 'profile';
 type RecipeTab = 'mine' | 'likes' | 'all';
+type AuthMode = 'login' | 'register';
 
 interface Recipe {
   id: string;
@@ -61,6 +63,19 @@ export class App implements OnInit {
   protected readonly loading = signal(true);
   protected readonly saving = signal(false);
   protected readonly apiError = signal('');
+  protected readonly authMode = signal<AuthMode>('login');
+  protected readonly authError = signal('');
+  protected readonly currentUser = signal<AuthUser | null>(null);
+  protected readonly authProviders = signal<AuthProviders>({
+    password: true,
+    google: false,
+    apple: false,
+  });
+  protected readonly authForm = {
+    displayName: '',
+    email: '',
+    password: '',
+  };
   protected readonly partnerEmail = signal('');
   protected readonly partnerConnected = signal(this.load<boolean>(STORAGE_KEYS.partner, false));
   protected readonly fridgeItems = signal<FridgeItem[]>([]);
@@ -122,7 +137,69 @@ export class App implements OnInit {
   private swipe: SwipeState | null = null;
 
   ngOnInit(): void {
-    void this.loadState();
+    void this.initializeSession();
+  }
+
+  protected async submitAuth(): Promise<void> {
+    if (this.saving()) {
+      return;
+    }
+    this.saving.set(true);
+    this.authError.set('');
+    try {
+      const response =
+        this.authMode() === 'register'
+          ? await firstValueFrom(
+              this.api.register({
+                displayName: this.authForm.displayName.trim(),
+                email: this.authForm.email.trim(),
+                password: this.authForm.password,
+              }),
+            )
+          : await firstValueFrom(
+              this.api.login({
+                email: this.authForm.email.trim(),
+                password: this.authForm.password,
+              }),
+            );
+      this.api.setSessionToken(response.token);
+      this.currentUser.set(response.user);
+      this.authForm.password = '';
+      await this.loadState();
+    } catch (error) {
+      this.authError.set(this.errorMessage(error, 'Не удалось войти в аккаунт.'));
+    } finally {
+      this.saving.set(false);
+    }
+  }
+
+  protected setAuthMode(mode: AuthMode): void {
+    this.authMode.set(mode);
+    this.authError.set('');
+  }
+
+  protected startOAuth(provider: 'google' | 'apple'): void {
+    window.location.assign(this.api.oauthUrl(provider));
+  }
+
+  protected async logout(): Promise<void> {
+    try {
+      await firstValueFrom(this.api.logout());
+    } finally {
+      this.resetSession();
+    }
+  }
+
+  protected async deleteAccount(): Promise<void> {
+    if (!window.confirm('Удалить аккаунт и завершить текущую сессию?')) {
+      return;
+    }
+    try {
+      await firstValueFrom(this.api.deleteAccount());
+      this.resetSession();
+    } catch (error) {
+      this.apiError.set(this.errorMessage(error, 'Не удалось удалить аккаунт.'));
+    }
   }
 
   protected setTab(tab: TabId): void {
@@ -370,8 +447,8 @@ export class App implements OnInit {
     this.apiError.set('');
     try {
       await action();
-    } catch {
-      this.apiError.set('Изменение не сохранено. Повторите попытку.');
+    } catch (error) {
+      this.apiError.set(this.errorMessage(error, 'Изменение не сохранено. Повторите попытку.'));
     } finally {
       this.saving.set(false);
     }
@@ -389,6 +466,44 @@ export class App implements OnInit {
     );
   }
 
+  private async initializeSession(): Promise<void> {
+    this.loading.set(true);
+    try {
+      const [session, providers] = await Promise.allSettled([
+        firstValueFrom(this.api.me()),
+        firstValueFrom(this.api.getAuthProviders()),
+      ]);
+      if (providers.status === 'fulfilled') {
+        this.authProviders.set(providers.value);
+      }
+      if (session.status === 'fulfilled') {
+        this.currentUser.set(session.value.user);
+        await this.loadState();
+      }
+    } finally {
+      this.loading.set(false);
+    }
+  }
+
+  private resetSession(): void {
+    this.api.clearSessionToken();
+    this.currentUser.set(null);
+    this.fridgeItems.set([]);
+    this.shoppingItems.set([]);
+    this.apiError.set('');
+    this.authError.set('');
+    this.authMode.set('login');
+    this.authForm.password = '';
+    this.activeTab.set('fridge');
+  }
+
+  private errorMessage(error: unknown, fallback: string): string {
+    if (error instanceof HttpErrorResponse && typeof error.error?.error === 'string') {
+      return error.error.error;
+    }
+    return fallback;
+  }
+
   private daysUntil(date: string): number {
     const expires = new Date(`${date}T00:00:00`);
     const now = new Date(`${this.today}T00:00:00`);
@@ -402,7 +517,9 @@ export class App implements OnInit {
   }
 
   private createId(): string {
-    return globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    return (
+      globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`
+    );
   }
 
   private load<T>(key: string, fallback: T): T {

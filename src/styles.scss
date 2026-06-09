@@ -31,6 +31,87 @@ button {
   cursor: pointer;
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.auth-shell {
+  display: grid;
+  min-height: 100dvh;
+  place-items: center;
+  padding: 24px 16px;
+}
+
+.auth-card {
+  display: grid;
+  gap: 20px;
+  width: min(100%, 440px);
+  border: 1px solid #e0d7c9;
+  border-radius: 12px;
+  background: #fffaf1;
+  box-shadow: 0 24px 60px rgba(48, 38, 26, 0.12);
+  padding: 24px;
+}
+
+.auth-description {
+  margin-top: 10px;
+}
+
+.auth-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  border-radius: 8px;
+  background: #e9dfd1;
+  padding: 6px;
+}
+
+.auth-tabs button {
+  min-height: 42px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  font-weight: 800;
+}
+
+.auth-tabs button.active {
+  background: #fffaf1;
+  color: #2d6a4f;
+}
+
+.auth-form {
+  display: grid;
+  gap: 14px;
+}
+
+.auth-error {
+  color: #9b2626;
+}
+
+.oauth-section {
+  display: grid;
+  gap: 10px;
+  text-align: center;
+}
+
+.oauth-section button,
+.danger-action {
+  min-height: 46px;
+  border: 1px solid #d8cfc2;
+  border-radius: 8px;
+  background: #fffefa;
+  font-weight: 800;
+}
+
+.account-actions {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.danger-action {
+  color: #9b2626;
+}
+
 .shell {
   max-width: 980px;
   min-height: 100dvh;

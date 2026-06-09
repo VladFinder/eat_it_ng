@@ -29,8 +29,50 @@ Open `http://localhost:4200/`. Angular proxies `/api` requests to
 `http://127.0.0.1:3000`.
 
 The local SQLite database is stored in `data/eat-it.db`. The API currently
-stores one shared anonymous household. Do not expose it as a public multi-user
-service until authentication and household isolation are implemented.
+stores fridge and shopping data per account household.
+
+## Authentication
+
+Email/password registration works without external services. Passwords are
+hashed with Node.js `scrypt`; session tokens are random, and only their SHA-256
+hashes are stored in the database.
+
+Google and Apple buttons appear only when their server credentials are set in
+`/opt/eat-it/app/.env`.
+
+Google OAuth variables:
+
+```dotenv
+APP_URL="https://eat-it.space"
+GOOGLE_CLIENT_ID="..."
+GOOGLE_CLIENT_SECRET="..."
+```
+
+Register this redirect URI in Google Cloud Console:
+
+```text
+https://eat-it.space/api/auth/google/callback
+```
+
+Apple OAuth variables:
+
+```dotenv
+APP_URL="https://eat-it.space"
+APPLE_CLIENT_ID="your.services.id"
+APPLE_TEAM_ID="..."
+APPLE_KEY_ID="..."
+APPLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
+```
+
+Register this return URL for the Apple Services ID:
+
+```text
+https://eat-it.space/api/auth/apple/callback
+```
+
+Apple requires an HTTPS domain, a Services ID associated with a Sign in with
+Apple-enabled App ID, and a private key. Restart `eat-it-api` after changing
+`.env`.
 
 ## Building
 

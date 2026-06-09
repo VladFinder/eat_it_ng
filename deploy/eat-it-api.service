@@ -10,6 +10,8 @@ WorkingDirectory=/opt/eat-it/app
 Environment=NODE_ENV=production
 Environment=PORT=3010
 Environment=DATABASE_URL=file:../data/eat-it.db
+Environment=APP_URL=https://eat-it.space
+EnvironmentFile=-/opt/eat-it/app/.env
 ExecStart=/usr/bin/node server/index.mjs
 Restart=on-failure
 RestartSec=5

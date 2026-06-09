@@ -6,6 +6,24 @@ const name = z.string().trim().min(1).max(120);
 const quantity = z.number().positive().max(1_000_000);
 const unit = z.enum(units);
 const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const email = z
+  .string()
+  .trim()
+  .email()
+  .max(254)
+  .transform((value) => value.toLowerCase());
+const password = z.string().min(8).max(128);
+
+export const registerSchema = z.object({
+  displayName: name,
+  email,
+  password,
+});
+
+export const loginSchema = z.object({
+  email,
+  password: z.string().min(1).max(128),
+});
 
 export const fridgeCreateSchema = z.object({
   name,

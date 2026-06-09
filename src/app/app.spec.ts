@@ -11,6 +11,17 @@ describe('App', () => {
         {
           provide: ApiService,
           useValue: {
+            me: () =>
+              of({
+                user: {
+                  id: 'user-1',
+                  email: 'test@example.com',
+                  displayName: 'Тест',
+                  householdId: 'household-1',
+                  authProvider: 'password',
+                },
+              }),
+            getAuthProviders: () => of({ password: true, google: false, apple: false }),
             getState: () => of({ fridgeItems: [], shoppingItems: [] }),
           },
         },
@@ -24,11 +35,11 @@ describe('App', () => {
     expect(app).toBeTruthy();
   });
 
-  it('should render the MVP shell', async () => {
+  it('should render the authentication screen', async () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();
     const compiled = fixture.nativeElement as HTMLElement;
-    expect(compiled.querySelector('h1')?.textContent).toContain('Холодильник');
-    expect(compiled.textContent).toContain('Заполни холодильник');
+    expect(compiled.querySelector('h1')?.textContent).toContain('С возвращением');
+    expect(compiled.textContent).toContain('Проверяем сессию');
   });
 });

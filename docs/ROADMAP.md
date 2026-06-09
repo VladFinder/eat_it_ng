@@ -10,10 +10,12 @@
 
 ## Stage 2: Accounts and households
 
-- Email/password registration and sign-in.
-- Password recovery and account deletion.
-- Google sign-in.
-- Household creation, partner invitations, roles, and shared data.
+- Email/password registration and sign-in. Implemented.
+- Google and Apple OAuth server flows. Implemented; provider credentials are required.
+- Password recovery.
+- Account deletion. Implemented.
+- Household isolation. Implemented.
+- Partner invitations and household roles.
 - Move the current anonymous data into the first household.
 
 ## Stage 3: Recipes and recommendations

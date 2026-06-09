@@ -1,301 +1,396 @@
-<main class="shell">
-  <section class="topbar" aria-label="Сводка Eat it">
-    <div>
-      <p class="eyebrow">Eat it</p>
-      <h1>{{ activeTabLabel() }}</h1>
-    </div>
-    <div class="summary">
-      <span>{{ fridgeItems().length }} в холодильнике</span>
-      <strong>{{ shoppingOpenCount() }} купить</strong>
-    </div>
-  </section>
-
-  @if (apiError()) {
-    <section class="network-banner" role="alert">
-      <span>{{ apiError() }}</span>
-      <button type="button" (click)="retryLoad()">Повторить</button>
-    </section>
-  }
-
-  @if (activeTab() === 'fridge') {
-    <section class="screen">
-      <div class="panel fridge-form">
-        <div>
-          <p class="section-label">Новый продукт</p>
-          <h2>Заполни холодильник</h2>
-        </div>
-        <form class="form-grid" (ngSubmit)="addFridgeItem()">
-          <label>
-            Название
-            <input
-              name="fridge-name"
-              [(ngModel)]="newFridgeItem.name"
-              placeholder="Например, творог"
-            />
-          </label>
-          <label>
-            Количество
-            <input
-              name="fridge-quantity"
-              [(ngModel)]="newFridgeItem.quantity"
-              min="0"
-              step="0.1"
-              type="number"
-            />
-          </label>
-          <label>
-            Ед.
-            <select name="fridge-unit" [(ngModel)]="newFridgeItem.unit">
-              @for (unit of units; track unit) {
-                <option [value]="unit">{{ unit }}</option>
-              }
-            </select>
-          </label>
-          <label>
-            Годен до
-            <input name="fridge-expires" [(ngModel)]="newFridgeItem.expiresAt" type="date" />
-          </label>
-          <button class="primary-action" type="submit">Добавить</button>
-        </form>
-      </div>
-
-      <div class="section-heading">
-        <div>
-          <p class="section-label">Свайпы</p>
-          <h2>Вправо - в покупки, влево - удалить</h2>
-        </div>
-        @if (expiringSoonCount() > 0) {
-          <span class="alert-pill">{{ expiringSoonCount() }} скоро истекает</span>
-        }
+@if (!currentUser()) {
+  <main class="auth-shell">
+    <section class="auth-card">
+      <div>
+        <p class="eyebrow">Eat it</p>
+        <h1>{{ authMode() === 'login' ? 'С возвращением' : 'Создать аккаунт' }}</h1>
+        <p class="auth-description">
+          Холодильник и покупки будут храниться в вашем личном пространстве.
+        </p>
       </div>
 
       @if (loading()) {
-        <div class="empty-state"><p>Загружаем продукты...</p></div>
+        <p>Проверяем сессию...</p>
       } @else {
-        <div class="list fridge-list">
-          @for (item of fridgeItems(); track item.id) {
-            <article
-              class="fridge-row"
-              [class.move-right]="swipeOffset(item.id) > 36"
-              [class.move-left]="swipeOffset(item.id) < -36"
-              [style.transform]="'translateX(' + swipeOffset(item.id) + 'px)'"
-              (pointerdown)="beginSwipe($event, item.id)"
-              (pointermove)="moveSwipe($event, item.id)"
-              (pointerup)="endSwipe(item.id)"
-              (pointercancel)="endSwipe(item.id)"
-            >
-              <div class="item-content">
-                <h3>{{ item.name }}</h3>
-                <p>{{ item.quantity }} {{ item.unit }} · {{ expiryLabel(item.expiresAt) }}</p>
-                <div class="row-actions">
-                  <button
-                    type="button"
-                    (pointerdown)="$event.stopPropagation()"
-                    (click)="editFridgeItem(item)"
-                  >
-                    Изменить
-                  </button>
-                  <button
-                    type="button"
-                    (pointerdown)="$event.stopPropagation()"
-                    (click)="consumeFridgeItem(item)"
-                  >
-                    Израсходовать
-                  </button>
-                </div>
-              </div>
-              <span class="status" [ngClass]="expiryClass(item.expiresAt)">{{
-                item.expiresAt
-              }}</span>
-            </article>
-          } @empty {
-            <div class="empty-state">
-              <h3>Холодильник пуст</h3>
-              <p>Добавь первый продукт, чтобы отслеживать остатки и сроки годности.</p>
-            </div>
-          }
-        </div>
-      }
-    </section>
-  }
-
-  @if (activeTab() === 'shopping') {
-    <section class="screen">
-      <div class="panel shopping-add">
-        <div>
-          <p class="section-label">Список покупок</p>
-          <h2>Что нужно докупить</h2>
-        </div>
-        <form class="inline-form" (ngSubmit)="addShoppingItem()">
-          <input
-            name="shopping-name"
-            [ngModel]="newShoppingName()"
-            (ngModelChange)="newShoppingName.set($event)"
-            placeholder="Добавить покупку"
-          />
-          <button class="primary-action" type="submit">+</button>
-        </form>
-        @if (hasCompletedShoppingItems()) {
+        <div class="auth-tabs">
           <button
-            class="secondary-action compact-action"
             type="button"
-            (click)="clearCompletedShoppingItems()"
+            [class.active]="authMode() === 'login'"
+            (click)="setAuthMode('login')"
           >
-            Очистить купленные
+            Войти
           </button>
-        }
-      </div>
+          <button
+            type="button"
+            [class.active]="authMode() === 'register'"
+            (click)="setAuthMode('register')"
+          >
+            Регистрация
+          </button>
+        </div>
 
-      @if (loading()) {
-        <div class="empty-state"><p>Загружаем список покупок...</p></div>
-      } @else {
-        <div class="list">
-          @for (item of shoppingItems(); track item.id) {
-            <article class="shopping-row" [class.done]="item.checked">
-              <button class="check-button" type="button" (click)="toggleShoppingItem(item)">
-                @if (item.checked) {
-                  ✓
-                }
-              </button>
-              <div class="item-content">
-                <h3>{{ item.name }}</h3>
-                @if (item.quantity && item.unit) {
-                  <p>{{ item.quantity }} {{ item.unit }}</p>
-                } @else {
-                  <p>Добавлено вручную</p>
-                }
-                @if (item.checked) {
-                  <button class="move-button" type="button" (click)="moveShoppingToFridge(item)">
-                    В холодильник
-                  </button>
-                }
-              </div>
-              <button class="icon-button" type="button" (click)="removeShoppingItem(item.id)">
-                ×
-              </button>
-            </article>
-          } @empty {
-            <div class="empty-state">
-              <h3>Список пуст</h3>
-              <p>Покупки появятся здесь вручную или после свайпа продукта вправо.</p>
-            </div>
+        <form class="auth-form" (ngSubmit)="submitAuth()">
+          @if (authMode() === 'register') {
+            <label>
+              Имя
+              <input
+                name="display-name"
+                [(ngModel)]="authForm.displayName"
+                autocomplete="name"
+                required
+              />
+            </label>
           }
-        </div>
-      }
-    </section>
-  }
+          <label>
+            Email
+            <input
+              name="email"
+              [(ngModel)]="authForm.email"
+              autocomplete="email"
+              type="email"
+              required
+            />
+          </label>
+          <label>
+            Пароль
+            <input
+              name="password"
+              [(ngModel)]="authForm.password"
+              [autocomplete]="authMode() === 'login' ? 'current-password' : 'new-password'"
+              minlength="8"
+              type="password"
+              required
+            />
+          </label>
+          @if (authError()) {
+            <p class="auth-error" role="alert">{{ authError() }}</p>
+          }
+          <button class="primary-action" type="submit" [disabled]="saving()">
+            {{ authMode() === 'login' ? 'Войти' : 'Создать аккаунт' }}
+          </button>
+        </form>
 
-  @if (activeTab() === 'dishes') {
-    <section class="screen centered">
-      <div class="dish-card">
-        <p class="section-label">Tinder блюд</p>
-        <h2>Матчи блюд скоро появятся</h2>
-        <p>Здесь будут карточки блюд, лайки пары и подборки на основе продуктов из холодильника.</p>
-        <div class="dish-actions">
-          <button type="button">Не хочу</button>
-          <button type="button">Вкусно</button>
-        </div>
-      </div>
-    </section>
-  }
-
-  @if (activeTab() === 'recipes') {
-    <section class="screen">
-      <div class="tabs-strip" role="tablist" aria-label="Рецепты">
-        <button
-          type="button"
-          [class.active]="activeRecipeTab() === 'mine'"
-          (click)="activeRecipeTab.set('mine')"
-        >
-          Мои
-        </button>
-        <button
-          type="button"
-          [class.active]="activeRecipeTab() === 'likes'"
-          (click)="activeRecipeTab.set('likes')"
-        >
-          Лайки
-        </button>
-        <button
-          type="button"
-          [class.active]="activeRecipeTab() === 'all'"
-          (click)="activeRecipeTab.set('all')"
-        >
-          Все
-        </button>
-      </div>
-
-      <div class="recipe-grid">
-        @for (recipe of recipeList(); track recipe.id) {
-          <article class="recipe-card">
-            <div>
-              <h3>{{ recipe.title }}</h3>
-              <p>{{ recipe.time }}</p>
-            </div>
-            <div class="tag-row">
-              @for (tag of recipe.tags; track tag) {
-                <span>{{ tag }}</span>
-              }
-            </div>
-            <button class="like-button" type="button" (click)="toggleRecipeLike(recipe.id)">
-              {{ recipe.liked ? 'В лайках' : 'Лайкнуть' }}
-            </button>
-          </article>
-        } @empty {
-          <div class="empty-state">
-            <h3>Пока пусто</h3>
-            <p>Здесь появятся рецепты из базы и рецепты, добавленные пользователем.</p>
+        @if (authProviders().google || authProviders().apple) {
+          <div class="oauth-section">
+            <span>или</span>
+            @if (authProviders().google) {
+              <button type="button" (click)="startOAuth('google')">Продолжить с Google</button>
+            }
+            @if (authProviders().apple) {
+              <button type="button" (click)="startOAuth('apple')">Продолжить с Apple</button>
+            }
           </div>
         }
+      }
+    </section>
+  </main>
+} @else {
+  <main class="shell">
+    <section class="topbar" aria-label="Сводка Eat it">
+      <div>
+        <p class="eyebrow">Eat it</p>
+        <h1>{{ activeTabLabel() }}</h1>
+      </div>
+      <div class="summary">
+        <span>{{ fridgeItems().length }} в холодильнике</span>
+        <strong>{{ shoppingOpenCount() }} купить</strong>
       </div>
     </section>
-  }
 
-  @if (activeTab() === 'profile') {
-    <section class="screen">
-      <div class="profile-card">
-        <div class="avatar">E</div>
-        <div>
-          <p class="section-label">Личный кабинет</p>
-          <h2>Пользователь Eat it</h2>
-          <p>
-            Локальный MVP без авторизации. Настройки аккаунта будут подключены вместе с backend.
-          </p>
-        </div>
-      </div>
+    @if (apiError()) {
+      <section class="network-banner" role="alert">
+        <span>{{ apiError() }}</span>
+        <button type="button" (click)="retryLoad()">Повторить</button>
+      </section>
+    }
 
-      <div class="panel partner-panel">
-        <div>
-          <p class="section-label">Совместное использование</p>
-          <h2>{{ partnerConnected() ? 'Партнер подключен' : 'Пригласить партнера' }}</h2>
-          <p>Общими станут покупки, рецепты, лайки и будущие матчи блюд.</p>
-        </div>
-        @if (!partnerConnected()) {
-          <form class="inline-form" (ngSubmit)="connectPartner()">
-            <input
-              name="partner-email"
-              [ngModel]="partnerEmail()"
-              (ngModelChange)="partnerEmail.set($event)"
-              placeholder="email партнера"
-              type="email"
-            />
-            <button class="primary-action" type="submit">Пригласить</button>
+    @if (activeTab() === 'fridge') {
+      <section class="screen">
+        <div class="panel fridge-form">
+          <div>
+            <p class="section-label">Новый продукт</p>
+            <h2>Заполни холодильник</h2>
+          </div>
+          <form class="form-grid" (ngSubmit)="addFridgeItem()">
+            <label>
+              Название
+              <input
+                name="fridge-name"
+                [(ngModel)]="newFridgeItem.name"
+                placeholder="Например, творог"
+              />
+            </label>
+            <label>
+              Количество
+              <input
+                name="fridge-quantity"
+                [(ngModel)]="newFridgeItem.quantity"
+                min="0"
+                step="0.1"
+                type="number"
+              />
+            </label>
+            <label>
+              Ед.
+              <select name="fridge-unit" [(ngModel)]="newFridgeItem.unit">
+                @for (unit of units; track unit) {
+                  <option [value]="unit">{{ unit }}</option>
+                }
+              </select>
+            </label>
+            <label>
+              Годен до
+              <input name="fridge-expires" [(ngModel)]="newFridgeItem.expiresAt" type="date" />
+            </label>
+            <button class="primary-action" type="submit">Добавить</button>
           </form>
-        } @else {
-          <button class="secondary-action" type="button" (click)="disconnectPartner()">
-            Отключить режим пары
-          </button>
-        }
-      </div>
-    </section>
-  }
-</main>
+        </div>
 
-<nav class="bottom-nav" aria-label="Главная навигация">
-  @for (tab of tabs; track tab.id) {
-    <button type="button" [class.active]="activeTab() === tab.id" (click)="setTab(tab.id)">
-      <span class="nav-icon" [attr.data-icon]="tab.icon"></span>
-      <span>{{ tab.label }}</span>
-    </button>
-  }
-</nav>
+        <div class="section-heading">
+          <div>
+            <p class="section-label">Свайпы</p>
+            <h2>Вправо - в покупки, влево - удалить</h2>
+          </div>
+          @if (expiringSoonCount() > 0) {
+            <span class="alert-pill">{{ expiringSoonCount() }} скоро истекает</span>
+          }
+        </div>
+
+        @if (loading()) {
+          <div class="empty-state"><p>Загружаем продукты...</p></div>
+        } @else {
+          <div class="list fridge-list">
+            @for (item of fridgeItems(); track item.id) {
+              <article
+                class="fridge-row"
+                [class.move-right]="swipeOffset(item.id) > 36"
+                [class.move-left]="swipeOffset(item.id) < -36"
+                [style.transform]="'translateX(' + swipeOffset(item.id) + 'px)'"
+                (pointerdown)="beginSwipe($event, item.id)"
+                (pointermove)="moveSwipe($event, item.id)"
+                (pointerup)="endSwipe(item.id)"
+                (pointercancel)="endSwipe(item.id)"
+              >
+                <div class="item-content">
+                  <h3>{{ item.name }}</h3>
+                  <p>{{ item.quantity }} {{ item.unit }} · {{ expiryLabel(item.expiresAt) }}</p>
+                  <div class="row-actions">
+                    <button
+                      type="button"
+                      (pointerdown)="$event.stopPropagation()"
+                      (click)="editFridgeItem(item)"
+                    >
+                      Изменить
+                    </button>
+                    <button
+                      type="button"
+                      (pointerdown)="$event.stopPropagation()"
+                      (click)="consumeFridgeItem(item)"
+                    >
+                      Израсходовать
+                    </button>
+                  </div>
+                </div>
+                <span class="status" [ngClass]="expiryClass(item.expiresAt)">{{
+                  item.expiresAt
+                }}</span>
+              </article>
+            } @empty {
+              <div class="empty-state">
+                <h3>Холодильник пуст</h3>
+                <p>Добавь первый продукт, чтобы отслеживать остатки и сроки годности.</p>
+              </div>
+            }
+          </div>
+        }
+      </section>
+    }
+
+    @if (activeTab() === 'shopping') {
+      <section class="screen">
+        <div class="panel shopping-add">
+          <div>
+            <p class="section-label">Список покупок</p>
+            <h2>Что нужно докупить</h2>
+          </div>
+          <form class="inline-form" (ngSubmit)="addShoppingItem()">
+            <input
+              name="shopping-name"
+              [ngModel]="newShoppingName()"
+              (ngModelChange)="newShoppingName.set($event)"
+              placeholder="Добавить покупку"
+            />
+            <button class="primary-action" type="submit">+</button>
+          </form>
+          @if (hasCompletedShoppingItems()) {
+            <button
+              class="secondary-action compact-action"
+              type="button"
+              (click)="clearCompletedShoppingItems()"
+            >
+              Очистить купленные
+            </button>
+          }
+        </div>
+
+        @if (loading()) {
+          <div class="empty-state"><p>Загружаем список покупок...</p></div>
+        } @else {
+          <div class="list">
+            @for (item of shoppingItems(); track item.id) {
+              <article class="shopping-row" [class.done]="item.checked">
+                <button class="check-button" type="button" (click)="toggleShoppingItem(item)">
+                  @if (item.checked) {
+                    ✓
+                  }
+                </button>
+                <div class="item-content">
+                  <h3>{{ item.name }}</h3>
+                  @if (item.quantity && item.unit) {
+                    <p>{{ item.quantity }} {{ item.unit }}</p>
+                  } @else {
+                    <p>Добавлено вручную</p>
+                  }
+                  @if (item.checked) {
+                    <button class="move-button" type="button" (click)="moveShoppingToFridge(item)">
+                      В холодильник
+                    </button>
+                  }
+                </div>
+                <button class="icon-button" type="button" (click)="removeShoppingItem(item.id)">
+                  ×
+                </button>
+              </article>
+            } @empty {
+              <div class="empty-state">
+                <h3>Список пуст</h3>
+                <p>Покупки появятся здесь вручную или после свайпа продукта вправо.</p>
+              </div>
+            }
+          </div>
+        }
+      </section>
+    }
+
+    @if (activeTab() === 'dishes') {
+      <section class="screen centered">
+        <div class="dish-card">
+          <p class="section-label">Tinder блюд</p>
+          <h2>Матчи блюд скоро появятся</h2>
+          <p>
+            Здесь будут карточки блюд, лайки пары и подборки на основе продуктов из холодильника.
+          </p>
+          <div class="dish-actions">
+            <button type="button">Не хочу</button>
+            <button type="button">Вкусно</button>
+          </div>
+        </div>
+      </section>
+    }
+
+    @if (activeTab() === 'recipes') {
+      <section class="screen">
+        <div class="tabs-strip" role="tablist" aria-label="Рецепты">
+          <button
+            type="button"
+            [class.active]="activeRecipeTab() === 'mine'"
+            (click)="activeRecipeTab.set('mine')"
+          >
+            Мои
+          </button>
+          <button
+            type="button"
+            [class.active]="activeRecipeTab() === 'likes'"
+            (click)="activeRecipeTab.set('likes')"
+          >
+            Лайки
+          </button>
+          <button
+            type="button"
+            [class.active]="activeRecipeTab() === 'all'"
+            (click)="activeRecipeTab.set('all')"
+          >
+            Все
+          </button>
+        </div>
+
+        <div class="recipe-grid">
+          @for (recipe of recipeList(); track recipe.id) {
+            <article class="recipe-card">
+              <div>
+                <h3>{{ recipe.title }}</h3>
+                <p>{{ recipe.time }}</p>
+              </div>
+              <div class="tag-row">
+                @for (tag of recipe.tags; track tag) {
+                  <span>{{ tag }}</span>
+                }
+              </div>
+              <button class="like-button" type="button" (click)="toggleRecipeLike(recipe.id)">
+                {{ recipe.liked ? 'В лайках' : 'Лайкнуть' }}
+              </button>
+            </article>
+          } @empty {
+            <div class="empty-state">
+              <h3>Пока пусто</h3>
+              <p>Здесь появятся рецепты из базы и рецепты, добавленные пользователем.</p>
+            </div>
+          }
+        </div>
+      </section>
+    }
+
+    @if (activeTab() === 'profile') {
+      <section class="screen">
+        <div class="profile-card">
+          <div class="avatar">{{ currentUser()?.displayName?.slice(0, 1) }}</div>
+          <div>
+            <p class="section-label">Личный кабинет</p>
+            <h2>{{ currentUser()?.displayName }}</h2>
+            <p>{{ currentUser()?.email }}</p>
+          </div>
+        </div>
+
+        <div class="panel account-actions">
+          <button class="secondary-action" type="button" (click)="logout()">Выйти</button>
+          <button class="danger-action" type="button" (click)="deleteAccount()">
+            Удалить аккаунт
+          </button>
+        </div>
+
+        <div class="panel partner-panel">
+          <div>
+            <p class="section-label">Совместное использование</p>
+            <h2>{{ partnerConnected() ? 'Партнер подключен' : 'Пригласить партнера' }}</h2>
+            <p>Общими станут покупки, рецепты, лайки и будущие матчи блюд.</p>
+          </div>
+          @if (!partnerConnected()) {
+            <form class="inline-form" (ngSubmit)="connectPartner()">
+              <input
+                name="partner-email"
+                [ngModel]="partnerEmail()"
+                (ngModelChange)="partnerEmail.set($event)"
+                placeholder="email партнера"
+                type="email"
+              />
+              <button class="primary-action" type="submit">Пригласить</button>
+            </form>
+          } @else {
+            <button class="secondary-action" type="button" (click)="disconnectPartner()">
+              Отключить режим пары
+            </button>
+          }
+        </div>
+      </section>
+    }
+  </main>
+
+  <nav class="bottom-nav" aria-label="Главная навигация">
+    @for (tab of tabs; track tab.id) {
+      <button type="button" [class.active]="activeTab() === tab.id" (click)="setTab(tab.id)">
+        <span class="nav-icon" [attr.data-icon]="tab.icon"></span>
+        <span>{{ tab.label }}</span>
+      </button>
+    }
+  </nav>
+}

@@ -12,6 +12,7 @@ process.env.DATABASE_URL = 'file:../data/eat-it-test.db';
 let prisma;
 let server;
 let baseUrl;
+let authToken;
 
 before(async () => {
   mkdirSync(resolve(projectRoot, 'data'), { recursive: true });
@@ -19,31 +20,100 @@ before(async () => {
 
   prisma = new PrismaClient();
   await prisma.$executeRawUnsafe(`
-    CREATE TABLE "FridgeItem" (
+    CREATE TABLE "Household" (
       "id" TEXT NOT NULL PRIMARY KEY,
       "name" TEXT NOT NULL,
-      "quantity" REAL NOT NULL,
-      "unit" TEXT NOT NULL,
-      "expiresAt" DATETIME NOT NULL,
       "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "updatedAt" DATETIME NOT NULL
     )
   `);
   await prisma.$executeRawUnsafe(`
+    CREATE TABLE "User" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "householdId" TEXT NOT NULL,
+      "email" TEXT NOT NULL UNIQUE,
+      "displayName" TEXT NOT NULL,
+      "passwordHash" TEXT,
+      "authProvider" TEXT NOT NULL DEFAULT 'password',
+      "providerSubject" TEXT,
+      "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" DATETIME NOT NULL,
+      FOREIGN KEY ("householdId") REFERENCES "Household" ("id") ON DELETE CASCADE
+    )
+  `);
+  await prisma.$executeRawUnsafe(`
+    CREATE UNIQUE INDEX "User_authProvider_providerSubject_key"
+    ON "User"("authProvider", "providerSubject")
+  `);
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE "Session" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "userId" TEXT NOT NULL,
+      "tokenHash" TEXT NOT NULL UNIQUE,
+      "expiresAt" DATETIME NOT NULL,
+      "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE
+    )
+  `);
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE "AuthIdentity" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "userId" TEXT NOT NULL,
+      "provider" TEXT NOT NULL,
+      "subject" TEXT NOT NULL,
+      "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE
+    )
+  `);
+  await prisma.$executeRawUnsafe(`
+    CREATE UNIQUE INDEX "AuthIdentity_provider_subject_key"
+    ON "AuthIdentity"("provider", "subject")
+  `);
+  await prisma.household.create({
+    data: { id: 'legacy-household', name: 'Мой дом' },
+  });
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE "FridgeItem" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "householdId" TEXT NOT NULL,
+      "name" TEXT NOT NULL,
+      "quantity" REAL NOT NULL,
+      "unit" TEXT NOT NULL,
+      "expiresAt" DATETIME NOT NULL,
+      "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" DATETIME NOT NULL,
+      FOREIGN KEY ("householdId") REFERENCES "Household" ("id") ON DELETE CASCADE
+    )
+  `);
+  await prisma.$executeRawUnsafe(`
     CREATE TABLE "ShoppingItem" (
       "id" TEXT NOT NULL PRIMARY KEY,
+      "householdId" TEXT NOT NULL,
       "name" TEXT NOT NULL,
       "quantity" REAL,
       "unit" TEXT,
       "checked" BOOLEAN NOT NULL DEFAULT false,
       "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-      "updatedAt" DATETIME NOT NULL
+      "updatedAt" DATETIME NOT NULL,
+      FOREIGN KEY ("householdId") REFERENCES "Household" ("id") ON DELETE CASCADE
     )
   `);
   server = createApiServer(prisma, { error() {} });
   await new Promise((resolveListen) => server.listen(0, '127.0.0.1', resolveListen));
   const address = server.address();
   baseUrl = `http://127.0.0.1:${address.port}`;
+
+  const registerResponse = await request('/api/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({
+      displayName: 'Тест',
+      email: 'test@example.com',
+      password: 'test-password-123',
+    }),
+    skipAuth: true,
+  });
+  assert.equal(registerResponse.status, 201);
+  authToken = (await registerResponse.json()).token;
 });
 
 after(async () => {
@@ -57,19 +127,42 @@ after(async () => {
 });
 
 async function request(path, options) {
+  const { skipAuth, ...fetchOptions } = options ?? {};
   return fetch(`${baseUrl}${path}`, {
-    ...options,
+    ...fetchOptions,
     headers: {
       'Content-Type': 'application/json',
-      ...options?.headers,
+      ...(authToken && !skipAuth ? { Authorization: `Bearer ${authToken}` } : {}),
+      ...fetchOptions.headers,
     },
   });
 }
 
 test('health endpoint responds', async () => {
-  const response = await request('/api/health');
+  const response = await request('/api/health', { skipAuth: true });
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), { status: 'ok' });
+});
+
+test('account can log in and access the current user', async () => {
+  const loginResponse = await request('/api/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({ email: 'test@example.com', password: 'test-password-123' }),
+    skipAuth: true,
+  });
+  assert.equal(loginResponse.status, 200);
+  const login = await loginResponse.json();
+
+  const meResponse = await fetch(`${baseUrl}/api/auth/me`, {
+    headers: { Authorization: `Bearer ${login.token}` },
+  });
+  assert.equal(meResponse.status, 200);
+  assert.equal((await meResponse.json()).user.email, 'test@example.com');
+});
+
+test('state rejects unauthenticated requests', async () => {
+  const response = await request('/api/state', { skipAuth: true });
+  assert.equal(response.status, 401);
 });
 
 test('fridge item can be created and partially consumed', async () => {
