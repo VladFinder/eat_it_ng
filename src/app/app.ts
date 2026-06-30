@@ -437,6 +437,10 @@ export class App implements OnDestroy, OnInit {
     this.notificationsOpen.update((open) => !open);
   }
 
+  protected closeNotifications(): void {
+    this.notificationsOpen.set(false);
+  }
+
   protected toggleRecipeLike(id: string): void {
     this.recipes.update((recipes) =>
       recipes.map((recipe) => (recipe.id === id ? { ...recipe, liked: !recipe.liked } : recipe)),
@@ -571,6 +575,43 @@ export class App implements OnDestroy, OnInit {
 
   protected categoryLabel(category: ItemCategory): string {
     return category === 'products' ? 'Продукты' : 'Бытовая химия';
+  }
+
+  protected notificationKindLabel(notification: AppNotification): string {
+    if (notification.type === 'group_invite') {
+      return 'Группа';
+    }
+    if (notification.type === 'expiry') {
+      return 'Сроки';
+    }
+    return 'Событие';
+  }
+
+  protected notificationIcon(notification: AppNotification): string {
+    if (notification.type === 'group_invite') {
+      return '👥';
+    }
+    if (notification.type === 'expiry') {
+      return '⏳';
+    }
+    return '🔔';
+  }
+
+  protected notificationTime(value: string): string {
+    const date = new Date(value);
+    const now = new Date();
+    const diffMinutes = Math.floor((now.getTime() - date.getTime()) / 60_000);
+    if (diffMinutes < 1) {
+      return 'только что';
+    }
+    if (diffMinutes < 60) {
+      return `${diffMinutes} мин назад`;
+    }
+    const diffHours = Math.floor(diffMinutes / 60);
+    if (diffHours < 24) {
+      return `${diffHours} ч назад`;
+    }
+    return date.toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' });
   }
 
   private async loadState(): Promise<void> {

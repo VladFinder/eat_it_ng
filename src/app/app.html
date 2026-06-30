@@ -131,17 +131,35 @@
     </section>
 
     @if (notificationsOpen()) {
+      <button
+        class="notification-backdrop"
+        type="button"
+        aria-label="Закрыть уведомления"
+        (click)="closeNotifications()"
+      ></button>
       <section class="panel notifications-popover">
-        <div>
-          <p class="section-label">Уведомления</p>
-          <h2>{{ unreadNotifications() ? unreadNotifications() + ' новых' : 'Все прочитано' }}</h2>
+        <div class="notifications-head">
+          <div>
+            <p class="section-label">Уведомления</p>
+            <h2>{{ unreadNotifications() ? unreadNotifications() + ' новых' : 'Все прочитано' }}</h2>
+          </div>
+          <button class="icon-button close-button" type="button" (click)="closeNotifications()">
+            ×
+          </button>
         </div>
 
         @if (hasNotifications()) {
           <div class="notification-list">
             @for (notification of notifications(); track notification.id) {
               <article class="notification-row" [class.unread]="!notification.readAt">
-                <div>
+                <div class="notification-icon" aria-hidden="true">
+                  {{ notificationIcon(notification) }}
+                </div>
+                <div class="notification-body">
+                  <div class="notification-meta">
+                    <span>{{ notificationKindLabel(notification) }}</span>
+                    <time>{{ notificationTime(notification.createdAt) }}</time>
+                  </div>
                   <strong>{{ notification.title }}</strong>
                   <p>{{ notification.body }}</p>
                 </div>
@@ -175,7 +193,11 @@
             }
           </div>
         } @else {
-          <p>Новых событий пока нет.</p>
+          <div class="notifications-empty">
+            <span aria-hidden="true">🔕</span>
+            <strong>Новых событий пока нет</strong>
+            <p>Приглашения и напоминания о сроках появятся здесь.</p>
+          </div>
         }
       </section>
     }
