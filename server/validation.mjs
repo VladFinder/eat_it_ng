@@ -36,6 +36,10 @@ export const householdMemberSchema = z.object({
   email,
 });
 
+export const notificationUpdateSchema = z.object({
+  read: z.boolean(),
+});
+
 const fridgeFields = {
   name,
   quantity,

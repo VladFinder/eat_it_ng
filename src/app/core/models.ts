@@ -56,6 +56,21 @@ export interface Household {
   members: AuthUser[];
 }
 
+export interface AppNotification {
+  id: string;
+  type: 'group_invite' | 'expiry' | string;
+  title: string;
+  body: string;
+  readAt: string | null;
+  data: {
+    invitationId?: string;
+    householdId?: string;
+    fridgeItemId?: string;
+    expiresAt?: string;
+  } | null;
+  createdAt: string;
+}
+
 export type FridgeInput = Pick<
   FridgeItem,
   'name' | 'quantity' | 'unit' | 'expiresAt' | 'reminderDays' | 'category'

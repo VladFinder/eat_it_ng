@@ -5,6 +5,7 @@ import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { ApiService } from './core/api.service';
 import {
+  AppNotification,
   AuthProviders,
   AuthUser,
   FridgeItem,
@@ -93,6 +94,8 @@ export class App implements OnInit {
   protected readonly household = signal<Household | null>(null);
   protected readonly groupName = signal('');
   protected readonly memberEmail = signal('');
+  protected readonly notifications = signal<AppNotification[]>([]);
+  protected readonly unreadNotifications = signal(0);
   protected readonly fridgeItems = signal<FridgeItem[]>([]);
   protected readonly shoppingItems = signal<ShoppingItem[]>([]);
   protected readonly recipes = signal<Recipe[]>(
@@ -154,6 +157,7 @@ export class App implements OnInit {
     }
     return `${count} участника ведут общий холодильник и список покупок.`;
   });
+  protected readonly hasNotifications = computed(() => this.notifications().length > 0);
   protected readonly activeTabLabel = computed(() => {
     if (this.activeTab() === 'fridge') {
       return this.activeCategory() === 'products' ? 'Продукты' : 'Бытовая химия';
@@ -445,12 +449,40 @@ export class App implements OnInit {
     }
 
     await this.runMutation(async () => {
-      const household = await firstValueFrom(this.api.addHouseholdMember(email));
+      await firstValueFrom(this.api.addHouseholdMember(email));
+      this.memberEmail.set('');
+      await this.loadNotifications();
+    });
+  }
+
+  protected async respondToInvitation(
+    notification: AppNotification,
+    action: 'accept' | 'decline',
+  ): Promise<void> {
+    const invitationId = notification.data?.invitationId;
+    if (!invitationId || this.saving()) {
+      return;
+    }
+
+    await this.runMutation(async () => {
+      const household = await firstValueFrom(this.api.respondToInvitation(invitationId, action));
       this.household.set(household);
       this.groupName.set(household.name);
-      this.memberEmail.set('');
+      await firstValueFrom(this.api.markNotification(notification.id, true));
       await this.loadState();
+      await this.loadNotifications();
     });
+  }
+
+  protected async markNotificationRead(notification: AppNotification): Promise<void> {
+    if (notification.readAt || this.saving()) {
+      return;
+    }
+    const updated = await firstValueFrom(this.api.markNotification(notification.id, true));
+    this.notifications.update((items) =>
+      items.map((item) => (item.id === updated.id ? updated : item)),
+    );
+    this.unreadNotifications.update((count) => Math.max(0, count - 1));
   }
 
   protected beginSwipe(event: PointerEvent, id: string): void {
@@ -535,11 +567,18 @@ export class App implements OnInit {
       this.shoppingItems.set(state.shoppingItems);
       this.household.set(state.household);
       this.groupName.set(state.household.name);
+      await this.loadNotifications();
     } catch {
       this.apiError.set('Не удалось загрузить данные. Проверьте подключение к серверу.');
     } finally {
       this.loading.set(false);
     }
+  }
+
+  private async loadNotifications(): Promise<void> {
+    const result = await firstValueFrom(this.api.getNotifications());
+    this.notifications.set(result.notifications);
+    this.unreadNotifications.set(result.unreadCount);
   }
 
   private async deleteFridgeItem(id: string): Promise<void> {
@@ -606,6 +645,8 @@ export class App implements OnInit {
     this.household.set(null);
     this.groupName.set('');
     this.memberEmail.set('');
+    this.notifications.set([]);
+    this.unreadNotifications.set(0);
     this.fridgeItems.set([]);
     this.shoppingItems.set([]);
     this.apiError.set('');

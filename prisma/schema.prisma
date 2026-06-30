@@ -39,13 +39,14 @@ model ShoppingItem {
 }
 
 model Household {
-  id            String         @id @default(cuid())
-  name          String
-  createdAt     DateTime       @default(now())
-  updatedAt     DateTime       @updatedAt
-  users         User[]
-  fridgeItems   FridgeItem[]
-  shoppingItems ShoppingItem[]
+  id                   String                @id @default(cuid())
+  name                 String
+  createdAt            DateTime              @default(now())
+  updatedAt            DateTime              @updatedAt
+  users                User[]
+  fridgeItems          FridgeItem[]
+  shoppingItems        ShoppingItem[]
+  householdInvitations HouseholdInvitation[]
 }
 
 model User {
@@ -61,9 +62,45 @@ model User {
   household       Household      @relation(fields: [householdId], references: [id], onDelete: Cascade)
   sessions        Session[]
   identities      AuthIdentity[]
+  notifications   Notification[]
+  sentInvitations HouseholdInvitation[] @relation("InvitationInviter")
+  invitations     HouseholdInvitation[] @relation("InvitationInvitee")
 
   @@unique([authProvider, providerSubject])
   @@index([householdId])
+}
+
+model HouseholdInvitation {
+  id          String    @id @default(cuid())
+  householdId String
+  inviterId   String
+  inviteeId   String
+  status      String    @default("pending")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  inviter     User      @relation("InvitationInviter", fields: [inviterId], references: [id], onDelete: Cascade)
+  invitee     User      @relation("InvitationInvitee", fields: [inviteeId], references: [id], onDelete: Cascade)
+
+  @@unique([householdId, inviteeId, status])
+  @@index([inviteeId, status])
+  @@index([householdId])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String
+  title     String
+  body      String
+  readAt    DateTime?
+  data      String?
+  dedupeKey String?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, dedupeKey])
+  @@index([userId, readAt, createdAt])
 }
 
 model AuthIdentity {

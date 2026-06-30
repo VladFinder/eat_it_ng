@@ -403,6 +403,54 @@
           </button>
         </div>
 
+        <div class="panel notifications-panel">
+          <div>
+            <p class="section-label">Уведомления</p>
+            <h2>{{ unreadNotifications() ? unreadNotifications() + ' новых' : 'Все прочитано' }}</h2>
+          </div>
+
+          @if (hasNotifications()) {
+            <div class="notification-list">
+              @for (notification of notifications(); track notification.id) {
+                <article class="notification-row" [class.unread]="!notification.readAt">
+                  <div>
+                    <strong>{{ notification.title }}</strong>
+                    <p>{{ notification.body }}</p>
+                  </div>
+                  @if (notification.type === 'group_invite' && !notification.readAt) {
+                    <div class="notification-actions">
+                      <button
+                        class="primary-action compact-action"
+                        type="button"
+                        (click)="respondToInvitation(notification, 'accept')"
+                      >
+                        Принять
+                      </button>
+                      <button
+                        class="secondary-action compact-action"
+                        type="button"
+                        (click)="respondToInvitation(notification, 'decline')"
+                      >
+                        Отклонить
+                      </button>
+                    </div>
+                  } @else if (!notification.readAt) {
+                    <button
+                      class="secondary-action compact-action"
+                      type="button"
+                      (click)="markNotificationRead(notification)"
+                    >
+                      Прочитано
+                    </button>
+                  }
+                </article>
+              }
+            </div>
+          } @else {
+            <p>Новых событий пока нет.</p>
+          }
+        </div>
+
         <div class="panel partner-panel">
           <div>
             <p class="section-label">Группа</p>

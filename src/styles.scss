@@ -588,6 +588,36 @@ select:focus {
   font-size: 13px;
 }
 
+.notification-list {
+  display: grid;
+  gap: 10px;
+}
+
+.notification-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border: 1px solid #e9dfcf;
+  border-radius: 8px;
+  background: #fffdf8;
+}
+
+.notification-row.unread {
+  border-color: #2d6a4f;
+}
+
+.notification-row p {
+  margin-top: 4px;
+  color: #6e6258;
+}
+
+.notification-actions {
+  display: flex;
+  gap: 8px;
+}
+
 .empty-state {
   padding: 20px;
   text-align: center;
@@ -730,6 +760,13 @@ select:focus {
 
   .inline-form {
     flex-direction: column;
+  }
+
+  .notification-row,
+  .notification-actions {
+    grid-template-columns: 1fr;
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .bottom-nav {

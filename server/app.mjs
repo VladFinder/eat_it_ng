@@ -25,6 +25,7 @@ import {
   householdMemberSchema,
   householdUpdateSchema,
   loginSchema,
+  notificationUpdateSchema,
   registerSchema,
   shoppingCreateSchema,
   shoppingToFridgeSchema,
@@ -122,6 +123,18 @@ function serializeHousehold(household) {
   };
 }
 
+function serializeNotification(notification) {
+  return {
+    id: notification.id,
+    type: notification.type,
+    title: notification.title,
+    body: notification.body,
+    readAt: notification.readAt?.toISOString() ?? null,
+    data: notification.data ? JSON.parse(notification.data) : null,
+    createdAt: notification.createdAt.toISOString(),
+  };
+}
+
 async function getHousehold(prisma, householdId) {
   const household = await prisma.household.findUnique({
     where: { id: householdId },
@@ -133,6 +146,84 @@ async function getHousehold(prisma, householdId) {
     throw error;
   }
   return household;
+}
+
+async function mergeHouseholdInto(transaction, sourceHouseholdId, targetHouseholdId) {
+  if (sourceHouseholdId === targetHouseholdId) {
+    return;
+  }
+
+  await transaction.fridgeItem.updateMany({
+    where: { householdId: sourceHouseholdId },
+    data: { householdId: targetHouseholdId },
+  });
+  await transaction.shoppingItem.updateMany({
+    where: { householdId: sourceHouseholdId },
+    data: { householdId: targetHouseholdId },
+  });
+  await transaction.user.updateMany({
+    where: { householdId: sourceHouseholdId },
+    data: { householdId: targetHouseholdId },
+  });
+  await transaction.household.deleteMany({
+    where: { id: sourceHouseholdId, users: { none: {} } },
+  });
+}
+
+async function createNotification(prisma, { userId, type, title, body, data, dedupeKey }) {
+  try {
+    return await prisma.notification.create({
+      data: {
+        userId,
+        type,
+        title,
+        body,
+        data: data ? JSON.stringify(data) : null,
+        dedupeKey,
+      },
+    });
+  } catch (error) {
+    if (error?.code === 'P2002' && dedupeKey) {
+      return null;
+    }
+    throw error;
+  }
+}
+
+async function ensureExpiryNotifications(prisma, user) {
+  const today = new Date();
+  today.setUTCHours(0, 0, 0, 0);
+  const items = await prisma.fridgeItem.findMany({
+    where: { householdId: user.householdId },
+    orderBy: [{ expiresAt: 'asc' }, { createdAt: 'desc' }],
+  });
+
+  await Promise.all(
+    items.map(async (item) => {
+      const expires = new Date(item.expiresAt);
+      expires.setUTCHours(0, 0, 0, 0);
+      const days = Math.ceil((expires.getTime() - today.getTime()) / 86_400_000);
+      if (days > item.reminderDays) {
+        return;
+      }
+
+      let body = `${item.name}: срок уже истек.`;
+      if (days === 0) {
+        body = `${item.name}: срок истекает сегодня.`;
+      } else if (days > 0) {
+        body = `${item.name}: срок истекает через ${days} дн.`;
+      }
+
+      await createNotification(prisma, {
+        userId: user.id,
+        type: 'expiry',
+        title: 'Срок годности',
+        body,
+        data: { fridgeItemId: item.id, expiresAt: item.expiresAt.toISOString().slice(0, 10) },
+        dedupeKey: `expiry:${item.id}:${today.toISOString().slice(0, 10)}`,
+      });
+    }),
+  );
 }
 
 function routeMatch(pathname, pattern) {
@@ -393,7 +484,7 @@ export function createApiServer(prisma, logger = console) {
 
       if (method === 'POST' && url.pathname === '/api/household/members') {
         const input = householdMemberSchema.parse(await readJson(request));
-        const household = await prisma.$transaction(async (transaction) => {
+        const invitation = await prisma.$transaction(async (transaction) => {
           const member = await transaction.user.findUnique({
             where: { email: input.email },
           });
@@ -403,28 +494,108 @@ export function createApiServer(prisma, logger = console) {
             throw error;
           }
 
-          if (member.householdId !== user.householdId) {
-            await transaction.fridgeItem.updateMany({
-              where: { householdId: member.householdId },
-              data: { householdId: user.householdId },
-            });
-            await transaction.shoppingItem.updateMany({
-              where: { householdId: member.householdId },
-              data: { householdId: user.householdId },
-            });
-            await transaction.user.updateMany({
-              where: { householdId: member.householdId },
-              data: { householdId: user.householdId },
-            });
-            await transaction.household.deleteMany({
-              where: { id: member.householdId, users: { none: {} } },
-            });
+          if (member.id === user.id || member.householdId === user.householdId) {
+            const error = new Error('User is already in this group');
+            error.status = 409;
+            throw error;
           }
 
-          return getHousehold(transaction, user.householdId);
+          const household = await transaction.household.findUnique({
+            where: { id: user.householdId },
+          });
+          const created = await transaction.householdInvitation.create({
+            data: {
+              householdId: user.householdId,
+              inviterId: user.id,
+              inviteeId: member.id,
+            },
+          });
+          await createNotification(transaction, {
+            userId: member.id,
+            type: 'group_invite',
+            title: 'Приглашение в группу',
+            body: `${user.displayName} приглашает вас в группу «${household.name}».`,
+            data: { invitationId: created.id, householdId: user.householdId },
+            dedupeKey: `group-invite:${created.id}`,
+          });
+          return created;
+        });
+
+        json(response, 201, { invitationId: invitation.id, status: invitation.status });
+        return;
+      }
+
+      const invitationRoute = routeMatch(
+        url.pathname,
+        /^\/api\/household\/invitations\/(?<id>[^/]+)\/(?<action>accept|decline)$/,
+      );
+      if (invitationRoute && method === 'POST') {
+        const household = await prisma.$transaction(async (transaction) => {
+          const invitation = await transaction.householdInvitation.findFirst({
+            where: { id: invitationRoute.id, inviteeId: user.id, status: 'pending' },
+            include: { household: true },
+          });
+          if (!invitation) {
+            const error = new Error('Invitation not found');
+            error.status = 404;
+            throw error;
+          }
+
+          if (invitationRoute.action === 'decline') {
+            await transaction.householdInvitation.update({
+              where: { id: invitation.id },
+              data: { status: 'declined' },
+            });
+            return getHousehold(transaction, user.householdId);
+          }
+
+          const sourceHouseholdId = user.householdId;
+          await mergeHouseholdInto(transaction, sourceHouseholdId, invitation.householdId);
+          await transaction.householdInvitation.update({
+            where: { id: invitation.id },
+            data: { status: 'accepted' },
+          });
+          await transaction.householdInvitation.updateMany({
+            where: { inviteeId: user.id, status: 'pending', id: { not: invitation.id } },
+            data: { status: 'declined' },
+          });
+          return getHousehold(transaction, invitation.householdId);
         });
 
         json(response, 200, serializeHousehold(household));
+        return;
+      }
+
+      if (method === 'GET' && url.pathname === '/api/notifications') {
+        await ensureExpiryNotifications(prisma, user);
+        const notifications = await prisma.notification.findMany({
+          where: { userId: user.id },
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+        });
+        json(response, 200, {
+          notifications: notifications.map(serializeNotification),
+          unreadCount: notifications.filter((notification) => !notification.readAt).length,
+        });
+        return;
+      }
+
+      const notificationRoute = routeMatch(url.pathname, /^\/api\/notifications\/(?<id>[^/]+)$/);
+      if (notificationRoute && method === 'PATCH') {
+        const input = notificationUpdateSchema.parse(await readJson(request));
+        const current = await prisma.notification.findFirst({
+          where: { id: notificationRoute.id, userId: user.id },
+        });
+        if (!current) {
+          const error = new Error('Notification not found');
+          error.status = 404;
+          throw error;
+        }
+        const notification = await prisma.notification.update({
+          where: { id: notificationRoute.id },
+          data: { readAt: input.read ? new Date() : null },
+        });
+        json(response, 200, serializeNotification(notification));
         return;
       }
 

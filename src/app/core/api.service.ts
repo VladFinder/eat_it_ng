@@ -4,6 +4,7 @@ import { Capacitor } from '@capacitor/core';
 import { Observable } from 'rxjs';
 import {
   AppState,
+  AppNotification,
   AuthProviders,
   AuthResponse,
   AuthUser,
@@ -80,10 +81,33 @@ export class ApiService {
     return this.http.patch<Household>(`${this.baseUrl}/household`, { name }, this.options());
   }
 
-  addHouseholdMember(email: string): Observable<Household> {
-    return this.http.post<Household>(
+  addHouseholdMember(email: string): Observable<{ invitationId: string; status: string }> {
+    return this.http.post<{ invitationId: string; status: string }>(
       `${this.baseUrl}/household/members`,
       { email },
+      this.options(),
+    );
+  }
+
+  getNotifications(): Observable<{ notifications: AppNotification[]; unreadCount: number }> {
+    return this.http.get<{ notifications: AppNotification[]; unreadCount: number }>(
+      `${this.baseUrl}/notifications`,
+      this.options(),
+    );
+  }
+
+  markNotification(id: string, read: boolean): Observable<AppNotification> {
+    return this.http.patch<AppNotification>(
+      `${this.baseUrl}/notifications/${id}`,
+      { read },
+      this.options(),
+    );
+  }
+
+  respondToInvitation(id: string, action: 'accept' | 'decline'): Observable<Household> {
+    return this.http.post<Household>(
+      `${this.baseUrl}/household/invitations/${id}/${action}`,
+      {},
       this.options(),
     );
   }

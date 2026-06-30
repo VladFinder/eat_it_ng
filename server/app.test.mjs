@@ -69,6 +69,42 @@ before(async () => {
     CREATE UNIQUE INDEX "AuthIdentity_provider_subject_key"
     ON "AuthIdentity"("provider", "subject")
   `);
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE "HouseholdInvitation" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "householdId" TEXT NOT NULL,
+      "inviterId" TEXT NOT NULL,
+      "inviteeId" TEXT NOT NULL,
+      "status" TEXT NOT NULL DEFAULT 'pending',
+      "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" DATETIME NOT NULL,
+      FOREIGN KEY ("householdId") REFERENCES "Household" ("id") ON DELETE CASCADE,
+      FOREIGN KEY ("inviterId") REFERENCES "User" ("id") ON DELETE CASCADE,
+      FOREIGN KEY ("inviteeId") REFERENCES "User" ("id") ON DELETE CASCADE
+    )
+  `);
+  await prisma.$executeRawUnsafe(`
+    CREATE UNIQUE INDEX "HouseholdInvitation_householdId_inviteeId_status_key"
+    ON "HouseholdInvitation"("householdId", "inviteeId", "status")
+  `);
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE "Notification" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "userId" TEXT NOT NULL,
+      "type" TEXT NOT NULL,
+      "title" TEXT NOT NULL,
+      "body" TEXT NOT NULL,
+      "readAt" DATETIME,
+      "data" TEXT,
+      "dedupeKey" TEXT,
+      "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE
+    )
+  `);
+  await prisma.$executeRawUnsafe(`
+    CREATE UNIQUE INDEX "Notification_userId_dedupeKey_key"
+    ON "Notification"("userId", "dedupeKey")
+  `);
   await prisma.household.create({
     data: { id: 'legacy-household', name: 'Мой дом' },
   });
@@ -243,7 +279,7 @@ test('shopping item defaults to one piece and preserves its category', async () 
   assert.equal((await updateResponse.json()).quantity, 2);
 });
 
-test('household member can be added and their items are shared', async () => {
+test('household invitation can be accepted and items are shared', async () => {
   const registerResponse = await request('/api/auth/register', {
     method: 'POST',
     body: JSON.stringify({
@@ -269,12 +305,33 @@ test('household member can be added and their items are shared', async () => {
   assert.equal(partnerCreateResponse.status, 201);
   const partnerItem = await partnerCreateResponse.json();
 
-  const addMemberResponse = await request('/api/household/members', {
+  const inviteResponse = await request('/api/household/members', {
     method: 'POST',
     body: JSON.stringify({ email: 'partner@example.com' }),
   });
-  assert.equal(addMemberResponse.status, 200);
-  const household = await addMemberResponse.json();
+  assert.equal(inviteResponse.status, 201);
+  const invitation = await inviteResponse.json();
+  assert.equal(invitation.status, 'pending');
+
+  const notificationsResponse = await request('/api/notifications', {
+    headers: { Authorization: `Bearer ${partner.token}` },
+  });
+  assert.equal(notificationsResponse.status, 200);
+  const notifications = await notificationsResponse.json();
+  assert.equal(
+    notifications.notifications.some((notification) => notification.type === 'group_invite'),
+    true,
+  );
+
+  const acceptResponse = await request(
+    `/api/household/invitations/${invitation.invitationId}/accept`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${partner.token}` },
+    },
+  );
+  assert.equal(acceptResponse.status, 200);
+  const household = await acceptResponse.json();
   assert.equal(household.members.length, 2);
   assert.equal(
     household.members.some((member) => member.email === 'partner@example.com'),
@@ -288,6 +345,36 @@ test('household member can be added and their items are shared', async () => {
     true,
   );
   assert.equal(state.household.members.length, 2);
+});
+
+test('expiry notifications are generated once per day', async () => {
+  const createResponse = await request('/api/fridge', {
+    method: 'POST',
+    body: JSON.stringify({
+      name: '\u0419\u043e\u0433\u0443\u0440\u0442',
+      quantity: 1,
+      unit: '\u0448\u0442',
+      expiresAt: new Date().toISOString().slice(0, 10),
+      reminderDays: 1,
+      category: 'products',
+    }),
+  });
+  assert.equal(createResponse.status, 201);
+
+  const firstResponse = await request('/api/notifications');
+  assert.equal(firstResponse.status, 200);
+  const first = await firstResponse.json();
+  assert.equal(
+    first.notifications.some((notification) => notification.type === 'expiry'),
+    true,
+  );
+
+  const secondResponse = await request('/api/notifications');
+  const second = await secondResponse.json();
+  assert.equal(
+    second.notifications.filter((notification) => notification.type === 'expiry').length,
+    first.notifications.filter((notification) => notification.type === 'expiry').length,
+  );
 });
 
 test('invalid payload is rejected', async () => {
