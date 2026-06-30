@@ -1,6 +1,6 @@
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, computed, inject, OnInit, signal } from '@angular/core';
+import { Component, computed, inject, OnDestroy, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { ApiService } from './core/api.service';
@@ -44,8 +44,9 @@ const STORAGE_KEYS = {
   templateUrl: './app.html',
   styleUrl: './app.scss',
 })
-export class App implements OnInit {
+export class App implements OnDestroy, OnInit {
   private readonly api = inject(ApiService);
+  private refreshTimer: ReturnType<typeof window.setInterval> | null = null;
 
   protected readonly tabs: { id: TabId; label: string; icon: string }[] = [
     { id: 'fridge', label: 'Продукты', icon: 'fridge' },
@@ -96,6 +97,7 @@ export class App implements OnInit {
   protected readonly memberEmail = signal('');
   protected readonly notifications = signal<AppNotification[]>([]);
   protected readonly unreadNotifications = signal(0);
+  protected readonly notificationsOpen = signal(false);
   protected readonly fridgeItems = signal<FridgeItem[]>([]);
   protected readonly shoppingItems = signal<ShoppingItem[]>([]);
   protected readonly recipes = signal<Recipe[]>(
@@ -183,6 +185,10 @@ export class App implements OnInit {
     void this.initializeSession();
   }
 
+  ngOnDestroy(): void {
+    this.stopRealtimeRefresh();
+  }
+
   protected async submitAuth(): Promise<void> {
     if (this.saving()) {
       return;
@@ -209,6 +215,7 @@ export class App implements OnInit {
       this.currentUser.set(response.user);
       this.authForm.password = '';
       await this.loadState();
+      this.startRealtimeRefresh();
     } catch (error) {
       this.authError.set(this.errorMessage(error, 'Не удалось войти в аккаунт.'));
     } finally {
@@ -247,6 +254,10 @@ export class App implements OnInit {
 
   protected setTab(tab: TabId): void {
     this.activeTab.set(tab);
+  }
+
+  protected setCategory(category: ItemCategory): void {
+    this.activeCategory.set(category);
   }
 
   protected async addFridgeItem(): Promise<void> {
@@ -422,6 +433,10 @@ export class App implements OnInit {
     void this.loadState();
   }
 
+  protected toggleNotifications(): void {
+    this.notificationsOpen.update((open) => !open);
+  }
+
   protected toggleRecipeLike(id: string): void {
     this.recipes.update((recipes) =>
       recipes.map((recipe) => (recipe.id === id ? { ...recipe, liked: !recipe.liked } : recipe)),
@@ -575,6 +590,24 @@ export class App implements OnInit {
     }
   }
 
+  private async refreshState(): Promise<void> {
+    if (!this.currentUser() || this.saving()) {
+      return;
+    }
+
+    try {
+      const state = await firstValueFrom(this.api.getState());
+      this.fridgeItems.set(state.fridgeItems);
+      this.shoppingItems.set(state.shoppingItems);
+      this.household.set(state.household);
+      this.groupName.set(state.household.name);
+      await this.loadNotifications();
+      this.apiError.set('');
+    } catch {
+      // Keep the current UI visible during transient mobile network drops.
+    }
+  }
+
   private async loadNotifications(): Promise<void> {
     const result = await firstValueFrom(this.api.getNotifications());
     this.notifications.set(result.notifications);
@@ -633,6 +666,7 @@ export class App implements OnInit {
       if (session.status === 'fulfilled') {
         this.currentUser.set(session.value.user);
         await this.loadState();
+        this.startRealtimeRefresh();
       }
     } finally {
       this.loading.set(false);
@@ -640,6 +674,7 @@ export class App implements OnInit {
   }
 
   private resetSession(): void {
+    this.stopRealtimeRefresh();
     this.api.clearSessionToken();
     this.currentUser.set(null);
     this.household.set(null);
@@ -647,6 +682,7 @@ export class App implements OnInit {
     this.memberEmail.set('');
     this.notifications.set([]);
     this.unreadNotifications.set(0);
+    this.notificationsOpen.set(false);
     this.fridgeItems.set([]);
     this.shoppingItems.set([]);
     this.apiError.set('');
@@ -654,6 +690,21 @@ export class App implements OnInit {
     this.authMode.set('login');
     this.authForm.password = '';
     this.activeTab.set('fridge');
+  }
+
+  private startRealtimeRefresh(): void {
+    this.stopRealtimeRefresh();
+    this.refreshTimer = window.setInterval(() => {
+      void this.refreshState();
+    }, 3_000);
+  }
+
+  private stopRealtimeRefresh(): void {
+    if (!this.refreshTimer) {
+      return;
+    }
+    window.clearInterval(this.refreshTimer);
+    this.refreshTimer = null;
   }
 
   private errorMessage(error: unknown, fallback: string): string {

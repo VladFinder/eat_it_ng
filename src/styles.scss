@@ -149,14 +149,29 @@ h1 {
   line-height: 1;
 }
 
-.section-switcher select {
-  min-height: 52px;
+.section-switcher {
+  display: inline-flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid #ddd2c2;
+  border-radius: 8px;
+  background: #fffaf1;
+}
+
+.section-switcher button {
+  min-height: 42px;
+  padding: 0 14px;
   border: 0;
+  border-radius: 6px;
   background: transparent;
-  padding: 0 38px 0 0;
-  font-size: clamp(30px, 6vw, 48px);
-  font-weight: 800;
-  line-height: 1;
+  color: #6d6256;
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.section-switcher button.active {
+  background: #2d6a4f;
+  color: #fff;
 }
 
 .visually-hidden {
@@ -192,6 +207,47 @@ p {
   border-radius: 8px;
   background: #fffaf1;
   text-align: right;
+}
+
+.topbar-actions {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.notification-button {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 50px;
+  min-width: 50px;
+  border: 1px solid #e0d7c9;
+  border-radius: 8px;
+  background: #fffaf1;
+  color: #2d6a4f;
+  font-size: 22px;
+}
+
+.notification-button strong {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  display: grid;
+  place-items: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 6px;
+  border: 2px solid #fffaf1;
+  border-radius: 999px;
+  background: #c84630;
+  color: #fff;
+  font-size: 12px;
+  line-height: 1;
+}
+
+.notifications-popover {
+  margin: -4px 0 16px auto;
+  max-width: 620px;
 }
 
 .summary span {
@@ -707,6 +763,31 @@ select:focus {
 
   .topbar {
     align-items: start;
+    flex-wrap: wrap;
+  }
+
+  .topbar > div:first-child {
+    min-width: 0;
+    flex: 1 1 100%;
+  }
+
+  .section-switcher {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .section-switcher button {
+    padding-inline: 8px;
+    font-size: 14px;
+  }
+
+  .topbar-actions {
+    width: 100%;
+  }
+
+  .topbar-actions .summary {
+    flex: 1;
   }
 
   .summary {
@@ -752,6 +833,15 @@ select:focus {
 
   h1 {
     font-size: 30px;
+  }
+
+  .notification-button {
+    width: 48px;
+    min-width: 48px;
+  }
+
+  .notifications-popover {
+    margin-top: -6px;
   }
 
   h2 {

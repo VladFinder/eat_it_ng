@@ -90,26 +90,95 @@
       <div>
         <p class="eyebrow">Eat it</p>
         @if (activeTab() === 'fridge') {
-          <label class="section-switcher">
+          <div class="section-switcher" role="group" aria-label="Раздел хранения">
             <span class="visually-hidden">Раздел хранения</span>
-            <select
-              [ngModel]="activeCategory()"
-              (ngModelChange)="activeCategory.set($event)"
-              aria-label="Раздел хранения"
+            <button
+              type="button"
+              [class.active]="activeCategory() === 'products'"
+              (click)="setCategory('products')"
             >
-              <option value="products">Продукты</option>
-              <option value="household">Бытовая химия</option>
-            </select>
-          </label>
+              Продукты
+            </button>
+            <button
+              type="button"
+              [class.active]="activeCategory() === 'household'"
+              (click)="setCategory('household')"
+            >
+              Бытовая химия
+            </button>
+          </div>
         } @else {
           <h1>{{ activeTabLabel() }}</h1>
         }
       </div>
-      <div class="summary">
-        <span>{{ visibleFridgeItems().length }} в разделе</span>
-        <strong>{{ shoppingOpenCount() }} купить</strong>
+      <div class="topbar-actions">
+        <button
+          class="notification-button"
+          type="button"
+          aria-label="Уведомления"
+          (click)="toggleNotifications()"
+        >
+          <span aria-hidden="true">🔔</span>
+          @if (unreadNotifications() > 0) {
+            <strong>{{ unreadNotifications() }}</strong>
+          }
+        </button>
+        <div class="summary">
+          <span>{{ visibleFridgeItems().length }} в разделе</span>
+          <strong>{{ shoppingOpenCount() }} купить</strong>
+        </div>
       </div>
     </section>
+
+    @if (notificationsOpen()) {
+      <section class="panel notifications-popover">
+        <div>
+          <p class="section-label">Уведомления</p>
+          <h2>{{ unreadNotifications() ? unreadNotifications() + ' новых' : 'Все прочитано' }}</h2>
+        </div>
+
+        @if (hasNotifications()) {
+          <div class="notification-list">
+            @for (notification of notifications(); track notification.id) {
+              <article class="notification-row" [class.unread]="!notification.readAt">
+                <div>
+                  <strong>{{ notification.title }}</strong>
+                  <p>{{ notification.body }}</p>
+                </div>
+                @if (notification.type === 'group_invite' && !notification.readAt) {
+                  <div class="notification-actions">
+                    <button
+                      class="primary-action compact-action"
+                      type="button"
+                      (click)="respondToInvitation(notification, 'accept')"
+                    >
+                      Принять
+                    </button>
+                    <button
+                      class="secondary-action compact-action"
+                      type="button"
+                      (click)="respondToInvitation(notification, 'decline')"
+                    >
+                      Отклонить
+                    </button>
+                  </div>
+                } @else if (!notification.readAt) {
+                  <button
+                    class="secondary-action compact-action"
+                    type="button"
+                    (click)="markNotificationRead(notification)"
+                  >
+                    Прочитано
+                  </button>
+                }
+              </article>
+            }
+          </div>
+        } @else {
+          <p>Новых событий пока нет.</p>
+        }
+      </section>
+    }
 
     @if (apiError()) {
       <section class="network-banner" role="alert">
@@ -401,54 +470,6 @@
           <button class="danger-action" type="button" (click)="deleteAccount()">
             Удалить аккаунт
           </button>
-        </div>
-
-        <div class="panel notifications-panel">
-          <div>
-            <p class="section-label">Уведомления</p>
-            <h2>{{ unreadNotifications() ? unreadNotifications() + ' новых' : 'Все прочитано' }}</h2>
-          </div>
-
-          @if (hasNotifications()) {
-            <div class="notification-list">
-              @for (notification of notifications(); track notification.id) {
-                <article class="notification-row" [class.unread]="!notification.readAt">
-                  <div>
-                    <strong>{{ notification.title }}</strong>
-                    <p>{{ notification.body }}</p>
-                  </div>
-                  @if (notification.type === 'group_invite' && !notification.readAt) {
-                    <div class="notification-actions">
-                      <button
-                        class="primary-action compact-action"
-                        type="button"
-                        (click)="respondToInvitation(notification, 'accept')"
-                      >
-                        Принять
-                      </button>
-                      <button
-                        class="secondary-action compact-action"
-                        type="button"
-                        (click)="respondToInvitation(notification, 'decline')"
-                      >
-                        Отклонить
-                      </button>
-                    </div>
-                  } @else if (!notification.readAt) {
-                    <button
-                      class="secondary-action compact-action"
-                      type="button"
-                      (click)="markNotificationRead(notification)"
-                    >
-                      Прочитано
-                    </button>
-                  }
-                </article>
-              }
-            </div>
-          } @else {
-            <p>Новых событий пока нет.</p>
-          }
         </div>
 
         <div class="panel partner-panel">
