@@ -27,6 +27,7 @@ export interface ShoppingItem {
 export interface AppState {
   fridgeItems: FridgeItem[];
   shoppingItems: ShoppingItem[];
+  household: Household;
 }
 
 export interface AuthUser {
@@ -47,6 +48,12 @@ export interface AuthProviders {
   password: boolean;
   google: boolean;
   apple: boolean;
+}
+
+export interface Household {
+  id: string;
+  name: string;
+  members: AuthUser[];
 }
 
 export type FridgeInput = Pick<

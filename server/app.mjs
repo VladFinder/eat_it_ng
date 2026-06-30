@@ -22,6 +22,8 @@ import {
   consumeSchema,
   fridgeCreateSchema,
   fridgeUpdateSchema,
+  householdMemberSchema,
+  householdUpdateSchema,
   loginSchema,
   registerSchema,
   shoppingCreateSchema,
@@ -110,6 +112,27 @@ function serializeUser(user) {
     householdId: user.householdId,
     authProvider: user.authProvider,
   };
+}
+
+function serializeHousehold(household) {
+  return {
+    id: household.id,
+    name: household.name,
+    members: household.users.map(serializeUser),
+  };
+}
+
+async function getHousehold(prisma, householdId) {
+  const household = await prisma.household.findUnique({
+    where: { id: householdId },
+    include: { users: { orderBy: [{ displayName: 'asc' }, { email: 'asc' }] } },
+  });
+  if (!household) {
+    const error = new Error('Group not found');
+    error.status = 404;
+    throw error;
+  }
+  return household;
 }
 
 function routeMatch(pathname, pattern) {
@@ -351,6 +374,60 @@ export function createApiServer(prisma, logger = console) {
         return;
       }
 
+      if (method === 'GET' && url.pathname === '/api/household') {
+        const household = await getHousehold(prisma, user.householdId);
+        json(response, 200, serializeHousehold(household));
+        return;
+      }
+
+      if (method === 'PATCH' && url.pathname === '/api/household') {
+        const input = householdUpdateSchema.parse(await readJson(request));
+        const household = await prisma.household.update({
+          where: { id: user.householdId },
+          data: { name: input.name },
+          include: { users: { orderBy: [{ displayName: 'asc' }, { email: 'asc' }] } },
+        });
+        json(response, 200, serializeHousehold(household));
+        return;
+      }
+
+      if (method === 'POST' && url.pathname === '/api/household/members') {
+        const input = householdMemberSchema.parse(await readJson(request));
+        const household = await prisma.$transaction(async (transaction) => {
+          const member = await transaction.user.findUnique({
+            where: { email: input.email },
+          });
+          if (!member) {
+            const error = new Error('User not found');
+            error.status = 404;
+            throw error;
+          }
+
+          if (member.householdId !== user.householdId) {
+            await transaction.fridgeItem.updateMany({
+              where: { householdId: member.householdId },
+              data: { householdId: user.householdId },
+            });
+            await transaction.shoppingItem.updateMany({
+              where: { householdId: member.householdId },
+              data: { householdId: user.householdId },
+            });
+            await transaction.user.updateMany({
+              where: { householdId: member.householdId },
+              data: { householdId: user.householdId },
+            });
+            await transaction.household.deleteMany({
+              where: { id: member.householdId, users: { none: {} } },
+            });
+          }
+
+          return getHousehold(transaction, user.householdId);
+        });
+
+        json(response, 200, serializeHousehold(household));
+        return;
+      }
+
       if (method === 'POST' && url.pathname === '/api/auth/logout') {
         await prisma.session.delete({ where: { id: auth.session.id } });
         json(
@@ -395,6 +472,7 @@ export function createApiServer(prisma, logger = console) {
         json(response, 200, {
           fridgeItems: fridgeItems.map(serializeFridgeItem),
           shoppingItems: shoppingItems.map(serializeShoppingItem),
+          household: serializeHousehold(await getHousehold(prisma, user.householdId)),
         });
         return;
       }

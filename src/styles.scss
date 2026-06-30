@@ -550,8 +550,42 @@ select:focus {
   font-weight: 900;
 }
 
+.avatar.small {
+  flex-basis: 38px;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  font-size: 18px;
+}
+
 .partner-panel p {
   margin-top: 8px;
+}
+
+.member-list {
+  display: grid;
+  gap: 10px;
+}
+
+.member-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid #e9dfcf;
+  border-radius: 8px;
+  background: #fffdf8;
+}
+
+.member-row strong,
+.member-row span {
+  display: block;
+}
+
+.member-row span {
+  margin-top: 2px;
+  color: #6e6258;
+  font-size: 13px;
 }
 
 .empty-state {

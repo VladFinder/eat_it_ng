@@ -28,6 +28,14 @@ export const loginSchema = z.object({
   password: z.string().min(1).max(128),
 });
 
+export const householdUpdateSchema = z.object({
+  name,
+});
+
+export const householdMemberSchema = z.object({
+  email,
+});
+
 const fridgeFields = {
   name,
   quantity,

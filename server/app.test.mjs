@@ -243,6 +243,53 @@ test('shopping item defaults to one piece and preserves its category', async () 
   assert.equal((await updateResponse.json()).quantity, 2);
 });
 
+test('household member can be added and their items are shared', async () => {
+  const registerResponse = await request('/api/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({
+      displayName: 'РџР°СЂС‚РЅРµСЂ',
+      email: 'partner@example.com',
+      password: 'test-password-123',
+    }),
+    skipAuth: true,
+  });
+  assert.equal(registerResponse.status, 201);
+  const partner = await registerResponse.json();
+
+  const partnerCreateResponse = await request('/api/fridge', {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${partner.token}` },
+    body: JSON.stringify({
+      name: '\u0421\u044b\u0440',
+      quantity: 1,
+      unit: '\u0448\u0442',
+      expiresAt: '2026-06-20',
+    }),
+  });
+  assert.equal(partnerCreateResponse.status, 201);
+  const partnerItem = await partnerCreateResponse.json();
+
+  const addMemberResponse = await request('/api/household/members', {
+    method: 'POST',
+    body: JSON.stringify({ email: 'partner@example.com' }),
+  });
+  assert.equal(addMemberResponse.status, 200);
+  const household = await addMemberResponse.json();
+  assert.equal(household.members.length, 2);
+  assert.equal(
+    household.members.some((member) => member.email === 'partner@example.com'),
+    true,
+  );
+
+  const stateResponse = await request('/api/state');
+  const state = await stateResponse.json();
+  assert.equal(
+    state.fridgeItems.some((item) => item.id === partnerItem.id),
+    true,
+  );
+  assert.equal(state.household.members.length, 2);
+});
+
 test('invalid payload is rejected', async () => {
   const response = await request('/api/fridge', {
     method: 'POST',

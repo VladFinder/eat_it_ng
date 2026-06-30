@@ -405,26 +405,43 @@
 
         <div class="panel partner-panel">
           <div>
-            <p class="section-label">Совместное использование</p>
-            <h2>{{ partnerConnected() ? 'Партнер подключен' : 'Пригласить партнера' }}</h2>
-            <p>Общими станут покупки, рецепты, лайки и будущие матчи блюд.</p>
+            <p class="section-label">Группа</p>
+            <h2>{{ groupTitle() }}</h2>
+            <p>{{ groupSummary() }}</p>
           </div>
-          @if (!partnerConnected()) {
-            <form class="inline-form" (ngSubmit)="connectPartner()">
-              <input
-                name="partner-email"
-                [ngModel]="partnerEmail()"
-                (ngModelChange)="partnerEmail.set($event)"
-                placeholder="email партнера"
-                type="email"
-              />
-              <button class="primary-action" type="submit">Пригласить</button>
-            </form>
-          } @else {
-            <button class="secondary-action" type="button" (click)="disconnectPartner()">
-              Отключить режим пары
-            </button>
-          }
+
+          <form class="inline-form" (ngSubmit)="saveGroupName()">
+            <input
+              name="group-name"
+              [ngModel]="groupName()"
+              (ngModelChange)="groupName.set($event)"
+              placeholder="Название группы"
+            />
+            <button class="primary-action" type="submit" [disabled]="saving()">Сохранить</button>
+          </form>
+
+          <div class="member-list">
+            @for (member of groupMembers(); track member.id) {
+              <div class="member-row">
+                <div class="avatar small">{{ member.displayName.slice(0, 1) }}</div>
+                <div>
+                  <strong>{{ member.displayName }}</strong>
+                  <span>{{ member.email }}</span>
+                </div>
+              </div>
+            }
+          </div>
+
+          <form class="inline-form" (ngSubmit)="addGroupMember()">
+            <input
+              name="member-email"
+              [ngModel]="memberEmail()"
+              (ngModelChange)="memberEmail.set($event)"
+              placeholder="email участника"
+              type="email"
+            />
+            <button class="primary-action" type="submit" [disabled]="saving()">Добавить</button>
+          </form>
         </div>
       </section>
     }

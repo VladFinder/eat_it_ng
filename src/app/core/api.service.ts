@@ -9,6 +9,7 @@ import {
   AuthUser,
   FridgeInput,
   FridgeItem,
+  Household,
   ItemCategory,
   ShoppingInput,
   ShoppingItem,
@@ -69,6 +70,22 @@ export class ApiService {
 
   getState(): Observable<AppState> {
     return this.http.get<AppState>(`${this.baseUrl}/state`, this.options());
+  }
+
+  getHousehold(): Observable<Household> {
+    return this.http.get<Household>(`${this.baseUrl}/household`, this.options());
+  }
+
+  renameHousehold(name: string): Observable<Household> {
+    return this.http.patch<Household>(`${this.baseUrl}/household`, { name }, this.options());
+  }
+
+  addHouseholdMember(email: string): Observable<Household> {
+    return this.http.post<Household>(
+      `${this.baseUrl}/household/members`,
+      { email },
+      this.options(),
+    );
   }
 
   createFridgeItem(input: FridgeInput): Observable<FridgeItem> {

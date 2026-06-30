@@ -8,6 +8,7 @@ import {
   AuthProviders,
   AuthUser,
   FridgeItem,
+  Household,
   ItemCategory,
   ShoppingItem,
   Unit,
@@ -34,7 +35,6 @@ interface SwipeState {
 
 const STORAGE_KEYS = {
   recipes: 'eat-it.recipes',
-  partner: 'eat-it.partner',
 };
 
 @Component({
@@ -90,8 +90,9 @@ export class App implements OnInit {
     email: '',
     password: '',
   };
-  protected readonly partnerEmail = signal('');
-  protected readonly partnerConnected = signal(this.load<boolean>(STORAGE_KEYS.partner, false));
+  protected readonly household = signal<Household | null>(null);
+  protected readonly groupName = signal('');
+  protected readonly memberEmail = signal('');
   protected readonly fridgeItems = signal<FridgeItem[]>([]);
   protected readonly shoppingItems = signal<ShoppingItem[]>([]);
   protected readonly recipes = signal<Recipe[]>(
@@ -144,6 +145,15 @@ export class App implements OnInit {
   protected readonly hasCompletedShoppingItems = computed(() =>
     this.shoppingItems().some((item) => item.checked),
   );
+  protected readonly groupMembers = computed(() => this.household()?.members ?? []);
+  protected readonly groupTitle = computed(() => this.household()?.name || 'Моя группа');
+  protected readonly groupSummary = computed(() => {
+    const count = this.groupMembers().length;
+    if (count <= 1) {
+      return 'Пока только вы. Добавьте участника по email, чтобы вести общий холодильник.';
+    }
+    return `${count} участника ведут общий холодильник и список покупок.`;
+  });
   protected readonly activeTabLabel = computed(() => {
     if (this.activeTab() === 'fridge') {
       return this.activeCategory() === 'products' ? 'Продукты' : 'Бытовая химия';
@@ -415,19 +425,32 @@ export class App implements OnInit {
     this.persistRecipes();
   }
 
-  protected connectPartner(): void {
-    if (!this.partnerEmail().trim()) {
+  protected async saveGroupName(): Promise<void> {
+    const name = this.groupName().trim();
+    if (!name || this.saving()) {
       return;
     }
 
-    this.partnerConnected.set(true);
-    localStorage.setItem(STORAGE_KEYS.partner, JSON.stringify(true));
+    await this.runMutation(async () => {
+      const household = await firstValueFrom(this.api.renameHousehold(name));
+      this.household.set(household);
+      this.groupName.set(household.name);
+    });
   }
 
-  protected disconnectPartner(): void {
-    this.partnerConnected.set(false);
-    this.partnerEmail.set('');
-    localStorage.setItem(STORAGE_KEYS.partner, JSON.stringify(false));
+  protected async addGroupMember(): Promise<void> {
+    const email = this.memberEmail().trim();
+    if (!email || this.saving()) {
+      return;
+    }
+
+    await this.runMutation(async () => {
+      const household = await firstValueFrom(this.api.addHouseholdMember(email));
+      this.household.set(household);
+      this.groupName.set(household.name);
+      this.memberEmail.set('');
+      await this.loadState();
+    });
   }
 
   protected beginSwipe(event: PointerEvent, id: string): void {
@@ -510,6 +533,8 @@ export class App implements OnInit {
       const state = await firstValueFrom(this.api.getState());
       this.fridgeItems.set(state.fridgeItems);
       this.shoppingItems.set(state.shoppingItems);
+      this.household.set(state.household);
+      this.groupName.set(state.household.name);
     } catch {
       this.apiError.set('Не удалось загрузить данные. Проверьте подключение к серверу.');
     } finally {
@@ -578,6 +603,9 @@ export class App implements OnInit {
   private resetSession(): void {
     this.api.clearSessionToken();
     this.currentUser.set(null);
+    this.household.set(null);
+    this.groupName.set('');
+    this.memberEmail.set('');
     this.fridgeItems.set([]);
     this.shoppingItems.set([]);
     this.apiError.set('');
