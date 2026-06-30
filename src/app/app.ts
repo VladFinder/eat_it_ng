@@ -4,7 +4,14 @@ import { Component, computed, inject, OnInit, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
 import { ApiService } from './core/api.service';
-import { AuthProviders, AuthUser, FridgeItem, ShoppingItem, Unit } from './core/models';
+import {
+  AuthProviders,
+  AuthUser,
+  FridgeItem,
+  ItemCategory,
+  ShoppingItem,
+  Unit,
+} from './core/models';
 
 type TabId = 'fridge' | 'shopping' | 'dishes' | 'recipes' | 'profile';
 type RecipeTab = 'mine' | 'likes' | 'all';
@@ -40,7 +47,7 @@ export class App implements OnInit {
   private readonly api = inject(ApiService);
 
   protected readonly tabs: { id: TabId; label: string; icon: string }[] = [
-    { id: 'fridge', label: 'Холодильник', icon: 'fridge' },
+    { id: 'fridge', label: 'Продукты', icon: 'fridge' },
     { id: 'shopping', label: 'Покупки', icon: 'cart' },
     { id: 'dishes', label: 'Блюда', icon: 'spark' },
     { id: 'recipes', label: 'Рецепты', icon: 'book' },
@@ -49,6 +56,7 @@ export class App implements OnInit {
 
   protected readonly units: Unit[] = ['шт', 'г', 'кг', 'мл', 'л', 'упак', 'банка', 'бут'];
   protected readonly activeTab = signal<TabId>('fridge');
+  protected readonly activeCategory = signal<ItemCategory>('products');
   protected readonly activeRecipeTab = signal<RecipeTab>('mine');
   protected readonly today = new Date().toISOString().slice(0, 10);
 
@@ -57,9 +65,15 @@ export class App implements OnInit {
     quantity: 1,
     unit: 'шт' as Unit,
     expiresAt: this.addDays(5),
+    reminderDays: 1,
   };
 
-  protected readonly newShoppingName = signal('');
+  protected readonly newShoppingItem = {
+    name: '',
+    quantity: 1,
+    unit: 'шт' as Unit,
+    category: 'products' as ItemCategory,
+  };
   protected readonly loading = signal(true);
   protected readonly saving = signal(false);
   protected readonly apiError = signal('');
@@ -109,8 +123,20 @@ export class App implements OnInit {
     ]),
   );
 
+  protected readonly visibleFridgeItems = computed(() =>
+    this.fridgeItems()
+      .filter((item) => item.category === this.activeCategory())
+      .sort(
+        (left, right) =>
+          left.expiresAt.localeCompare(right.expiresAt) ||
+          right.createdAt.localeCompare(left.createdAt),
+      ),
+  );
   protected readonly expiringSoonCount = computed(
-    () => this.fridgeItems().filter((item) => this.daysUntil(item.expiresAt) <= 2).length,
+    () =>
+      this.visibleFridgeItems().filter(
+        (item) => this.daysUntil(item.expiresAt) <= item.reminderDays,
+      ).length,
   );
   protected readonly shoppingOpenCount = computed(
     () => this.shoppingItems().filter((item) => !item.checked).length,
@@ -118,9 +144,12 @@ export class App implements OnInit {
   protected readonly hasCompletedShoppingItems = computed(() =>
     this.shoppingItems().some((item) => item.checked),
   );
-  protected readonly activeTabLabel = computed(
-    () => this.tabs.find((tab) => tab.id === this.activeTab())?.label ?? 'Eat it',
-  );
+  protected readonly activeTabLabel = computed(() => {
+    if (this.activeTab() === 'fridge') {
+      return this.activeCategory() === 'products' ? 'Продукты' : 'Бытовая химия';
+    }
+    return this.tabs.find((tab) => tab.id === this.activeTab())?.label ?? 'Eat it';
+  });
   protected readonly recipeList = computed(() => {
     const tab = this.activeRecipeTab();
     return this.recipes().filter((recipe) => {
@@ -219,6 +248,8 @@ export class App implements OnInit {
           quantity: Number(this.newFridgeItem.quantity) || 1,
           unit: this.newFridgeItem.unit,
           expiresAt: this.newFridgeItem.expiresAt || this.today,
+          reminderDays: Number(this.newFridgeItem.reminderDays) || 0,
+          category: this.activeCategory(),
         }),
       );
       this.fridgeItems.update((items) => [item, ...items]);
@@ -227,6 +258,7 @@ export class App implements OnInit {
       this.newFridgeItem.quantity = 1;
       this.newFridgeItem.unit = 'шт';
       this.newFridgeItem.expiresAt = this.addDays(5);
+      this.newFridgeItem.reminderDays = 1;
     });
   }
 
@@ -239,9 +271,23 @@ export class App implements OnInit {
     if (!Number.isFinite(quantity) || quantity <= 0) {
       return;
     }
+    const expiresAt = this.parseDisplayDate(
+      window.prompt('Годен до (ДД.ММ.ГГГГ)', this.formatDate(item.expiresAt))?.trim() ?? '',
+    );
+    if (!expiresAt) {
+      return;
+    }
+    const reminderDays = Number(
+      window.prompt('Напомнить за сколько дней?', String(item.reminderDays)),
+    );
+    if (!Number.isInteger(reminderDays) || reminderDays < 0 || reminderDays > 365) {
+      return;
+    }
 
     await this.runMutation(async () => {
-      const updated = await firstValueFrom(this.api.updateFridgeItem(item.id, { name, quantity }));
+      const updated = await firstValueFrom(
+        this.api.updateFridgeItem(item.id, { name, quantity, expiresAt, reminderDays }),
+      );
       this.replaceFridgeItem(updated);
     });
   }
@@ -262,16 +308,25 @@ export class App implements OnInit {
     });
   }
 
-  protected async addShoppingItem(name = this.newShoppingName()): Promise<void> {
+  protected async addShoppingItem(name = this.newShoppingItem.name): Promise<void> {
     const trimmed = name.trim();
     if (!trimmed || this.saving()) {
       return;
     }
 
     await this.runMutation(async () => {
-      const item = await firstValueFrom(this.api.createShoppingItem({ name: trimmed }));
+      const item = await firstValueFrom(
+        this.api.createShoppingItem({
+          name: trimmed,
+          quantity: Number(this.newShoppingItem.quantity) || 1,
+          unit: this.newShoppingItem.unit,
+          category: this.newShoppingItem.category,
+        }),
+      );
       this.shoppingItems.update((items) => [item, ...items]);
-      this.newShoppingName.set('');
+      this.newShoppingItem.name = '';
+      this.newShoppingItem.quantity = 1;
+      this.newShoppingItem.unit = 'шт';
     });
   }
 
@@ -294,9 +349,33 @@ export class App implements OnInit {
     });
   }
 
+  protected async editShoppingItem(item: ShoppingItem): Promise<void> {
+    const quantity = Number(window.prompt('Количество', String(item.quantity ?? 1)));
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      return;
+    }
+    const unit = window.prompt('Единица измерения', item.unit ?? 'шт')?.trim() as Unit | undefined;
+    if (!unit || !this.units.includes(unit)) {
+      return;
+    }
+
+    await this.runMutation(async () => {
+      const updated = await firstValueFrom(
+        this.api.updateShoppingItem(item.id, { quantity, unit }),
+      );
+      this.replaceShoppingItem(updated);
+    });
+  }
+
   protected async moveShoppingToFridge(item: ShoppingItem): Promise<void> {
-    const expiresAt = window.prompt('Годен до (ГГГГ-ММ-ДД)', this.addDays(5))?.trim() ?? '';
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(expiresAt)) {
+    const expiresAt = this.parseDisplayDate(
+      window.prompt('Годен до (ДД.ММ.ГГГГ)', this.formatDate(this.addDays(5)))?.trim() ?? '',
+    );
+    if (!expiresAt) {
+      return;
+    }
+    const reminderDays = Number(window.prompt('Напомнить за сколько дней?', '1'));
+    if (!Number.isInteger(reminderDays) || reminderDays < 0 || reminderDays > 365) {
       return;
     }
 
@@ -306,6 +385,8 @@ export class App implements OnInit {
           quantity: item.quantity ?? 1,
           unit: item.unit ?? 'шт',
           expiresAt,
+          reminderDays,
+          category: item.category,
         }),
       );
       this.shoppingItems.update((items) => items.filter((current) => current.id !== item.id));
@@ -413,6 +494,15 @@ export class App implements OnInit {
     return 'fresh';
   }
 
+  protected formatDate(date: string): string {
+    const [year, month, day] = date.split('-');
+    return year && month && day ? `${day}.${month}.${year}` : date;
+  }
+
+  protected categoryLabel(category: ItemCategory): string {
+    return category === 'products' ? 'Продукты' : 'Бытовая химия';
+  }
+
   private async loadState(): Promise<void> {
     this.loading.set(true);
     this.apiError.set('');
@@ -514,6 +604,17 @@ export class App implements OnInit {
     const date = new Date();
     date.setDate(date.getDate() + days);
     return date.toISOString().slice(0, 10);
+  }
+
+  private parseDisplayDate(value: string): string | null {
+    const match = value.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+    if (!match) {
+      return null;
+    }
+    const [, day, month, year] = match;
+    const normalized = `${year}-${month}-${day}`;
+    const date = new Date(`${normalized}T00:00:00Z`);
+    return date.toISOString().slice(0, 10) === normalized ? normalized : null;
   }
 
   private createId(): string {

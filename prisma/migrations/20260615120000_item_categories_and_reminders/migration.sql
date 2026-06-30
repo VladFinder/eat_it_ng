@@ -1,0 +1,3 @@
+ALTER TABLE "FridgeItem" ADD COLUMN "reminderDays" INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE "FridgeItem" ADD COLUMN "category" TEXT NOT NULL DEFAULT 'products';
+ALTER TABLE "ShoppingItem" ADD COLUMN "category" TEXT NOT NULL DEFAULT 'products';

@@ -1,7 +1,8 @@
 import { createApiServer } from './app.mjs';
-import { prisma } from './db.mjs';
+import { ensureDatabaseSchema, prisma } from './db.mjs';
 
 const port = Number(process.env.PORT ?? 3000);
+await ensureDatabaseSchema();
 const server = createApiServer(prisma);
 
 server.listen(port, '127.0.0.1', () => {

@@ -80,6 +80,8 @@ before(async () => {
       "quantity" REAL NOT NULL,
       "unit" TEXT NOT NULL,
       "expiresAt" DATETIME NOT NULL,
+      "reminderDays" INTEGER NOT NULL DEFAULT 1,
+      "category" TEXT NOT NULL DEFAULT 'products',
       "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "updatedAt" DATETIME NOT NULL,
       FOREIGN KEY ("householdId") REFERENCES "Household" ("id") ON DELETE CASCADE
@@ -92,6 +94,7 @@ before(async () => {
       "name" TEXT NOT NULL,
       "quantity" REAL,
       "unit" TEXT,
+      "category" TEXT NOT NULL DEFAULT 'products',
       "checked" BOOLEAN NOT NULL DEFAULT false,
       "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "updatedAt" DATETIME NOT NULL,
@@ -173,10 +176,14 @@ test('fridge item can be created and partially consumed', async () => {
       quantity: 2,
       unit: 'упак',
       expiresAt: '2026-06-12',
+      reminderDays: 3,
+      category: 'household',
     }),
   });
   assert.equal(createResponse.status, 201);
   const created = await createResponse.json();
+  assert.equal(created.reminderDays, 3);
+  assert.equal(created.category, 'household');
 
   const consumeResponse = await request(`/api/fridge/${created.id}/consume`, {
     method: 'POST',
@@ -207,6 +214,7 @@ test('completed shopping item can be moved to the fridge', async () => {
   assert.equal(moveResponse.status, 200);
   const fridgeItem = await moveResponse.json();
   assert.equal(fridgeItem.name, 'Кефир');
+  assert.equal(fridgeItem.category, 'products');
 
   const stateResponse = await request('/api/state');
   const state = await stateResponse.json();
@@ -214,6 +222,25 @@ test('completed shopping item can be moved to the fridge', async () => {
     state.shoppingItems.some((item) => item.id === shoppingItem.id),
     false,
   );
+});
+
+test('shopping item defaults to one piece and preserves its category', async () => {
+  const createResponse = await request('/api/shopping', {
+    method: 'POST',
+    body: JSON.stringify({ name: 'Средство для стекол', category: 'household' }),
+  });
+  assert.equal(createResponse.status, 201);
+  const shoppingItem = await createResponse.json();
+  assert.equal(shoppingItem.quantity, 1);
+  assert.equal(shoppingItem.unit, 'шт');
+  assert.equal(shoppingItem.category, 'household');
+
+  const updateResponse = await request(`/api/shopping/${shoppingItem.id}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ quantity: 2 }),
+  });
+  assert.equal(updateResponse.status, 200);
+  assert.equal((await updateResponse.json()).quantity, 2);
 });
 
 test('invalid payload is rejected', async () => {

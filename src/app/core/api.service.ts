@@ -9,6 +9,7 @@ import {
   AuthUser,
   FridgeInput,
   FridgeItem,
+  ItemCategory,
   ShoppingInput,
   ShoppingItem,
   Unit,
@@ -118,7 +119,13 @@ export class ApiService {
 
   moveShoppingToFridge(
     id: string,
-    input: { quantity?: number; unit?: Unit; expiresAt: string },
+    input: {
+      quantity?: number;
+      unit?: Unit;
+      expiresAt: string;
+      reminderDays?: number;
+      category?: ItemCategory;
+    },
   ): Observable<FridgeItem> {
     return this.http.post<FridgeItem>(
       `${this.baseUrl}/shopping/${id}/move-to-fridge`,

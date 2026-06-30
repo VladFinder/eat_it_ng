@@ -1,4 +1,5 @@
 export type Unit = 'шт' | 'г' | 'кг' | 'мл' | 'л' | 'упак' | 'банка' | 'бут';
+export type ItemCategory = 'products' | 'household';
 
 export interface FridgeItem {
   id: string;
@@ -6,6 +7,8 @@ export interface FridgeItem {
   quantity: number;
   unit: Unit;
   expiresAt: string;
+  reminderDays: number;
+  category: ItemCategory;
   createdAt: string;
   updatedAt: string;
 }
@@ -15,6 +18,7 @@ export interface ShoppingItem {
   name: string;
   quantity?: number | null;
   unit?: Unit | null;
+  category: ItemCategory;
   checked: boolean;
   createdAt: string;
   updatedAt: string;
@@ -45,10 +49,14 @@ export interface AuthProviders {
   apple: boolean;
 }
 
-export type FridgeInput = Pick<FridgeItem, 'name' | 'quantity' | 'unit' | 'expiresAt'>;
+export type FridgeInput = Pick<
+  FridgeItem,
+  'name' | 'quantity' | 'unit' | 'expiresAt' | 'reminderDays' | 'category'
+>;
 
 export type ShoppingInput = {
   name: string;
   quantity?: number;
   unit?: Unit;
+  category?: ItemCategory;
 };

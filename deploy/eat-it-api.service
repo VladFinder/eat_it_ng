@@ -12,6 +12,7 @@ Environment=PORT=3010
 Environment=DATABASE_URL=file:../data/eat-it.db
 Environment=APP_URL=https://eat-it.space
 EnvironmentFile=-/opt/eat-it/app/.env
+ExecStartPre=/usr/bin/npm run db:migrate
 ExecStart=/usr/bin/node server/index.mjs
 Restart=on-failure
 RestartSec=5

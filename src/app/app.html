@@ -5,7 +5,7 @@
         <p class="eyebrow">Eat it</p>
         <h1>{{ authMode() === 'login' ? 'С возвращением' : 'Создать аккаунт' }}</h1>
         <p class="auth-description">
-          Холодильник и покупки будут храниться в вашем личном пространстве.
+          Продукты, бытовая химия и покупки будут храниться в вашем личном пространстве.
         </p>
       </div>
 
@@ -89,10 +89,24 @@
     <section class="topbar" aria-label="Сводка Eat it">
       <div>
         <p class="eyebrow">Eat it</p>
-        <h1>{{ activeTabLabel() }}</h1>
+        @if (activeTab() === 'fridge') {
+          <label class="section-switcher">
+            <span class="visually-hidden">Раздел хранения</span>
+            <select
+              [ngModel]="activeCategory()"
+              (ngModelChange)="activeCategory.set($event)"
+              aria-label="Раздел хранения"
+            >
+              <option value="products">Продукты</option>
+              <option value="household">Бытовая химия</option>
+            </select>
+          </label>
+        } @else {
+          <h1>{{ activeTabLabel() }}</h1>
+        }
       </div>
       <div class="summary">
-        <span>{{ fridgeItems().length }} в холодильнике</span>
+        <span>{{ visibleFridgeItems().length }} в разделе</span>
         <strong>{{ shoppingOpenCount() }} купить</strong>
       </div>
     </section>
@@ -108,8 +122,8 @@
       <section class="screen">
         <div class="panel fridge-form">
           <div>
-            <p class="section-label">Новый продукт</p>
-            <h2>Заполни холодильник</h2>
+            <p class="section-label">Новая позиция</p>
+            <h2>Добавить в раздел «{{ activeTabLabel() }}»</h2>
           </div>
           <form class="form-grid" (ngSubmit)="addFridgeItem()">
             <label>
@@ -142,6 +156,16 @@
               Годен до
               <input name="fridge-expires" [(ngModel)]="newFridgeItem.expiresAt" type="date" />
             </label>
+            <label>
+              Напомнить за
+              <select name="fridge-reminder" [(ngModel)]="newFridgeItem.reminderDays">
+                <option [ngValue]="0">в день окончания</option>
+                <option [ngValue]="1">1 день</option>
+                <option [ngValue]="3">3 дня</option>
+                <option [ngValue]="5">5 дней</option>
+                <option [ngValue]="7">7 дней</option>
+              </select>
+            </label>
             <button class="primary-action" type="submit">Добавить</button>
           </form>
         </div>
@@ -160,7 +184,7 @@
           <div class="empty-state"><p>Загружаем продукты...</p></div>
         } @else {
           <div class="list fridge-list">
-            @for (item of fridgeItems(); track item.id) {
+            @for (item of visibleFridgeItems(); track item.id) {
               <article
                 class="fridge-row"
                 [class.move-right]="swipeOffset(item.id) > 36"
@@ -174,6 +198,7 @@
                 <div class="item-content">
                   <h3>{{ item.name }}</h3>
                   <p>{{ item.quantity }} {{ item.unit }} · {{ expiryLabel(item.expiresAt) }}</p>
+                  <p class="reminder-note">Напоминание за {{ item.reminderDays }} дн.</p>
                   <div class="row-actions">
                     <button
                       type="button"
@@ -192,13 +217,13 @@
                   </div>
                 </div>
                 <span class="status" [ngClass]="expiryClass(item.expiresAt)">{{
-                  item.expiresAt
+                  formatDate(item.expiresAt)
                 }}</span>
               </article>
             } @empty {
               <div class="empty-state">
-                <h3>Холодильник пуст</h3>
-                <p>Добавь первый продукт, чтобы отслеживать остатки и сроки годности.</p>
+                <h3>Раздел пуст</h3>
+                <p>Добавьте первую позицию, чтобы отслеживать остатки и сроки годности.</p>
               </div>
             }
           </div>
@@ -213,14 +238,34 @@
             <p class="section-label">Список покупок</p>
             <h2>Что нужно докупить</h2>
           </div>
-          <form class="inline-form" (ngSubmit)="addShoppingItem()">
+          <form class="shopping-form" (ngSubmit)="addShoppingItem()">
             <input
               name="shopping-name"
-              [ngModel]="newShoppingName()"
-              (ngModelChange)="newShoppingName.set($event)"
+              [(ngModel)]="newShoppingItem.name"
               placeholder="Добавить покупку"
             />
-            <button class="primary-action" type="submit">+</button>
+            <input
+              name="shopping-quantity"
+              [(ngModel)]="newShoppingItem.quantity"
+              min="0.1"
+              step="0.1"
+              type="number"
+              aria-label="Количество"
+            />
+            <select name="shopping-unit" [(ngModel)]="newShoppingItem.unit" aria-label="Единица">
+              @for (unit of units; track unit) {
+                <option [value]="unit">{{ unit }}</option>
+              }
+            </select>
+            <select
+              name="shopping-category"
+              [(ngModel)]="newShoppingItem.category"
+              aria-label="Раздел"
+            >
+              <option value="products">Продукты</option>
+              <option value="household">Бытовая химия</option>
+            </select>
+            <button class="primary-action" type="submit">Добавить</button>
           </form>
           @if (hasCompletedShoppingItems()) {
             <button
@@ -246,14 +291,16 @@
                 </button>
                 <div class="item-content">
                   <h3>{{ item.name }}</h3>
-                  @if (item.quantity && item.unit) {
-                    <p>{{ item.quantity }} {{ item.unit }}</p>
-                  } @else {
-                    <p>Добавлено вручную</p>
-                  }
+                  <p>
+                    {{ item.quantity ?? 1 }} {{ item.unit ?? 'шт' }} ·
+                    {{ categoryLabel(item.category) }}
+                  </p>
+                  <button class="move-button" type="button" (click)="editShoppingItem(item)">
+                    Изменить количество
+                  </button>
                   @if (item.checked) {
                     <button class="move-button" type="button" (click)="moveShoppingToFridge(item)">
-                      В холодильник
+                      В раздел «{{ categoryLabel(item.category) }}»
                     </button>
                   }
                 </div>
@@ -277,9 +324,7 @@
         <div class="dish-card">
           <p class="section-label">Tinder блюд</p>
           <h2>Матчи блюд скоро появятся</h2>
-          <p>
-            Здесь будут карточки блюд, лайки пары и подборки на основе продуктов из холодильника.
-          </p>
+          <p>Здесь будут карточки блюд, лайки пары и подборки на основе доступных продуктов.</p>
           <div class="dish-actions">
             <button type="button">Не хочу</button>
             <button type="button">Вкусно</button>

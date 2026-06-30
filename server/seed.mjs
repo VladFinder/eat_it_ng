@@ -47,8 +47,8 @@ if (fridgeCount === 0) {
 if (shoppingCount === 0) {
   await prisma.shoppingItem.createMany({
     data: [
-      { householdId: household.id, name: 'Овощи для салата' },
-      { householdId: household.id, name: 'Хлеб цельнозерновой' },
+      { householdId: household.id, name: 'Овощи для салата', quantity: 1, unit: 'шт' },
+      { householdId: household.id, name: 'Хлеб цельнозерновой', quantity: 1, unit: 'шт' },
     ],
   });
 }

@@ -149,6 +149,25 @@ h1 {
   line-height: 1;
 }
 
+.section-switcher select {
+  min-height: 52px;
+  border: 0;
+  background: transparent;
+  padding: 0 38px 0 0;
+  font-size: clamp(30px, 6vw, 48px);
+  font-weight: 800;
+  line-height: 1;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
 h2 {
   font-size: 22px;
   line-height: 1.15;
@@ -238,7 +257,7 @@ p {
 
 .form-grid {
   display: grid;
-  grid-template-columns: minmax(0, 2fr) 110px 94px 150px auto;
+  grid-template-columns: minmax(0, 2fr) 100px 88px 145px 150px auto;
   gap: 10px;
   align-items: end;
 }
@@ -348,6 +367,11 @@ select:focus {
   font-size: 14px;
 }
 
+.fridge-row .reminder-note {
+  color: #8a7d70;
+  font-size: 12px;
+}
+
 .item-content {
   min-width: 0;
 }
@@ -393,6 +417,12 @@ select:focus {
 
 .inline-form {
   display: flex;
+  gap: 10px;
+}
+
+.shopping-form {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) 90px 90px 160px auto;
   gap: 10px;
 }
 
@@ -626,7 +656,18 @@ select:focus {
 
   .form-grid label:first-child,
   .form-grid label:nth-child(4),
+  .form-grid label:nth-child(5),
   .form-grid .primary-action {
+    grid-column: 1 / -1;
+  }
+
+  .shopping-form {
+    grid-template-columns: 1fr 90px;
+  }
+
+  .shopping-form input:first-child,
+  .shopping-form select:nth-child(4),
+  .shopping-form .primary-action {
     grid-column: 1 / -1;
   }
 

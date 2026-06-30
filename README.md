@@ -151,10 +151,18 @@ cd /opt/eat-it/app
 git pull --ff-only origin main
 npm ci
 npm run db:generate
-sudo -u www-data npm run db:migrate
 npm run build -- --configuration production
 rsync -a --delete dist/eat_it_ng/browser/ /var/www/eat-it/dist/eat_it_ng/browser/
 sudo chown -R www-data:www-data /opt/eat-it/app/data
+sudo systemctl restart eat-it-api
+```
+
+The `eat-it-api` systemd unit runs `npm run db:migrate` before starting the API.
+After changing `deploy/eat-it-api.service`, copy it again and reload systemd:
+
+```bash
+sudo cp /opt/eat-it/app/deploy/eat-it-api.service /etc/systemd/system/eat-it-api.service
+sudo systemctl daemon-reload
 sudo systemctl restart eat-it-api
 ```
 

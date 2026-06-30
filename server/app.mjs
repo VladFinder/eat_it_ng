@@ -385,7 +385,7 @@ export function createApiServer(prisma, logger = console) {
         const [fridgeItems, shoppingItems] = await Promise.all([
           prisma.fridgeItem.findMany({
             where: { householdId: user.householdId },
-            orderBy: { createdAt: 'desc' },
+            orderBy: [{ expiresAt: 'asc' }, { createdAt: 'desc' }],
           }),
           prisma.shoppingItem.findMany({
             where: { householdId: user.householdId },
@@ -468,6 +468,7 @@ export function createApiServer(prisma, logger = console) {
               name: current.name,
               quantity: current.quantity,
               unit: current.unit,
+              category: current.category,
             },
           });
           await transaction.fridgeItem.delete({ where: { id: current.id } });
@@ -480,7 +481,10 @@ export function createApiServer(prisma, logger = console) {
       if (method === 'POST' && url.pathname === '/api/shopping') {
         const input = shoppingCreateSchema.parse(await readJson(request));
         const item = await prisma.shoppingItem.create({
-          data: { ...input, householdId: user.householdId },
+          data: {
+            ...input,
+            householdId: user.householdId,
+          },
         });
         json(response, 201, serializeShoppingItem(item));
         return;
@@ -533,6 +537,8 @@ export function createApiServer(prisma, logger = console) {
               quantity: input.quantity ?? current.quantity ?? 1,
               unit: input.unit ?? current.unit ?? 'шт',
               expiresAt: toDate(input.expiresAt),
+              reminderDays: input.reminderDays ?? 1,
+              category: input.category ?? current.category,
             },
           });
           await transaction.shoppingItem.delete({ where: { id: current.id } });
@@ -556,7 +562,7 @@ export function createApiServer(prisma, logger = console) {
 
       const status = Number.isInteger(error?.status) ? error.status : 500;
       if (status >= 500) {
-        logger.error(error);
+        logger.error(`${method} ${url.pathname}`, error);
       }
       json(response, status, { error: status >= 500 ? 'Internal server error' : error.message });
     }
