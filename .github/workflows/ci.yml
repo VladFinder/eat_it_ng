@@ -84,5 +84,12 @@ jobs:
             rsync -a --delete dist/eat_it_ng/browser/ /var/www/eat-it/dist/eat_it_ng/browser/
             sudo chown -R www-data:www-data /opt/eat-it/app/data
             sudo systemctl restart eat-it-api
-            curl --fail http://127.0.0.1:3010/api/health
+            for attempt in 1 2 3 4 5 6 7 8 9 10; do
+              if curl --fail http://127.0.0.1:3010/api/health; then
+                exit 0
+              fi
+              sleep 2
+            done
+            sudo systemctl status eat-it-api
+            exit 1
           EOF
