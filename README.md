@@ -109,6 +109,9 @@ downloadable artifacts:
 Deployment to the web server is manual. The server needs Git, Node.js 20+,
 npm, Nginx, rsync, and systemd.
 
+For a full server migration checklist, including data copy, DNS switch, HTTPS,
+and rollback, see `docs/SERVER_MIGRATION.md`.
+
 For the first deployment:
 
 ```bash
