@@ -536,7 +536,7 @@ export class App implements OnDestroy, OnInit {
   }
 
   protected retryLoad(): void {
-    void this.loadState();
+    void (this.devMode() ? this.loadDevData() : this.loadState());
   }
 
   protected toggleNotifications(): void {
@@ -854,6 +854,12 @@ export class App implements OnDestroy, OnInit {
     }
 
     try {
+      if (this.devMode()) {
+        await this.loadDevData();
+        this.apiError.set('');
+        return;
+      }
+
       const state = await firstValueFrom(this.api.getState());
       this.fridgeItems.set(state.fridgeItems);
       this.shoppingItems.set(state.shoppingItems);
@@ -943,6 +949,11 @@ export class App implements OnDestroy, OnInit {
       }
       if (session.status === 'fulfilled') {
         this.currentUser.set(session.value.user);
+        if (this.devMode()) {
+          await this.loadDevData();
+          this.startRealtimeRefresh();
+          return;
+        }
         await this.loadState();
         this.openOnboardingIfNeeded(session.value.user);
         this.startRealtimeRefresh();

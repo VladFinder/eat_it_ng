@@ -209,6 +209,10 @@ button:disabled {
   padding-bottom: 24px;
 }
 
+.dev-screen > .section-heading {
+  margin-top: 8px;
+}
+
 .dev-stats {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -237,6 +241,11 @@ button:disabled {
   min-height: 100dvh;
   margin: 0 auto;
   padding: 20px 16px 108px;
+}
+
+.shell.dev-shell {
+  max-width: 1120px;
+  padding-bottom: 40px;
 }
 
 .topbar {
