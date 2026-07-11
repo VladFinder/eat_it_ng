@@ -70,6 +70,10 @@ export function googleAuthorization() {
 }
 
 export async function exchangeGoogleCode(code, verifier) {
+  if (!code || !verifier) {
+    throw new Error('Google OAuth callback is missing required parameters');
+  }
+
   const redirectUri = `${baseUrl()}/api/auth/google/callback`;
   const response = await fetch('https://oauth2.googleapis.com/token', {
     method: 'POST',
@@ -118,6 +122,10 @@ export function appleAuthorization() {
 
 async function appleClientSecret() {
   const privateKey = process.env.APPLE_PRIVATE_KEY?.replace(/\\n/g, '\n');
+  if (!privateKey) {
+    throw new Error('Apple private key is not configured');
+  }
+
   const key = await importPKCS8(privateKey, 'ES256');
   const now = Math.floor(Date.now() / 1000);
   return new SignJWT({})
@@ -131,6 +139,10 @@ async function appleClientSecret() {
 }
 
 export async function exchangeAppleCode(code, nonce) {
+  if (!code || !nonce) {
+    throw new Error('Apple OAuth callback is missing required parameters');
+  }
+
   const redirectUri = `${baseUrl()}/api/auth/apple/callback`;
   const response = await fetch('https://appleid.apple.com/auth/token', {
     method: 'POST',

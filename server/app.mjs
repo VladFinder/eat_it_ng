@@ -253,6 +253,16 @@ function redirect(response, location, cookies = []) {
   response.end();
 }
 
+function appLocation(searchParams = {}) {
+  const location = new URL(process.env.APP_URL ?? 'https://eat-it.space');
+  for (const [key, value] of Object.entries(searchParams)) {
+    if (value) {
+      location.searchParams.set(key, value);
+    }
+  }
+  return location.toString();
+}
+
 async function createHouseholdForUser(transaction, displayName) {
   const userCount = await transaction.user.count();
   if (userCount === 0) {
@@ -399,20 +409,34 @@ export function createApiServer(prisma, logger = console) {
       }
 
       if (method === 'GET' && url.pathname === '/api/auth/google/callback') {
-        const state = cookieValue(request, 'eat_it_google_state');
-        const verifier = cookieValue(request, 'eat_it_google_verifier');
-        if (!state || state !== url.searchParams.get('state') || !verifier) {
-          json(response, 400, { error: 'Invalid Google OAuth state' });
-          return;
-        }
-        const profile = await exchangeGoogleCode(url.searchParams.get('code'), verifier);
-        const user = await findOrCreateOAuthUser(prisma, 'google', profile);
-        const session = await createSession(prisma, user.id);
-        redirect(response, process.env.APP_URL ?? 'https://eat-it.space', [
-          sessionCookie(session.token, session.expiresAt, isSecureRequest(request)),
+        const clearCookies = [
           clearOauthCookie('eat_it_google_state', isSecureRequest(request)),
           clearOauthCookie('eat_it_google_verifier', isSecureRequest(request)),
-        ]);
+        ];
+        if (url.searchParams.get('error')) {
+          redirect(response, appLocation({ auth_error: 'google_cancelled' }), clearCookies);
+          return;
+        }
+
+        const state = cookieValue(request, 'eat_it_google_state');
+        const verifier = cookieValue(request, 'eat_it_google_verifier');
+        const code = url.searchParams.get('code');
+        if (!state || state !== url.searchParams.get('state') || !verifier || !code) {
+          redirect(response, appLocation({ auth_error: 'google_failed' }), clearCookies);
+          return;
+        }
+        try {
+          const profile = await exchangeGoogleCode(code, verifier);
+          const user = await findOrCreateOAuthUser(prisma, 'google', profile);
+          const session = await createSession(prisma, user.id);
+          redirect(response, appLocation(), [
+            sessionCookie(session.token, session.expiresAt, isSecureRequest(request)),
+            ...clearCookies,
+          ]);
+        } catch (error) {
+          logger.error(`${method} ${url.pathname}`, error);
+          redirect(response, appLocation({ auth_error: 'google_failed' }), clearCookies);
+        }
         return;
       }
 
@@ -436,20 +460,34 @@ export function createApiServer(prisma, logger = console) {
 
       if (method === 'POST' && url.pathname === '/api/auth/apple/callback') {
         const form = await readForm(request);
-        const state = cookieValue(request, 'eat_it_apple_state');
-        const nonce = cookieValue(request, 'eat_it_apple_nonce');
-        if (!state || state !== form.get('state') || !nonce) {
-          json(response, 400, { error: 'Invalid Apple OAuth state' });
-          return;
-        }
-        const profile = await exchangeAppleCode(form.get('code'), nonce);
-        const user = await findOrCreateOAuthUser(prisma, 'apple', profile);
-        const session = await createSession(prisma, user.id);
-        redirect(response, process.env.APP_URL ?? 'https://eat-it.space', [
-          sessionCookie(session.token, session.expiresAt, true),
+        const clearCookies = [
           clearOauthCookie('eat_it_apple_state', true, 'None'),
           clearOauthCookie('eat_it_apple_nonce', true, 'None'),
-        ]);
+        ];
+        if (form.get('error')) {
+          redirect(response, appLocation({ auth_error: 'apple_cancelled' }), clearCookies);
+          return;
+        }
+
+        const state = cookieValue(request, 'eat_it_apple_state');
+        const nonce = cookieValue(request, 'eat_it_apple_nonce');
+        const code = form.get('code');
+        if (!state || state !== form.get('state') || !nonce || !code) {
+          redirect(response, appLocation({ auth_error: 'apple_failed' }), clearCookies);
+          return;
+        }
+        try {
+          const profile = await exchangeAppleCode(code, nonce);
+          const user = await findOrCreateOAuthUser(prisma, 'apple', profile);
+          const session = await createSession(prisma, user.id);
+          redirect(response, appLocation(), [
+            sessionCookie(session.token, session.expiresAt, true),
+            ...clearCookies,
+          ]);
+        } catch (error) {
+          logger.error(`${method} ${url.pathname}`, error);
+          redirect(response, appLocation({ auth_error: 'apple_failed' }), clearCookies);
+        }
         return;
       }
 

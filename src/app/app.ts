@@ -697,6 +697,7 @@ export class App implements OnDestroy, OnInit {
   private async initializeSession(): Promise<void> {
     this.loading.set(true);
     try {
+      this.applyOAuthResult();
       const [session, providers] = await Promise.allSettled([
         firstValueFrom(this.api.me()),
         firstValueFrom(this.api.getAuthProviders()),
@@ -712,6 +713,22 @@ export class App implements OnDestroy, OnInit {
     } finally {
       this.loading.set(false);
     }
+  }
+
+  private applyOAuthResult(): void {
+    const authError = new URLSearchParams(window.location.search).get('auth_error');
+    if (!authError) {
+      return;
+    }
+
+    const messages: Record<string, string> = {
+      google_cancelled: 'Вход через Google отменен.',
+      google_failed: 'Не удалось войти через Google. Попробуйте еще раз.',
+      apple_cancelled: 'Вход через Apple отменен.',
+      apple_failed: 'Не удалось войти через Apple. Попробуйте еще раз.',
+    };
+    this.authError.set(messages[authError] ?? 'Не удалось войти через внешний сервис.');
+    window.history.replaceState({}, document.title, window.location.pathname);
   }
 
   private resetSession(): void {

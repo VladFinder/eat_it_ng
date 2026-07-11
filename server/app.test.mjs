@@ -177,10 +177,93 @@ async function request(path, options) {
   });
 }
 
+function restoreEnv(name, value) {
+  if (value === undefined) {
+    delete process.env[name];
+    return;
+  }
+  process.env[name] = value;
+}
+
 test('health endpoint responds', async () => {
   const response = await request('/api/health', { skipAuth: true });
   assert.equal(response.status, 200);
   assert.deepEqual(await response.json(), { status: 'ok' });
+});
+
+test('auth providers reflect configured OAuth credentials', async () => {
+  const previous = {
+    googleClientId: process.env.GOOGLE_CLIENT_ID,
+    googleClientSecret: process.env.GOOGLE_CLIENT_SECRET,
+    appleClientId: process.env.APPLE_CLIENT_ID,
+    appleTeamId: process.env.APPLE_TEAM_ID,
+    appleKeyId: process.env.APPLE_KEY_ID,
+    applePrivateKey: process.env.APPLE_PRIVATE_KEY,
+  };
+  process.env.GOOGLE_CLIENT_ID = 'google-client';
+  process.env.GOOGLE_CLIENT_SECRET = 'google-secret';
+  process.env.APPLE_CLIENT_ID = 'apple-client';
+  process.env.APPLE_TEAM_ID = 'apple-team';
+  process.env.APPLE_KEY_ID = 'apple-key';
+  process.env.APPLE_PRIVATE_KEY = 'apple-private-key';
+
+  try {
+    const response = await request('/api/auth/providers', { skipAuth: true });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { password: true, google: true, apple: true });
+  } finally {
+    restoreEnv('GOOGLE_CLIENT_ID', previous.googleClientId);
+    restoreEnv('GOOGLE_CLIENT_SECRET', previous.googleClientSecret);
+    restoreEnv('APPLE_CLIENT_ID', previous.appleClientId);
+    restoreEnv('APPLE_TEAM_ID', previous.appleTeamId);
+    restoreEnv('APPLE_KEY_ID', previous.appleKeyId);
+    restoreEnv('APPLE_PRIVATE_KEY', previous.applePrivateKey);
+  }
+});
+
+test('google auth starts OAuth flow with state cookies', async () => {
+  const previous = {
+    appUrl: process.env.APP_URL,
+    googleClientId: process.env.GOOGLE_CLIENT_ID,
+    googleClientSecret: process.env.GOOGLE_CLIENT_SECRET,
+  };
+  process.env.APP_URL = 'http://127.0.0.1:4173';
+  process.env.GOOGLE_CLIENT_ID = 'google-client';
+  process.env.GOOGLE_CLIENT_SECRET = 'google-secret';
+
+  try {
+    const response = await fetch(`${baseUrl}/api/auth/google`, { redirect: 'manual' });
+    assert.equal(response.status, 302);
+    assert.match(
+      response.headers.get('location'),
+      /^https:\/\/accounts\.google\.com\/o\/oauth2\/v2\/auth/,
+    );
+    const cookies = response.headers.get('set-cookie');
+    assert.match(cookies, /eat_it_google_state=/);
+    assert.match(cookies, /eat_it_google_verifier=/);
+  } finally {
+    restoreEnv('APP_URL', previous.appUrl);
+    restoreEnv('GOOGLE_CLIENT_ID', previous.googleClientId);
+    restoreEnv('GOOGLE_CLIENT_SECRET', previous.googleClientSecret);
+  }
+});
+
+test('invalid google callback redirects back to the app with an auth error', async () => {
+  const previous = process.env.APP_URL;
+  process.env.APP_URL = 'http://127.0.0.1:4173';
+
+  try {
+    const response = await fetch(`${baseUrl}/api/auth/google/callback?state=bad`, {
+      redirect: 'manual',
+    });
+    assert.equal(response.status, 302);
+    assert.equal(
+      response.headers.get('location'),
+      'http://127.0.0.1:4173/?auth_error=google_failed',
+    );
+  } finally {
+    restoreEnv('APP_URL', previous);
+  }
 });
 
 test('account can log in and access the current user', async () => {
