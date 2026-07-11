@@ -27,9 +27,10 @@ export function hashToken(token) {
 
 export async function createSession(prisma, userId) {
   const token = randomBytes(32).toString('base64url');
+  const now = new Date();
   const expiresAt = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000);
   await prisma.session.create({
-    data: { userId, tokenHash: hashToken(token), expiresAt },
+    data: { userId, tokenHash: hashToken(token), expiresAt, lastSeenAt: now },
   });
   return { token, expiresAt };
 }

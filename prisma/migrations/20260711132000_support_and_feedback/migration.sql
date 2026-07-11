@@ -31,7 +31,7 @@ CREATE TABLE "FeedbackItem" (
     CONSTRAINT "FeedbackItem_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );
 
-ALTER TABLE "Session" ADD COLUMN "lastSeenAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE "Session" ADD COLUMN "lastSeenAt" DATETIME NOT NULL DEFAULT '1970-01-01 00:00:00';
 
 CREATE INDEX "SupportTicket_userId_status_updatedAt_idx" ON "SupportTicket"("userId", "status", "updatedAt");
 CREATE INDEX "SupportTicket_status_updatedAt_idx" ON "SupportTicket"("status", "updatedAt");
