@@ -16,6 +16,9 @@ const email = z
   .max(254)
   .transform((value) => value.toLowerCase());
 const password = z.string().min(8).max(128);
+const supportSubject = z.string().trim().min(3).max(140);
+const supportBody = z.string().trim().min(2).max(4_000);
+const feedbackType = z.enum(['idea', 'bug', 'other']);
 
 export const registerSchema = z.object({
   displayName: name,
@@ -94,4 +97,18 @@ export const shoppingToFridgeSchema = z.object({
   expiresAt: date,
   reminderDays: reminderDays.optional(),
   category: category.optional(),
+});
+
+export const supportTicketCreateSchema = z.object({
+  subject: supportSubject,
+  message: supportBody,
+});
+
+export const supportMessageCreateSchema = z.object({
+  message: supportBody,
+});
+
+export const feedbackCreateSchema = z.object({
+  type: feedbackType.default('other'),
+  message: supportBody,
 });

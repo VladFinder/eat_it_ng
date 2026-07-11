@@ -89,7 +89,7 @@
     <section class="topbar" aria-label="Сводка Eat it">
       <div>
         <p class="eyebrow">Eat it</p>
-        @if (activeTab() === 'fridge') {
+        @if (!devMode() && activeTab() === 'fridge') {
           <div class="section-switcher" role="group" aria-label="Раздел хранения">
             <span class="visually-hidden">Раздел хранения</span>
             <button
@@ -204,6 +204,103 @@
       </section>
     }
 
+    @if (activeSupportTicket()) {
+      <button
+        class="notification-backdrop"
+        type="button"
+        aria-label="Закрыть тикет"
+        (click)="closeSupportDialog()"
+      ></button>
+      <section class="panel ticket-dialog" role="dialog" aria-modal="true">
+        <div class="notifications-head">
+          <div>
+            <p class="section-label">Тикет</p>
+            <h2>{{ activeSupportTicket()?.subject }}</h2>
+          </div>
+          <button class="icon-button close-button" type="button" (click)="closeSupportDialog()">
+            ×
+          </button>
+        </div>
+        <div class="message-list">
+          @for (message of supportMessages(); track message.id) {
+            <article class="chat-message" [class.mine]="message.authorRole === 'user'">
+              <span>{{ message.authorRole === 'support' ? 'Техподдержка' : 'Вы' }}</span>
+              <p>{{ message.body }}</p>
+            </article>
+          }
+        </div>
+        @if (activeSupportTicket()?.status === 'closed') {
+          <div class="network-banner">
+            <span>Тикет закрыт. Новые сообщения недоступны.</span>
+          </div>
+        } @else {
+          <form class="support-reply" (ngSubmit)="sendSupportReply()">
+            <textarea
+              name="support-reply"
+              [(ngModel)]="supportForm.reply"
+              placeholder="Написать ответ"
+              required
+            ></textarea>
+            <button class="primary-action" type="submit" [disabled]="saving()">Отправить</button>
+          </form>
+        }
+      </section>
+    }
+
+    @if (activeDevTicket()) {
+      <button
+        class="notification-backdrop"
+        type="button"
+        aria-label="Закрыть тикет"
+        (click)="closeDevTicketDialog()"
+      ></button>
+      <section class="panel ticket-dialog" role="dialog" aria-modal="true">
+        <div class="notifications-head">
+          <div>
+            <p class="section-label">{{ activeDevTicket()?.user?.email }}</p>
+            <h2>{{ activeDevTicket()?.subject }}</h2>
+          </div>
+          <button class="icon-button close-button" type="button" (click)="closeDevTicketDialog()">
+            ×
+          </button>
+        </div>
+        <div class="message-list">
+          @for (message of devMessages(); track message.id) {
+            <article class="chat-message" [class.mine]="message.authorRole === 'support'">
+              <span>{{
+                message.authorRole === 'support' ? 'Техподдержка' : message.author?.displayName
+              }}</span>
+              <p>{{ message.body }}</p>
+            </article>
+          }
+        </div>
+        @if (activeDevTicket()?.status === 'closed') {
+          <div class="network-banner">
+            <span>Тикет закрыт. Пользователь больше не может писать сюда.</span>
+          </div>
+        } @else {
+          <form class="support-reply" (ngSubmit)="sendDevReply()">
+            <textarea
+              name="dev-reply"
+              [ngModel]="devReply()"
+              (ngModelChange)="devReply.set($event)"
+              placeholder="Ответить пользователю"
+              required
+            ></textarea>
+            <button class="primary-action" type="submit" [disabled]="saving()">Ответить</button>
+            <button
+              class="danger-action"
+              type="button"
+              (click)="closeDevTicket()"
+              [disabled]="saving()"
+            >
+              Закрыть тикет
+            </button>
+          </form>
+        }
+      </section>
+    }
+
     @if (apiError()) {
       <section class="network-banner" role="alert">
         <span>{{ apiError() }}</span>
@@ -211,7 +308,127 @@
       </section>
     }
 
-    @if (activeTab() === 'fridge') {
+    @if (devMode()) {
+      <section class="screen dev-screen">
+        <div class="section-heading">
+          <div>
+            <p class="section-label">Dev</p>
+            <h2>Поддержка и статистика</h2>
+          </div>
+          <button class="secondary-action compact-action" type="button" (click)="retryLoad()">
+            Обновить
+          </button>
+        </div>
+
+        @if (devSummary()) {
+          <div class="dev-stats">
+            <article class="panel">
+              <span>Пользователей</span>
+              <strong>{{ devSummary()?.users?.total }}</strong>
+              <p>{{ devSummary()?.users?.online }} онлайн</p>
+            </article>
+            <article class="panel">
+              <span>Запасы</span>
+              <strong>{{ devSummary()?.usage?.fridgeItems }}</strong>
+              <p>{{ devSummary()?.usage?.shoppingItems }} покупок</p>
+            </article>
+            <article class="panel">
+              <span>Тикеты</span>
+              <strong>{{ devSummary()?.support?.openTickets }}</strong>
+              <p>{{ devSummary()?.support?.closedTickets }} закрыто</p>
+            </article>
+            <article class="panel">
+              <span>Фидбек</span>
+              <strong>{{ devSummary()?.support?.openFeedback }}</strong>
+              <p>открытых обращений</p>
+            </article>
+          </div>
+        }
+
+        <div class="panel">
+          <div>
+            <p class="section-label">Тикеты</p>
+            <h2>Обращения пользователей</h2>
+          </div>
+          <div class="list">
+            @for (ticket of devTickets(); track ticket.id) {
+              <article class="support-row" [class.closed]="ticket.status === 'closed'">
+                <div>
+                  <div class="support-row-head">
+                    <strong>{{ ticket.subject }}</strong>
+                    <span>{{ ticket.status === 'closed' ? 'Закрыт' : 'Открыт' }}</span>
+                  </div>
+                  <p>
+                    {{ ticket.user?.email }} · {{ ticket.lastMessage?.body || 'Нет сообщений' }}
+                  </p>
+                </div>
+                <div class="support-row-actions">
+                  <button
+                    class="secondary-action compact-action"
+                    type="button"
+                    (click)="openDevTicket(ticket)"
+                  >
+                    Открыть
+                  </button>
+                  @if (ticket.status !== 'closed') {
+                    <button
+                      class="danger-action compact-action"
+                      type="button"
+                      (click)="closeDevTicket(ticket)"
+                    >
+                      Закрыть
+                    </button>
+                  }
+                </div>
+              </article>
+            } @empty {
+              <div class="empty-state">
+                <h3>Тикетов пока нет</h3>
+                <p>Новые обращения пользователей появятся здесь.</p>
+              </div>
+            }
+          </div>
+        </div>
+
+        <div class="panel">
+          <div>
+            <p class="section-label">Обратная связь</p>
+            <h2>Идеи и баги</h2>
+          </div>
+          <div class="list">
+            @for (item of devFeedback(); track item.id) {
+              <article class="support-row" [class.closed]="item.status === 'closed'">
+                <div>
+                  <div class="support-row-head">
+                    <strong>{{
+                      item.type === 'bug' ? 'Баг' : item.type === 'idea' ? 'Идея' : 'Другое'
+                    }}</strong>
+                    <span>{{ item.status === 'closed' ? 'Закрыто' : 'Открыто' }}</span>
+                  </div>
+                  <p>{{ item.user?.email }} · {{ item.body }}</p>
+                </div>
+                @if (item.status !== 'closed') {
+                  <button
+                    class="secondary-action compact-action"
+                    type="button"
+                    (click)="closeDevFeedback(item)"
+                  >
+                    Отметить обработанным
+                  </button>
+                }
+              </article>
+            } @empty {
+              <div class="empty-state">
+                <h3>Фидбека пока нет</h3>
+                <p>Предложения и сообщения о багах появятся здесь.</p>
+              </div>
+            }
+          </div>
+        </div>
+      </section>
+    }
+
+    @if (!devMode() && activeTab() === 'fridge') {
       <section class="screen">
         <div class="panel fridge-form">
           <div>
@@ -324,7 +541,7 @@
       </section>
     }
 
-    @if (activeTab() === 'shopping') {
+    @if (!devMode() && activeTab() === 'shopping') {
       <section class="screen">
         <div class="panel shopping-add">
           <div>
@@ -412,7 +629,7 @@
       </section>
     }
 
-    @if (activeTab() === 'dishes') {
+    @if (!devMode() && activeTab() === 'dishes') {
       <section class="screen centered">
         <div class="dish-card">
           <p class="section-label">Tinder блюд</p>
@@ -426,7 +643,7 @@
       </section>
     }
 
-    @if (activeTab() === 'recipes') {
+    @if (!devMode() && activeTab() === 'recipes') {
       <section class="screen">
         <div class="tabs-strip" role="tablist" aria-label="Рецепты">
           <button
@@ -478,7 +695,7 @@
       </section>
     }
 
-    @if (activeTab() === 'profile') {
+    @if (!devMode() && activeTab() === 'profile') {
       <section class="screen">
         <div class="profile-card">
           <div class="avatar">{{ currentUser()?.displayName?.slice(0, 1) }}</div>
@@ -497,6 +714,81 @@
           <button class="danger-action" type="button" (click)="deleteAccount()">
             Удалить аккаунт
           </button>
+        </div>
+
+        <div class="panel support-panel">
+          <div>
+            <p class="section-label">Техподдержка</p>
+            <h2>Задать вопрос</h2>
+            <p>Создайте обращение, и мы ответим в этом же диалоге.</p>
+          </div>
+
+          <form class="support-form" (ngSubmit)="createSupportTicket()">
+            <input
+              name="support-subject"
+              [(ngModel)]="supportForm.subject"
+              placeholder="Коротко о вопросе"
+              required
+            />
+            <textarea
+              name="support-message"
+              [(ngModel)]="supportForm.message"
+              placeholder="Опишите, что случилось или что непонятно"
+              required
+            ></textarea>
+            <button class="primary-action" type="submit" [disabled]="saving()">
+              Создать тикет
+            </button>
+          </form>
+
+          <div class="list">
+            @for (ticket of supportTickets(); track ticket.id) {
+              <article class="support-row" [class.closed]="ticket.status === 'closed'">
+                <div>
+                  <div class="support-row-head">
+                    <strong>{{ ticket.subject }}</strong>
+                    <span>{{ ticket.status === 'closed' ? 'Закрыт' : 'Открыт' }}</span>
+                  </div>
+                  <p>{{ ticket.lastMessage?.body || 'Нет сообщений' }}</p>
+                </div>
+                <button
+                  class="secondary-action compact-action"
+                  type="button"
+                  (click)="openSupportTicket(ticket)"
+                >
+                  Открыть
+                </button>
+              </article>
+            } @empty {
+              <div class="empty-state">
+                <h3>Обращений пока нет</h3>
+                <p>Если возникнет вопрос, создайте первый тикет здесь.</p>
+              </div>
+            }
+          </div>
+        </div>
+
+        <div class="panel support-panel">
+          <div>
+            <p class="section-label">Обратная связь</p>
+            <h2>Идея или ошибка</h2>
+            <p>Отправьте предложение или баг без создания диалога поддержки.</p>
+          </div>
+
+          <form class="support-form" (ngSubmit)="sendFeedback()">
+            <select name="feedback-type" [(ngModel)]="feedbackForm.type">
+              <option value="idea">Предложение</option>
+              <option value="bug">Ошибка</option>
+              <option value="other">Другое</option>
+            </select>
+            <textarea
+              name="feedback-message"
+              [(ngModel)]="feedbackForm.message"
+              placeholder="Напишите, что улучшить или что работает неправильно"
+              required
+            ></textarea>
+            <button class="primary-action" type="submit" [disabled]="saving()">Отправить</button>
+          </form>
         </div>
 
         <div class="panel partner-panel">

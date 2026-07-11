@@ -64,6 +64,10 @@ export async function authenticate(prisma, request) {
     }
     return null;
   }
+  await prisma.session.update({
+    where: { id: session.id },
+    data: { lastSeenAt: new Date() },
+  });
   return { session, user: session.user, token };
 }
 

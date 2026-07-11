@@ -8,10 +8,14 @@ import {
   AppNotification,
   AuthProviders,
   AuthUser,
+  DevSummary,
+  FeedbackItem,
   FridgeItem,
   Household,
   ItemCategory,
   ShoppingItem,
+  SupportMessage,
+  SupportTicket,
   Unit,
 } from './core/models';
 
@@ -151,6 +155,27 @@ export class App implements OnDestroy, OnInit {
   protected readonly notifications = signal<AppNotification[]>([]);
   protected readonly unreadNotifications = signal(0);
   protected readonly notificationsOpen = signal(false);
+  protected readonly supportTickets = signal<SupportTicket[]>([]);
+  protected readonly activeSupportTicket = signal<SupportTicket | null>(null);
+  protected readonly supportMessages = signal<SupportMessage[]>([]);
+  protected readonly supportForm = {
+    subject: '',
+    message: '',
+    reply: '',
+  };
+  protected readonly feedbackForm = {
+    type: 'idea' as 'idea' | 'bug' | 'other',
+    message: '',
+  };
+  protected readonly devMode = signal(
+    window.location.pathname === '/dev' || window.location.pathname === '/debug',
+  );
+  protected readonly devSummary = signal<DevSummary | null>(null);
+  protected readonly devTickets = signal<SupportTicket[]>([]);
+  protected readonly devFeedback = signal<FeedbackItem[]>([]);
+  protected readonly activeDevTicket = signal<SupportTicket | null>(null);
+  protected readonly devMessages = signal<SupportMessage[]>([]);
+  protected readonly devReply = signal('');
   protected readonly fridgeItems = signal<FridgeItem[]>([]);
   protected readonly shoppingItems = signal<ShoppingItem[]>([]);
   protected readonly recipes = signal<Recipe[]>(
@@ -555,6 +580,114 @@ export class App implements OnDestroy, OnInit {
     });
   }
 
+  protected async createSupportTicket(): Promise<void> {
+    const subject = this.supportForm.subject.trim();
+    const message = this.supportForm.message.trim();
+    if (!subject || !message || this.saving()) {
+      return;
+    }
+
+    await this.runMutation(async () => {
+      const ticket = await firstValueFrom(this.api.createSupportTicket({ subject, message }));
+      this.supportTickets.update((tickets) => [ticket, ...tickets]);
+      this.supportForm.subject = '';
+      this.supportForm.message = '';
+      await this.openSupportTicket(ticket);
+    });
+  }
+
+  protected async openSupportTicket(ticket: SupportTicket): Promise<void> {
+    const result = await firstValueFrom(this.api.getSupportMessages(ticket.id));
+    this.activeSupportTicket.set(result.ticket);
+    this.supportMessages.set(result.messages);
+    this.supportForm.reply = '';
+  }
+
+  protected closeSupportDialog(): void {
+    this.activeSupportTicket.set(null);
+    this.supportMessages.set([]);
+    this.supportForm.reply = '';
+  }
+
+  protected async sendSupportReply(): Promise<void> {
+    const ticket = this.activeSupportTicket();
+    const message = this.supportForm.reply.trim();
+    if (!ticket || !message || ticket.status === 'closed' || this.saving()) {
+      return;
+    }
+
+    await this.runMutation(async () => {
+      const created = await firstValueFrom(this.api.sendSupportMessage(ticket.id, message));
+      this.supportMessages.update((messages) => [...messages, created]);
+      this.supportForm.reply = '';
+      await this.loadSupportTickets();
+    });
+  }
+
+  protected async sendFeedback(): Promise<void> {
+    const message = this.feedbackForm.message.trim();
+    if (!message || this.saving()) {
+      return;
+    }
+
+    await this.runMutation(async () => {
+      await firstValueFrom(this.api.createFeedback({ type: this.feedbackForm.type, message }));
+      this.feedbackForm.type = 'idea';
+      this.feedbackForm.message = '';
+    });
+  }
+
+  protected async openDevTicket(ticket: SupportTicket): Promise<void> {
+    const result = await firstValueFrom(this.api.getDevSupportMessages(ticket.id));
+    this.activeDevTicket.set(result.ticket);
+    this.devMessages.set(result.messages);
+    this.devReply.set('');
+  }
+
+  protected closeDevTicketDialog(): void {
+    this.activeDevTicket.set(null);
+    this.devMessages.set([]);
+    this.devReply.set('');
+  }
+
+  protected async sendDevReply(): Promise<void> {
+    const ticket = this.activeDevTicket();
+    const message = this.devReply().trim();
+    if (!ticket || !message || ticket.status === 'closed' || this.saving()) {
+      return;
+    }
+
+    await this.runMutation(async () => {
+      const created = await firstValueFrom(this.api.sendDevSupportMessage(ticket.id, message));
+      this.devMessages.update((messages) => [...messages, created]);
+      this.devReply.set('');
+      await this.loadDevData();
+    });
+  }
+
+  protected async closeDevTicket(ticket = this.activeDevTicket()): Promise<void> {
+    if (!ticket || ticket.status === 'closed' || this.saving()) {
+      return;
+    }
+
+    await this.runMutation(async () => {
+      const closed = await firstValueFrom(this.api.closeDevSupportTicket(ticket.id));
+      this.activeDevTicket.set(closed);
+      await this.loadDevData();
+    });
+  }
+
+  protected async closeDevFeedback(item: FeedbackItem): Promise<void> {
+    if (item.status === 'closed' || this.saving()) {
+      return;
+    }
+
+    await this.runMutation(async () => {
+      await firstValueFrom(this.api.closeDevFeedback(item.id));
+      await this.loadDevData();
+    });
+  }
+
   protected async respondToInvitation(
     notification: AppNotification,
     action: 'accept' | 'decline',
@@ -704,7 +837,10 @@ export class App implements OnDestroy, OnInit {
       this.shoppingItems.set(state.shoppingItems);
       this.household.set(state.household);
       this.groupName.set(state.household.name);
-      await this.loadNotifications();
+      await Promise.all([this.loadNotifications(), this.loadSupportTickets()]);
+      if (this.devMode()) {
+        await this.loadDevData();
+      }
     } catch {
       this.apiError.set('Не удалось загрузить данные. Проверьте подключение к серверу.');
     } finally {
@@ -723,7 +859,10 @@ export class App implements OnDestroy, OnInit {
       this.shoppingItems.set(state.shoppingItems);
       this.household.set(state.household);
       this.groupName.set(state.household.name);
-      await this.loadNotifications();
+      await Promise.all([this.loadNotifications(), this.loadSupportTickets()]);
+      if (this.devMode()) {
+        await this.loadDevData();
+      }
       this.apiError.set('');
     } catch {
       // Keep the current UI visible during transient mobile network drops.
@@ -734,6 +873,22 @@ export class App implements OnDestroy, OnInit {
     const result = await firstValueFrom(this.api.getNotifications());
     this.notifications.set(result.notifications);
     this.unreadNotifications.set(result.unreadCount);
+  }
+
+  private async loadSupportTickets(): Promise<void> {
+    const result = await firstValueFrom(this.api.getSupportTickets());
+    this.supportTickets.set(result.tickets);
+  }
+
+  private async loadDevData(): Promise<void> {
+    const [summary, tickets, feedback] = await Promise.all([
+      firstValueFrom(this.api.getDevSummary()),
+      firstValueFrom(this.api.getDevSupportTickets()),
+      firstValueFrom(this.api.getDevFeedback()),
+    ]);
+    this.devSummary.set(summary);
+    this.devTickets.set(tickets.tickets);
+    this.devFeedback.set(feedback.feedback);
   }
 
   private async deleteFridgeItem(id: string): Promise<void> {
@@ -823,6 +978,20 @@ export class App implements OnDestroy, OnInit {
     this.notifications.set([]);
     this.unreadNotifications.set(0);
     this.notificationsOpen.set(false);
+    this.supportTickets.set([]);
+    this.activeSupportTicket.set(null);
+    this.supportMessages.set([]);
+    this.supportForm.subject = '';
+    this.supportForm.message = '';
+    this.supportForm.reply = '';
+    this.feedbackForm.type = 'idea';
+    this.feedbackForm.message = '';
+    this.devSummary.set(null);
+    this.devTickets.set([]);
+    this.devFeedback.set([]);
+    this.activeDevTicket.set(null);
+    this.devMessages.set([]);
+    this.devReply.set('');
     this.fridgeItems.set([]);
     this.shoppingItems.set([]);
     this.apiError.set('');

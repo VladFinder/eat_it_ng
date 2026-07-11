@@ -36,6 +36,7 @@ export interface AuthUser {
   displayName: string;
   householdId: string;
   authProvider: string;
+  isAdmin?: boolean;
 }
 
 export interface AuthResponse {
@@ -82,3 +83,55 @@ export type ShoppingInput = {
   unit?: Unit;
   category?: ItemCategory;
 };
+
+export interface SupportTicket {
+  id: string;
+  subject: string;
+  status: 'open' | 'closed' | string;
+  closedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  user?: AuthUser;
+  lastMessage: {
+    id: string;
+    authorRole: string;
+    body: string;
+    createdAt: string;
+  } | null;
+}
+
+export interface SupportMessage {
+  id: string;
+  ticketId: string;
+  authorRole: 'user' | 'support' | string;
+  body: string;
+  createdAt: string;
+  author?: AuthUser;
+}
+
+export interface FeedbackItem {
+  id: string;
+  type: 'idea' | 'bug' | 'other' | string;
+  body: string;
+  status: 'open' | 'closed' | string;
+  createdAt: string;
+  updatedAt: string;
+  user?: AuthUser;
+}
+
+export interface DevSummary {
+  users: {
+    total: number;
+    online: number;
+    recent: AuthUser[];
+  };
+  usage: {
+    fridgeItems: number;
+    shoppingItems: number;
+  };
+  support: {
+    openTickets: number;
+    closedTickets: number;
+    openFeedback: number;
+  };
+}

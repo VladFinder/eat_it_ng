@@ -8,12 +8,16 @@ import {
   AuthProviders,
   AuthResponse,
   AuthUser,
+  DevSummary,
+  FeedbackItem,
   FridgeInput,
   FridgeItem,
   Household,
   ItemCategory,
   ShoppingInput,
   ShoppingItem,
+  SupportMessage,
+  SupportTicket,
   Unit,
 } from './models';
 
@@ -49,6 +53,92 @@ export class ApiService {
 
   deleteAccount(): Observable<{ success: boolean }> {
     return this.http.delete<{ success: boolean }>(`${this.baseUrl}/auth/account`, this.options());
+  }
+
+  getSupportTickets(): Observable<{ tickets: SupportTicket[] }> {
+    return this.http.get<{ tickets: SupportTicket[] }>(
+      `${this.baseUrl}/support/tickets`,
+      this.options(),
+    );
+  }
+
+  createSupportTicket(input: { subject: string; message: string }): Observable<SupportTicket> {
+    return this.http.post<SupportTicket>(`${this.baseUrl}/support/tickets`, input, this.options());
+  }
+
+  getSupportMessages(
+    ticketId: string,
+  ): Observable<{ ticket: SupportTicket; messages: SupportMessage[] }> {
+    return this.http.get<{ ticket: SupportTicket; messages: SupportMessage[] }>(
+      `${this.baseUrl}/support/tickets/${ticketId}/messages`,
+      this.options(),
+    );
+  }
+
+  sendSupportMessage(ticketId: string, message: string): Observable<SupportMessage> {
+    return this.http.post<SupportMessage>(
+      `${this.baseUrl}/support/tickets/${ticketId}/messages`,
+      { message },
+      this.options(),
+    );
+  }
+
+  createFeedback(input: {
+    type: 'idea' | 'bug' | 'other';
+    message: string;
+  }): Observable<FeedbackItem> {
+    return this.http.post<FeedbackItem>(`${this.baseUrl}/feedback`, input, this.options());
+  }
+
+  getDevSummary(): Observable<DevSummary> {
+    return this.http.get<DevSummary>(`${this.baseUrl}/dev/summary`, this.options());
+  }
+
+  getDevSupportTickets(): Observable<{ tickets: SupportTicket[] }> {
+    return this.http.get<{ tickets: SupportTicket[] }>(
+      `${this.baseUrl}/dev/support/tickets`,
+      this.options(),
+    );
+  }
+
+  getDevSupportMessages(
+    ticketId: string,
+  ): Observable<{ ticket: SupportTicket; messages: SupportMessage[] }> {
+    return this.http.get<{ ticket: SupportTicket; messages: SupportMessage[] }>(
+      `${this.baseUrl}/dev/support/tickets/${ticketId}/messages`,
+      this.options(),
+    );
+  }
+
+  sendDevSupportMessage(ticketId: string, message: string): Observable<SupportMessage> {
+    return this.http.post<SupportMessage>(
+      `${this.baseUrl}/dev/support/tickets/${ticketId}/messages`,
+      { message },
+      this.options(),
+    );
+  }
+
+  closeDevSupportTicket(ticketId: string): Observable<SupportTicket> {
+    return this.http.post<SupportTicket>(
+      `${this.baseUrl}/dev/support/tickets/${ticketId}/close`,
+      {},
+      this.options(),
+    );
+  }
+
+  getDevFeedback(): Observable<{ feedback: FeedbackItem[] }> {
+    return this.http.get<{ feedback: FeedbackItem[] }>(
+      `${this.baseUrl}/dev/feedback`,
+      this.options(),
+    );
+  }
+
+  closeDevFeedback(id: string): Observable<FeedbackItem> {
+    return this.http.post<FeedbackItem>(
+      `${this.baseUrl}/dev/feedback/${id}/close`,
+      {},
+      this.options(),
+    );
   }
 
   getAuthProviders(): Observable<AuthProviders> {

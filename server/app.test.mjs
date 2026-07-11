@@ -51,6 +51,7 @@ before(async () => {
       "userId" TEXT NOT NULL,
       "tokenHash" TEXT NOT NULL UNIQUE,
       "expiresAt" DATETIME NOT NULL,
+      "lastSeenAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE
     )
@@ -104,6 +105,42 @@ before(async () => {
   await prisma.$executeRawUnsafe(`
     CREATE UNIQUE INDEX "Notification_userId_dedupeKey_key"
     ON "Notification"("userId", "dedupeKey")
+  `);
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE "SupportTicket" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "userId" TEXT NOT NULL,
+      "subject" TEXT NOT NULL,
+      "status" TEXT NOT NULL DEFAULT 'open',
+      "closedAt" DATETIME,
+      "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" DATETIME NOT NULL,
+      FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE
+    )
+  `);
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE "SupportMessage" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "ticketId" TEXT NOT NULL,
+      "authorId" TEXT NOT NULL,
+      "authorRole" TEXT NOT NULL DEFAULT 'user',
+      "body" TEXT NOT NULL,
+      "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY ("ticketId") REFERENCES "SupportTicket" ("id") ON DELETE CASCADE,
+      FOREIGN KEY ("authorId") REFERENCES "User" ("id") ON DELETE CASCADE
+    )
+  `);
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE "FeedbackItem" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "userId" TEXT NOT NULL,
+      "type" TEXT NOT NULL,
+      "body" TEXT NOT NULL,
+      "status" TEXT NOT NULL DEFAULT 'open',
+      "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" DATETIME NOT NULL,
+      FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE
+    )
   `);
   await prisma.household.create({
     data: { id: 'legacy-household', name: 'Мой дом' },
@@ -280,6 +317,79 @@ test('account can log in and access the current user', async () => {
   });
   assert.equal(meResponse.status, 200);
   assert.equal((await meResponse.json()).user.email, 'test@example.com');
+});
+
+test('support ticket can be created, answered by admin, and closed', async () => {
+  const previousAdmins = process.env.ADMIN_EMAILS;
+  process.env.ADMIN_EMAILS = 'test@example.com';
+
+  try {
+    const createResponse = await request('/api/support/tickets', {
+      method: 'POST',
+      body: JSON.stringify({
+        subject: 'Не понимаю покупки',
+        message: 'Как перенести купленное в холодильник?',
+      }),
+    });
+    assert.equal(createResponse.status, 201);
+    const ticket = await createResponse.json();
+    assert.equal(ticket.status, 'open');
+
+    const adminListResponse = await request('/api/dev/support/tickets');
+    assert.equal(adminListResponse.status, 200);
+    const adminList = await adminListResponse.json();
+    assert.equal(
+      adminList.tickets.some((item) => item.id === ticket.id),
+      true,
+    );
+
+    const replyResponse = await request(`/api/dev/support/tickets/${ticket.id}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({ message: 'Нажмите на купленную позицию и выберите перенос.' }),
+    });
+    assert.equal(replyResponse.status, 201);
+    assert.equal((await replyResponse.json()).authorRole, 'support');
+
+    const closeResponse = await request(`/api/dev/support/tickets/${ticket.id}/close`, {
+      method: 'POST',
+      body: JSON.stringify({}),
+    });
+    assert.equal(closeResponse.status, 200);
+    assert.equal((await closeResponse.json()).status, 'closed');
+
+    const userReplyResponse = await request(`/api/support/tickets/${ticket.id}/messages`, {
+      method: 'POST',
+      body: JSON.stringify({ message: 'Спасибо' }),
+    });
+    assert.equal(userReplyResponse.status, 409);
+  } finally {
+    restoreEnv('ADMIN_EMAILS', previousAdmins);
+  }
+});
+
+test('feedback is visible to admins only', async () => {
+  const createResponse = await request('/api/feedback', {
+    method: 'POST',
+    body: JSON.stringify({ type: 'bug', message: 'Кнопка выглядит странно' }),
+  });
+  assert.equal(createResponse.status, 201);
+
+  const forbiddenResponse = await request('/api/dev/feedback');
+  assert.equal(forbiddenResponse.status, 403);
+
+  const previousAdmins = process.env.ADMIN_EMAILS;
+  process.env.ADMIN_EMAILS = 'test@example.com';
+  try {
+    const adminResponse = await request('/api/dev/feedback');
+    assert.equal(adminResponse.status, 200);
+    const admin = await adminResponse.json();
+    assert.equal(
+      admin.feedback.some((item) => item.type === 'bug'),
+      true,
+    );
+  } finally {
+    restoreEnv('ADMIN_EMAILS', previousAdmins);
+  }
 });
 
 test('state rejects unauthenticated requests', async () => {

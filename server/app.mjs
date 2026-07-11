@@ -22,6 +22,7 @@ import {
   consumeSchema,
   fridgeCreateSchema,
   fridgeUpdateSchema,
+  feedbackCreateSchema,
   householdMemberSchema,
   householdUpdateSchema,
   loginSchema,
@@ -30,6 +31,8 @@ import {
   shoppingCreateSchema,
   shoppingToFridgeSchema,
   shoppingUpdateSchema,
+  supportMessageCreateSchema,
+  supportTicketCreateSchema,
 } from './validation.mjs';
 
 const BODY_LIMIT = 64 * 1024;
@@ -135,6 +138,50 @@ function serializeNotification(notification) {
   };
 }
 
+function serializeSupportTicket(ticket) {
+  const lastMessage = ticket.messages?.[0] ?? null;
+  return {
+    id: ticket.id,
+    subject: ticket.subject,
+    status: ticket.status,
+    closedAt: ticket.closedAt?.toISOString() ?? null,
+    createdAt: ticket.createdAt.toISOString(),
+    updatedAt: ticket.updatedAt.toISOString(),
+    user: ticket.user ? serializeUser(ticket.user) : undefined,
+    lastMessage: lastMessage
+      ? {
+          id: lastMessage.id,
+          authorRole: lastMessage.authorRole,
+          body: lastMessage.body,
+          createdAt: lastMessage.createdAt.toISOString(),
+        }
+      : null,
+  };
+}
+
+function serializeSupportMessage(message) {
+  return {
+    id: message.id,
+    ticketId: message.ticketId,
+    authorRole: message.authorRole,
+    body: message.body,
+    createdAt: message.createdAt.toISOString(),
+    author: message.author ? serializeUser(message.author) : undefined,
+  };
+}
+
+function serializeFeedbackItem(item) {
+  return {
+    id: item.id,
+    type: item.type,
+    body: item.body,
+    status: item.status,
+    createdAt: item.createdAt.toISOString(),
+    updatedAt: item.updatedAt.toISOString(),
+    user: item.user ? serializeUser(item.user) : undefined,
+  };
+}
+
 async function getHousehold(prisma, householdId) {
   const household = await prisma.household.findUnique({
     where: { id: householdId },
@@ -233,6 +280,28 @@ function routeMatch(pathname, pattern) {
 
 function isSecureRequest(request) {
   return request.headers['x-forwarded-proto'] === 'https';
+}
+
+function adminEmails() {
+  return new Set(
+    (process.env.ADMIN_EMAILS ?? '')
+      .split(',')
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean),
+  );
+}
+
+function isAdmin(user) {
+  return adminEmails().has(user.email.toLowerCase());
+}
+
+function requireAdmin(user) {
+  if (isAdmin(user)) {
+    return;
+  }
+  const error = new Error('Admin access required');
+  error.status = 403;
+  throw error;
 }
 
 function authResponse(response, status, user, session, request) {
@@ -499,7 +568,256 @@ export function createApiServer(prisma, logger = console) {
       const { user } = auth;
 
       if (method === 'GET' && url.pathname === '/api/auth/me') {
-        json(response, 200, { user: serializeUser(user) });
+        json(response, 200, { user: { ...serializeUser(user), isAdmin: isAdmin(user) } });
+        return;
+      }
+
+      if (method === 'GET' && url.pathname === '/api/support/tickets') {
+        const tickets = await prisma.supportTicket.findMany({
+          where: { userId: user.id },
+          orderBy: [{ updatedAt: 'desc' }],
+          include: { messages: { orderBy: { createdAt: 'desc' }, take: 1 } },
+        });
+        json(response, 200, { tickets: tickets.map(serializeSupportTicket) });
+        return;
+      }
+
+      if (method === 'POST' && url.pathname === '/api/support/tickets') {
+        const input = supportTicketCreateSchema.parse(await readJson(request));
+        const ticket = await prisma.$transaction(async (transaction) => {
+          const created = await transaction.supportTicket.create({
+            data: { userId: user.id, subject: input.subject },
+          });
+          await transaction.supportMessage.create({
+            data: {
+              ticketId: created.id,
+              authorId: user.id,
+              authorRole: 'user',
+              body: input.message,
+            },
+          });
+          return transaction.supportTicket.findUnique({
+            where: { id: created.id },
+            include: { messages: { orderBy: { createdAt: 'desc' }, take: 1 } },
+          });
+        });
+        json(response, 201, serializeSupportTicket(ticket));
+        return;
+      }
+
+      const supportMessagesRoute = routeMatch(
+        url.pathname,
+        /^\/api\/support\/tickets\/(?<id>[^/]+)\/messages$/,
+      );
+      if (supportMessagesRoute && method === 'GET') {
+        const ticket = await prisma.supportTicket.findFirst({
+          where: { id: supportMessagesRoute.id, userId: user.id },
+          include: { messages: { orderBy: { createdAt: 'asc' }, include: { author: true } } },
+        });
+        if (!ticket) {
+          const error = new Error('Ticket not found');
+          error.status = 404;
+          throw error;
+        }
+        json(response, 200, {
+          ticket: serializeSupportTicket(ticket),
+          messages: ticket.messages.map(serializeSupportMessage),
+        });
+        return;
+      }
+
+      if (supportMessagesRoute && method === 'POST') {
+        const input = supportMessageCreateSchema.parse(await readJson(request));
+        const ticket = await prisma.supportTicket.findFirst({
+          where: { id: supportMessagesRoute.id, userId: user.id },
+        });
+        if (!ticket) {
+          const error = new Error('Ticket not found');
+          error.status = 404;
+          throw error;
+        }
+        if (ticket.status === 'closed') {
+          const error = new Error('Ticket is closed');
+          error.status = 409;
+          throw error;
+        }
+        const message = await prisma.$transaction(async (transaction) => {
+          const created = await transaction.supportMessage.create({
+            data: {
+              ticketId: ticket.id,
+              authorId: user.id,
+              authorRole: 'user',
+              body: input.message,
+            },
+            include: { author: true },
+          });
+          await transaction.supportTicket.update({
+            where: { id: ticket.id },
+            data: { updatedAt: new Date() },
+          });
+          return created;
+        });
+        json(response, 201, serializeSupportMessage(message));
+        return;
+      }
+
+      if (method === 'POST' && url.pathname === '/api/feedback') {
+        const input = feedbackCreateSchema.parse(await readJson(request));
+        const item = await prisma.feedbackItem.create({
+          data: { userId: user.id, type: input.type, body: input.message },
+        });
+        json(response, 201, serializeFeedbackItem(item));
+        return;
+      }
+
+      if (method === 'GET' && url.pathname === '/api/dev/summary') {
+        requireAdmin(user);
+        const since = new Date(Date.now() - 5 * 60 * 1000);
+        const [
+          userCount,
+          onlineUsers,
+          fridgeItems,
+          shoppingItems,
+          openTickets,
+          closedTickets,
+          feedbackCount,
+          recentUsers,
+        ] = await Promise.all([
+          prisma.user.count(),
+          prisma.session
+            .findMany({
+              where: { expiresAt: { gt: new Date() }, lastSeenAt: { gte: since } },
+              distinct: ['userId'],
+            })
+            .then((sessions) => sessions.length),
+          prisma.fridgeItem.count(),
+          prisma.shoppingItem.count(),
+          prisma.supportTicket.count({ where: { status: 'open' } }),
+          prisma.supportTicket.count({ where: { status: 'closed' } }),
+          prisma.feedbackItem.count({ where: { status: 'open' } }),
+          prisma.user.findMany({ orderBy: { createdAt: 'desc' }, take: 5 }),
+        ]);
+        json(response, 200, {
+          users: { total: userCount, online: onlineUsers, recent: recentUsers.map(serializeUser) },
+          usage: { fridgeItems, shoppingItems },
+          support: { openTickets, closedTickets, openFeedback: feedbackCount },
+        });
+        return;
+      }
+
+      if (method === 'GET' && url.pathname === '/api/dev/support/tickets') {
+        requireAdmin(user);
+        const tickets = await prisma.supportTicket.findMany({
+          orderBy: [{ status: 'asc' }, { updatedAt: 'desc' }],
+          include: {
+            user: true,
+            messages: { orderBy: { createdAt: 'desc' }, take: 1 },
+          },
+          take: 100,
+        });
+        json(response, 200, { tickets: tickets.map(serializeSupportTicket) });
+        return;
+      }
+
+      const devSupportMessagesRoute = routeMatch(
+        url.pathname,
+        /^\/api\/dev\/support\/tickets\/(?<id>[^/]+)\/messages$/,
+      );
+      if (devSupportMessagesRoute && method === 'GET') {
+        requireAdmin(user);
+        const ticket = await prisma.supportTicket.findUnique({
+          where: { id: devSupportMessagesRoute.id },
+          include: {
+            user: true,
+            messages: { orderBy: { createdAt: 'asc' }, include: { author: true } },
+          },
+        });
+        if (!ticket) {
+          const error = new Error('Ticket not found');
+          error.status = 404;
+          throw error;
+        }
+        json(response, 200, {
+          ticket: serializeSupportTicket(ticket),
+          messages: ticket.messages.map(serializeSupportMessage),
+        });
+        return;
+      }
+
+      if (devSupportMessagesRoute && method === 'POST') {
+        requireAdmin(user);
+        const input = supportMessageCreateSchema.parse(await readJson(request));
+        const ticket = await prisma.supportTicket.findUnique({
+          where: { id: devSupportMessagesRoute.id },
+        });
+        if (!ticket) {
+          const error = new Error('Ticket not found');
+          error.status = 404;
+          throw error;
+        }
+        if (ticket.status === 'closed') {
+          const error = new Error('Ticket is closed');
+          error.status = 409;
+          throw error;
+        }
+        const message = await prisma.$transaction(async (transaction) => {
+          const created = await transaction.supportMessage.create({
+            data: {
+              ticketId: ticket.id,
+              authorId: user.id,
+              authorRole: 'support',
+              body: input.message,
+            },
+            include: { author: true },
+          });
+          await transaction.supportTicket.update({
+            where: { id: ticket.id },
+            data: { updatedAt: new Date() },
+          });
+          return created;
+        });
+        json(response, 201, serializeSupportMessage(message));
+        return;
+      }
+
+      const devSupportCloseRoute = routeMatch(
+        url.pathname,
+        /^\/api\/dev\/support\/tickets\/(?<id>[^/]+)\/close$/,
+      );
+      if (devSupportCloseRoute && method === 'POST') {
+        requireAdmin(user);
+        const ticket = await prisma.supportTicket.update({
+          where: { id: devSupportCloseRoute.id },
+          data: { status: 'closed', closedAt: new Date() },
+          include: { user: true, messages: { orderBy: { createdAt: 'desc' }, take: 1 } },
+        });
+        json(response, 200, serializeSupportTicket(ticket));
+        return;
+      }
+
+      if (method === 'GET' && url.pathname === '/api/dev/feedback') {
+        requireAdmin(user);
+        const items = await prisma.feedbackItem.findMany({
+          orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
+          include: { user: true },
+          take: 100,
+        });
+        json(response, 200, { feedback: items.map(serializeFeedbackItem) });
+        return;
+      }
+
+      const devFeedbackCloseRoute = routeMatch(
+        url.pathname,
+        /^\/api\/dev\/feedback\/(?<id>[^/]+)\/close$/,
+      );
+      if (devFeedbackCloseRoute && method === 'POST') {
+        requireAdmin(user);
+        const item = await prisma.feedbackItem.update({
+          where: { id: devFeedbackCloseRoute.id },
+          data: { status: 'closed' },
+          include: { user: true },
+        });
+        json(response, 200, serializeFeedbackItem(item));
         return;
       }
 

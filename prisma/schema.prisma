@@ -50,24 +50,70 @@ model Household {
 }
 
 model User {
-  id              String         @id @default(cuid())
+  id              String                @id @default(cuid())
   householdId     String
-  email           String         @unique
+  email           String                @unique
   displayName     String
   passwordHash    String?
-  authProvider    String         @default("password")
+  authProvider    String                @default("password")
   providerSubject String?
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
-  household       Household      @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  household       Household             @relation(fields: [householdId], references: [id], onDelete: Cascade)
   sessions        Session[]
   identities      AuthIdentity[]
   notifications   Notification[]
+  supportTickets  SupportTicket[]
+  supportMessages SupportMessage[]
+  feedbackItems   FeedbackItem[]
   sentInvitations HouseholdInvitation[] @relation("InvitationInviter")
   invitations     HouseholdInvitation[] @relation("InvitationInvitee")
 
   @@unique([authProvider, providerSubject])
   @@index([householdId])
+}
+
+model SupportTicket {
+  id        String           @id @default(cuid())
+  userId    String
+  subject   String
+  status    String           @default("open")
+  closedAt  DateTime?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages  SupportMessage[]
+
+  @@index([userId, status, updatedAt])
+  @@index([status, updatedAt])
+}
+
+model SupportMessage {
+  id         String        @id @default(cuid())
+  ticketId   String
+  authorId   String
+  authorRole String        @default("user")
+  body       String
+  createdAt  DateTime      @default(now())
+  ticket     SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  author     User          @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId, createdAt])
+  @@index([authorId])
+}
+
+model FeedbackItem {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String
+  body      String
+  status    String   @default("open")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status, createdAt])
+  @@index([userId, createdAt])
 }
 
 model HouseholdInvitation {
@@ -88,7 +134,7 @@ model HouseholdInvitation {
 }
 
 model Notification {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   userId    String
   type      String
   title     String
@@ -96,8 +142,8 @@ model Notification {
   readAt    DateTime?
   data      String?
   dedupeKey String?
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, dedupeKey])
   @@index([userId, readAt, createdAt])
@@ -116,13 +162,15 @@ model AuthIdentity {
 }
 
 model Session {
-  id        String   @id @default(cuid())
-  userId    String
-  tokenHash String   @unique
-  expiresAt DateTime
-  createdAt DateTime @default(now())
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id         String   @id @default(cuid())
+  userId     String
+  tokenHash  String   @unique
+  expiresAt  DateTime
+  lastSeenAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId])
   @@index([expiresAt])
+  @@index([lastSeenAt])
 }
