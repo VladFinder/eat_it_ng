@@ -141,7 +141,9 @@
         <div class="notifications-head">
           <div>
             <p class="section-label">Уведомления</p>
-            <h2>{{ unreadNotifications() ? unreadNotifications() + ' новых' : 'Все прочитано' }}</h2>
+            <h2>
+              {{ unreadNotifications() ? unreadNotifications() + ' новых' : 'Все прочитано' }}
+            </h2>
           </div>
           <button class="icon-button close-button" type="button" (click)="closeNotifications()">
             ×
@@ -488,6 +490,9 @@
         </div>
 
         <div class="panel account-actions">
+          <button class="secondary-action" type="button" (click)="restartOnboarding()">
+            Как пользоваться
+          </button>
           <button class="secondary-action" type="button" (click)="logout()">Выйти</button>
           <button class="danger-action" type="button" (click)="deleteAccount()">
             Удалить аккаунт
@@ -546,4 +551,80 @@
       </button>
     }
   </nav>
+
+  @if (onboardingOpen()) {
+    <section
+      class="onboarding-layer"
+      aria-labelledby="onboarding-title"
+      role="dialog"
+      aria-modal="true"
+    >
+      <div class="onboarding-scrim"></div>
+      <article class="onboarding-card">
+        <div class="onboarding-progress" aria-hidden="true">
+          @for (step of onboardingSteps; track step.title; let index = $index) {
+            <span [class.active]="index <= onboardingStepIndex()"></span>
+          }
+        </div>
+        <p class="section-label">{{ onboardingStep().label }}</p>
+        <h2 id="onboarding-title">{{ onboardingStep().title }}</h2>
+        <p>{{ onboardingStep().body }}</p>
+
+        <div class="onboarding-preview">
+          @if (onboardingStep().tab === 'fridge') {
+            <div class="preview-row">
+              <strong>Йогурт</strong>
+              <span class="status warning">Сегодня</span>
+            </div>
+            <div class="preview-row">
+              <strong>Средство для стекол</strong>
+              <span class="status fresh">12.08.2026</span>
+            </div>
+          } @else if (onboardingStep().tab === 'shopping') {
+            <div class="preview-row">
+              <span class="check-button" aria-hidden="true">✓</span>
+              <strong>Молоко · 1 л</strong>
+            </div>
+            <div class="preview-row">
+              <span class="check-button empty" aria-hidden="true"></span>
+              <strong>Хлеб · 1 шт</strong>
+            </div>
+          } @else if (onboardingStep().tab === 'dishes') {
+            <div class="preview-choice">
+              <button type="button">Не хочу</button>
+              <button type="button">Вкусно</button>
+            </div>
+          } @else if (onboardingStep().tab === 'recipes') {
+            <div class="tag-row">
+              <span>ужин</span>
+              <span>быстро</span>
+              <span>из холодильника</span>
+            </div>
+          } @else {
+            <div class="preview-row">
+              <div class="avatar small">E</div>
+              <strong>Общий дом</strong>
+            </div>
+          }
+        </div>
+
+        <div class="onboarding-actions">
+          <button class="secondary-action" type="button" (click)="skipOnboarding()">
+            Пропустить
+          </button>
+          <button
+            class="secondary-action"
+            type="button"
+            [disabled]="onboardingStepIndex() === 0"
+            (click)="previousOnboardingStep()"
+          >
+            Назад
+          </button>
+          <button class="primary-action" type="button" (click)="nextOnboardingStep()">
+            {{ onboardingStep().action }}
+          </button>
+        </div>
+      </article>
+    </section>
+  }
 }

@@ -19,6 +19,14 @@ type TabId = 'fridge' | 'shopping' | 'dishes' | 'recipes' | 'profile';
 type RecipeTab = 'mine' | 'likes' | 'all';
 type AuthMode = 'login' | 'register';
 
+interface OnboardingStep {
+  tab: TabId;
+  label: string;
+  title: string;
+  body: string;
+  action: string;
+}
+
 interface Recipe {
   id: string;
   title: string;
@@ -36,7 +44,46 @@ interface SwipeState {
 
 const STORAGE_KEYS = {
   recipes: 'eat-it.recipes',
+  onboarding: 'eat-it.onboarding.completed',
 };
+
+const ONBOARDING_STEPS: OnboardingStep[] = [
+  {
+    tab: 'fridge',
+    label: 'Шаг 1 из 5',
+    title: 'Начните с того, что уже есть дома',
+    body: 'Добавляйте продукты или бытовую химию, количество и срок годности. Так приложение покажет, что скоро закончится или испортится.',
+    action: 'Показать покупки',
+  },
+  {
+    tab: 'shopping',
+    label: 'Шаг 2 из 5',
+    title: 'Покупки собираются в один список',
+    body: 'Отмечайте купленное, меняйте количество и переносите покупки обратно в запасы, когда принесли их домой.',
+    action: 'Показать блюда',
+  },
+  {
+    tab: 'dishes',
+    label: 'Шаг 3 из 5',
+    title: 'Блюда помогут решить, что приготовить',
+    body: 'Этот раздел будет подбирать идеи из того, что уже лежит дома, чтобы меньше выбрасывать и быстрее выбирать ужин.',
+    action: 'Показать рецепты',
+  },
+  {
+    tab: 'recipes',
+    label: 'Шаг 4 из 5',
+    title: 'Рецепты сохраняют удачные идеи',
+    body: 'Здесь будут ваши рецепты, лайки и общая подборка. Сохраняйте то, что хочется повторить.',
+    action: 'Показать профиль',
+  },
+  {
+    tab: 'profile',
+    label: 'Шаг 5 из 5',
+    title: 'В профиле настраивается общий дом',
+    body: 'Переименуйте группу и пригласите участника по email, чтобы вести общий холодильник и список покупок.',
+    action: 'Начать пользоваться',
+  },
+];
 
 @Component({
   selector: 'app-root',
@@ -87,6 +134,12 @@ export class App implements OnDestroy, OnInit {
     google: false,
     apple: false,
   });
+  protected readonly onboardingOpen = signal(false);
+  protected readonly onboardingStepIndex = signal(0);
+  protected readonly onboardingSteps = ONBOARDING_STEPS;
+  protected readonly onboardingStep = computed(
+    () => this.onboardingSteps[this.onboardingStepIndex()] ?? this.onboardingSteps[0],
+  );
   protected readonly authForm = {
     displayName: '',
     email: '',
@@ -215,6 +268,7 @@ export class App implements OnDestroy, OnInit {
       this.currentUser.set(response.user);
       this.authForm.password = '';
       await this.loadState();
+      this.openOnboardingIfNeeded(response.user);
       this.startRealtimeRefresh();
     } catch (error) {
       this.authError.set(this.errorMessage(error, 'Не удалось войти в аккаунт.'));
@@ -230,6 +284,33 @@ export class App implements OnDestroy, OnInit {
 
   protected startOAuth(provider: 'google' | 'apple'): void {
     window.location.assign(this.api.oauthUrl(provider));
+  }
+
+  protected nextOnboardingStep(): void {
+    const nextIndex = this.onboardingStepIndex() + 1;
+    if (nextIndex >= this.onboardingSteps.length) {
+      this.finishOnboarding();
+      return;
+    }
+
+    this.onboardingStepIndex.set(nextIndex);
+    this.activeTab.set(this.onboardingSteps[nextIndex].tab);
+  }
+
+  protected previousOnboardingStep(): void {
+    const previousIndex = Math.max(0, this.onboardingStepIndex() - 1);
+    this.onboardingStepIndex.set(previousIndex);
+    this.activeTab.set(this.onboardingSteps[previousIndex].tab);
+  }
+
+  protected skipOnboarding(): void {
+    this.finishOnboarding();
+  }
+
+  protected restartOnboarding(): void {
+    this.onboardingStepIndex.set(0);
+    this.activeTab.set(this.onboardingSteps[0].tab);
+    this.onboardingOpen.set(true);
   }
 
   protected async logout(): Promise<void> {
@@ -708,6 +789,7 @@ export class App implements OnDestroy, OnInit {
       if (session.status === 'fulfilled') {
         this.currentUser.set(session.value.user);
         await this.loadState();
+        this.openOnboardingIfNeeded(session.value.user);
         this.startRealtimeRefresh();
       }
     } finally {
@@ -747,7 +829,30 @@ export class App implements OnDestroy, OnInit {
     this.authError.set('');
     this.authMode.set('login');
     this.authForm.password = '';
+    this.onboardingOpen.set(false);
+    this.onboardingStepIndex.set(0);
     this.activeTab.set('fridge');
+  }
+
+  private openOnboardingIfNeeded(user: AuthUser): void {
+    if (localStorage.getItem(this.onboardingKey(user.id)) === 'true') {
+      return;
+    }
+    this.onboardingStepIndex.set(0);
+    this.activeTab.set(this.onboardingSteps[0].tab);
+    this.onboardingOpen.set(true);
+  }
+
+  private finishOnboarding(): void {
+    const user = this.currentUser();
+    if (user) {
+      localStorage.setItem(this.onboardingKey(user.id), 'true');
+    }
+    this.onboardingOpen.set(false);
+  }
+
+  private onboardingKey(userId: string): string {
+    return `${STORAGE_KEYS.onboarding}.${userId}`;
   }
 
   private startRealtimeRefresh(): void {

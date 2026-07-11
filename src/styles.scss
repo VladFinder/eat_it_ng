@@ -105,7 +105,7 @@ button:disabled {
 }
 
 .account-actions {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .danger-action {
@@ -807,6 +807,98 @@ select:focus {
   color: #fff;
 }
 
+.onboarding-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+}
+
+.onboarding-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(32, 28, 24, 0.48);
+  backdrop-filter: blur(3px);
+}
+
+.onboarding-card {
+  position: relative;
+  display: grid;
+  gap: 14px;
+  width: min(100%, 480px);
+  max-height: calc(100dvh - 40px);
+  overflow: auto;
+  border: 1px solid #d8cfc2;
+  border-radius: 10px;
+  background: #fffaf1;
+  box-shadow: 0 30px 80px rgba(32, 28, 24, 0.28);
+  padding: 20px;
+}
+
+.onboarding-progress {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+}
+
+.onboarding-progress span {
+  height: 6px;
+  border-radius: 999px;
+  background: #e4dacd;
+}
+
+.onboarding-progress span.active {
+  background: #2d6a4f;
+}
+
+.onboarding-preview {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #eadfce;
+  border-radius: 8px;
+  background: #fffdf8;
+  padding: 12px;
+}
+
+.preview-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 42px;
+}
+
+.preview-row strong {
+  min-width: 0;
+}
+
+.preview-choice {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+}
+
+.preview-choice button {
+  min-height: 42px;
+  border: 0;
+  border-radius: 8px;
+  background: #efe8dc;
+  color: #2f2a24;
+  font-weight: 800;
+}
+
+.check-button.empty::before {
+  content: '';
+}
+
+.onboarding-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.3fr);
+  gap: 8px;
+}
+
 .nav-icon {
   display: block;
   width: 22px;
@@ -895,6 +987,10 @@ select:focus {
     grid-template-columns: 1fr 90px;
   }
 
+  .account-actions {
+    grid-template-columns: 1fr;
+  }
+
   .shopping-form input:first-child,
   .shopping-form select:nth-child(4),
   .shopping-form .primary-action {
@@ -966,5 +1062,20 @@ select:focus {
 
   .bottom-nav button {
     font-size: 10px;
+  }
+
+  .onboarding-layer {
+    align-items: end;
+    padding: 12px;
+  }
+
+  .onboarding-card {
+    width: 100%;
+    max-height: calc(100dvh - 24px);
+    padding: 16px;
+  }
+
+  .onboarding-actions {
+    grid-template-columns: 1fr;
   }
 }
