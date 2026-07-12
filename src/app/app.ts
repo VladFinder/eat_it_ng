@@ -222,8 +222,20 @@ export class App implements OnDestroy, OnInit {
         (item) => this.daysUntil(item.expiresAt) <= item.reminderDays,
       ).length,
   );
+  protected readonly expiringSoonItems = computed(() =>
+    this.visibleFridgeItems().filter((item) => this.daysUntil(item.expiresAt) <= item.reminderDays),
+  );
+  protected readonly stableFridgeItems = computed(() =>
+    this.visibleFridgeItems().filter((item) => this.daysUntil(item.expiresAt) > item.reminderDays),
+  );
   protected readonly shoppingOpenCount = computed(
     () => this.shoppingItems().filter((item) => !item.checked).length,
+  );
+  protected readonly shoppingProductsCount = computed(
+    () => this.shoppingItems().filter((item) => item.category === 'products').length,
+  );
+  protected readonly shoppingHouseholdCount = computed(
+    () => this.shoppingItems().filter((item) => item.category === 'household').length,
   );
   protected readonly hasCompletedShoppingItems = computed(() =>
     this.shoppingItems().some((item) => item.checked),
@@ -243,6 +255,21 @@ export class App implements OnDestroy, OnInit {
       return this.activeCategory() === 'products' ? 'Продукты' : 'Бытовая химия';
     }
     return this.tabs.find((tab) => tab.id === this.activeTab())?.label ?? 'Eat it';
+  });
+  protected readonly activeTabSubtitle = computed(() => {
+    if (this.activeTab() === 'fridge') {
+      return 'Сроки, остатки и напоминания';
+    }
+    if (this.activeTab() === 'shopping') {
+      return 'Общий список для дома';
+    }
+    if (this.activeTab() === 'dishes') {
+      return 'Что приготовить из того, что есть';
+    }
+    if (this.activeTab() === 'recipes') {
+      return 'Сохраняйте любимое и создавайте свое';
+    }
+    return 'Дом, аккаунт и поддержка';
   });
   protected readonly recipeList = computed(() => {
     const tab = this.activeRecipeTab();
