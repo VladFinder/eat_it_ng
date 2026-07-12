@@ -120,6 +120,7 @@ export class App implements OnDestroy, OnInit {
   protected readonly activeCategory = signal<ItemCategory>('products');
   protected readonly activeRecipeTab = signal<RecipeTab>('mine');
   protected readonly profileSection = signal<ProfileSection>('menu');
+  protected readonly fridgeAddOpen = signal(false);
   protected readonly activeDish = signal<DishIdea | null>(null);
   protected readonly activeRecipe = signal<Recipe | null>(null);
   protected readonly today = new Date().toISOString().slice(0, 10);
@@ -457,6 +458,7 @@ export class App implements OnDestroy, OnInit {
       this.newFridgeItem.unit = 'шт';
       this.newFridgeItem.expiresAt = this.addDays(5);
       this.newFridgeItem.reminderDays = 1;
+      this.fridgeAddOpen.set(false);
     });
   }
 
@@ -639,6 +641,14 @@ export class App implements OnDestroy, OnInit {
 
   protected setProfileSection(section: ProfileSection): void {
     this.profileSection.set(section);
+  }
+
+  protected openFridgeAdd(): void {
+    this.fridgeAddOpen.set(true);
+  }
+
+  protected closeFridgeAdd(): void {
+    this.fridgeAddOpen.set(false);
   }
 
   protected createRecipe(): void {

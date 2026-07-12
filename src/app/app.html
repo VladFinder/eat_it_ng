@@ -279,6 +279,70 @@
       </section>
     }
 
+    @if (!devMode() && fridgeAddOpen()) {
+      <button
+        class="notification-backdrop"
+        type="button"
+        aria-label="Закрыть добавление"
+        (click)="closeFridgeAdd()"
+      ></button>
+      <section class="panel ticket-dialog add-dialog" role="dialog" aria-modal="true">
+        <div class="notifications-head">
+          <div>
+            <p class="section-label">Новая позиция</p>
+            <h2>Добавить в «{{ activeTabLabel() }}»</h2>
+          </div>
+          <button class="icon-button close-button" type="button" (click)="closeFridgeAdd()">×</button>
+        </div>
+        <form class="add-form" (ngSubmit)="addFridgeItem()">
+          <label>
+            Название
+            <input
+              name="fridge-name"
+              [(ngModel)]="newFridgeItem.name"
+              placeholder="Например, молоко"
+              autocomplete="off"
+            />
+          </label>
+          <div class="add-form-row">
+            <label>
+              Количество
+              <input
+                name="fridge-quantity"
+                [(ngModel)]="newFridgeItem.quantity"
+                min="0"
+                step="0.1"
+                type="number"
+              />
+            </label>
+            <label>
+              Ед.
+              <select name="fridge-unit" [(ngModel)]="newFridgeItem.unit">
+                @for (unit of units; track unit) {
+                  <option [value]="unit">{{ unit }}</option>
+                }
+              </select>
+            </label>
+          </div>
+          <label>
+            Годен до
+            <input name="fridge-expires" [(ngModel)]="newFridgeItem.expiresAt" type="date" />
+          </label>
+          <label>
+            Напомнить за
+            <select name="fridge-reminder" [(ngModel)]="newFridgeItem.reminderDays">
+              <option [ngValue]="0">в день окончания</option>
+              <option [ngValue]="1">1 день</option>
+              <option [ngValue]="3">3 дня</option>
+              <option [ngValue]="5">5 дней</option>
+              <option [ngValue]="7">7 дней</option>
+            </select>
+          </label>
+          <button class="primary-action" type="submit" [disabled]="saving()">Добавить</button>
+        </form>
+      </section>
+    }
+
     @if (activeDevTicket()) {
       <button
         class="notification-backdrop"
@@ -480,51 +544,9 @@
               Бытовая химия
             </button>
           </div>
-          <button class="primary-action add-shortcut" type="button" (click)="addFridgeItem()">
-            ＋ Добавить
+          <button class="primary-action add-shortcut" type="button" (click)="openFridgeAdd()">
+            ＋
           </button>
-        </div>
-
-        <div class="panel fridge-form">
-          <form class="form-grid" (ngSubmit)="addFridgeItem()">
-            <input
-              name="fridge-name"
-              [(ngModel)]="newFridgeItem.name"
-              placeholder="Название"
-              aria-label="Название"
-            />
-            <input
-              name="fridge-quantity"
-              [(ngModel)]="newFridgeItem.quantity"
-              min="0"
-              step="0.1"
-              type="number"
-              aria-label="Количество"
-            />
-            <select name="fridge-unit" [(ngModel)]="newFridgeItem.unit" aria-label="Единица">
-              @for (unit of units; track unit) {
-                <option [value]="unit">{{ unit }}</option>
-              }
-            </select>
-            <input
-              name="fridge-expires"
-              [(ngModel)]="newFridgeItem.expiresAt"
-              type="date"
-              aria-label="Годен до"
-            />
-            <select
-              name="fridge-reminder"
-              [(ngModel)]="newFridgeItem.reminderDays"
-              aria-label="Напомнить за"
-            >
-              <option [ngValue]="0">в день окончания</option>
-              <option [ngValue]="1">1 день</option>
-              <option [ngValue]="3">3 дня</option>
-              <option [ngValue]="5">5 дней</option>
-              <option [ngValue]="7">7 дней</option>
-            </select>
-            <button class="primary-action" type="submit">Добавить</button>
-          </form>
         </div>
 
         <article class="summary-card">
@@ -832,64 +854,54 @@
           <span class="row-chevron">›</span>
         </div>
 
-        <div class="profile-menu">
-          <button
-            type="button"
-            [class.active]="profileSection() === 'household'"
-            (click)="setProfileSection('household')"
-          >
-            <span>⌂</span>
-            Дом и участники
-            <strong>›</strong>
-          </button>
-          <button type="button" (click)="toggleNotifications()">
-            <span>◉</span>
-            Уведомления
-            <strong>›</strong>
-          </button>
-          <button type="button" (click)="restartOnboarding()">
-            <span>?</span>
-            Как пользоваться
-            <strong>›</strong>
-          </button>
-          <button
-            type="button"
-            [class.active]="profileSection() === 'support'"
-            (click)="setProfileSection('support')"
-          >
-            <span>✉</span>
-            Поддержка
-            <strong>›</strong>
-          </button>
-          <button
-            type="button"
-            [class.active]="profileSection() === 'feedback'"
-            (click)="setProfileSection('feedback')"
-          >
-            <span>!</span>
-            Обратная связь
-            <strong>›</strong>
-          </button>
-          <button type="button" (click)="logout()">
-            <span>↩</span>
-            Выйти
-            <strong>›</strong>
-          </button>
-          <button class="danger-menu-item" type="button" (click)="deleteAccount()">
-            <span>×</span>
-            Удалить аккаунт
-            <strong>›</strong>
-          </button>
-        </div>
-
         @if (profileSection() === 'menu') {
-          <div class="empty-state profile-hint">
-            <h3>Выберите раздел</h3>
-            <p>Настройки дома, поддержка и обратная связь открываются из меню выше.</p>
+          <div class="profile-menu">
+            <button type="button" (click)="setProfileSection('household')">
+              <span>⌂</span>
+              Дом и участники
+              <strong>›</strong>
+            </button>
+            <button type="button" (click)="toggleNotifications()">
+              <span>◉</span>
+              Уведомления
+              <strong>›</strong>
+            </button>
+            <button type="button" (click)="restartOnboarding()">
+              <span>?</span>
+              Как пользоваться
+              <strong>›</strong>
+            </button>
+            <button type="button" (click)="setProfileSection('support')">
+              <span>✉</span>
+              Поддержка
+              <strong>›</strong>
+            </button>
+            <button type="button" (click)="setProfileSection('feedback')">
+              <span>!</span>
+              Обратная связь
+              <strong>›</strong>
+            </button>
+            <button type="button" (click)="logout()">
+              <span>↩</span>
+              Выйти
+              <strong>›</strong>
+            </button>
+            <button class="danger-menu-item" type="button" (click)="deleteAccount()">
+              <span>×</span>
+              Удалить аккаунт
+              <strong>›</strong>
+            </button>
           </div>
         }
 
         @if (profileSection() === 'support') {
+        <div class="subscreen-head">
+          <button class="back-button" type="button" (click)="setProfileSection('menu')">‹</button>
+          <div>
+            <p class="section-label">Профиль</p>
+            <h2>Поддержка</h2>
+          </div>
+        </div>
         <div class="panel support-panel">
           <div>
             <p class="section-label">Техподдержка</p>
@@ -944,6 +956,13 @@
         }
 
         @if (profileSection() === 'feedback') {
+        <div class="subscreen-head">
+          <button class="back-button" type="button" (click)="setProfileSection('menu')">‹</button>
+          <div>
+            <p class="section-label">Профиль</p>
+            <h2>Обратная связь</h2>
+          </div>
+        </div>
         <div class="panel support-panel">
           <div>
             <p class="section-label">Обратная связь</p>
@@ -969,6 +988,13 @@
         }
 
         @if (profileSection() === 'household') {
+        <div class="subscreen-head">
+          <button class="back-button" type="button" (click)="setProfileSection('menu')">‹</button>
+          <div>
+            <p class="section-label">Профиль</p>
+            <h2>Дом и участники</h2>
+          </div>
+        </div>
         <div class="panel partner-panel">
           <div>
             <p class="section-label">Группа</p>
