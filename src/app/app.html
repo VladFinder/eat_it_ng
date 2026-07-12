@@ -230,6 +230,55 @@
       </section>
     }
 
+    @if (!devMode() && activeDish()) {
+      <button
+        class="notification-backdrop"
+        type="button"
+        aria-label="Закрыть блюдо"
+        (click)="closeDish()"
+      ></button>
+      <section class="panel ticket-dialog detail-dialog" role="dialog" aria-modal="true">
+        <div class="notifications-head">
+          <div>
+            <p class="section-label">{{ activeDish()?.subtitle }}</p>
+            <h2>{{ activeDish()?.title }}</h2>
+          </div>
+          <button class="icon-button close-button" type="button" (click)="closeDish()">×</button>
+        </div>
+        <p>{{ activeDish()?.description }}</p>
+        <div class="detail-stats">
+          <span>{{ activeDish()?.badge }} совпадение</span>
+          <span>Ингредиенты дома</span>
+        </div>
+        <button class="primary-action" type="button" (click)="closeDish()">Готовить</button>
+      </section>
+    }
+
+    @if (!devMode() && activeRecipe()) {
+      <button
+        class="notification-backdrop"
+        type="button"
+        aria-label="Закрыть рецепт"
+        (click)="closeRecipe()"
+      ></button>
+      <section class="panel ticket-dialog detail-dialog" role="dialog" aria-modal="true">
+        <div class="notifications-head">
+          <div>
+            <p class="section-label">Рецепт</p>
+            <h2>{{ activeRecipe()?.title }}</h2>
+          </div>
+          <button class="icon-button close-button" type="button" (click)="closeRecipe()">×</button>
+        </div>
+        <p>{{ activeRecipe()?.time }} · {{ activeRecipe()?.mine ? 'ваш рецепт' : 'из каталога' }}</p>
+        <div class="tag-row">
+          @for (tag of activeRecipe()?.tags ?? []; track tag) {
+            <span>{{ tag }}</span>
+          }
+        </div>
+        <button class="primary-action" type="button" (click)="closeRecipe()">Открыть готовку</button>
+      </section>
+    }
+
     @if (activeDevTicket()) {
       <button
         class="notification-backdrop"
@@ -681,43 +730,27 @@
           <span>Почти готово</span>
           <span>Запланировано</span>
         </div>
-        <div class="dish-card">
+        <button class="dish-card action-card" type="button" (click)="openDish(dishIdeas[0])">
           <p class="section-label">Ужин за 25 минут</p>
           <h2>Паста с овощами</h2>
           <p>Все ингредиенты уже дома</p>
-          <button class="primary-action compact-action" type="button">Открыть блюдо</button>
-        </div>
+          <span class="primary-action compact-action">Открыть блюдо</span>
+        </button>
         <div class="section-heading compact-heading">
           <h2>Еще можно приготовить</h2>
         </div>
         <div class="list">
-          <article class="fridge-row">
-            <div class="item-thumb"></div>
-            <div class="item-content">
-              <h3>Омлет с сыром</h3>
-              <p>15 минут · 6 ингредиентов</p>
-            </div>
-            <span class="status fresh">100%</span>
-            <span class="row-chevron">›</span>
-          </article>
-          <article class="fridge-row">
-            <div class="item-thumb"></div>
-            <div class="item-content">
-              <h3>Рис с курицей</h3>
-              <p>40 минут · 8 ингредиентов</p>
-            </div>
-            <span class="status fresh">88%</span>
-            <span class="row-chevron">›</span>
-          </article>
-          <article class="fridge-row">
-            <div class="item-thumb"></div>
-            <div class="item-content">
-              <h3>Овощной салат</h3>
-              <p>10 минут · 5 ингредиентов</p>
-            </div>
-            <span class="status fresh">100%</span>
-            <span class="row-chevron">›</span>
-          </article>
+          @for (dish of dishIdeas.slice(1); track dish.title) {
+            <button class="fridge-row action-card" type="button" (click)="openDish(dish)">
+              <div class="item-thumb"></div>
+              <div class="item-content">
+                <h3>{{ dish.title }}</h3>
+                <p>{{ dish.subtitle }}</p>
+              </div>
+              <span class="status fresh">{{ dish.badge }}</span>
+              <span class="row-chevron">›</span>
+            </button>
+          }
         </div>
       </section>
     }
@@ -755,13 +788,23 @@
 
         <div class="recipe-grid">
           @for (recipe of recipeList(); track recipe.id) {
-            <article class="recipe-card">
+            <article
+              class="recipe-card action-card"
+              role="button"
+              tabindex="0"
+              (click)="openRecipe(recipe)"
+              (keydown.enter)="openRecipe(recipe)"
+            >
               <div class="recipe-thumb"></div>
               <div class="item-content">
                 <h3>{{ recipe.title }}</h3>
                 <p>{{ recipe.time }}</p>
               </div>
-              <button class="like-button" type="button" (click)="toggleRecipeLike(recipe.id)">
+              <button
+                class="like-button"
+                type="button"
+                (click)="$event.stopPropagation(); toggleRecipeLike(recipe.id)"
+              >
                 {{ recipe.liked ? '♥' : '♡' }}
               </button>
             </article>
@@ -772,7 +815,9 @@
             </div>
           }
         </div>
-        <button class="primary-action create-recipe-button" type="button">＋ Создать рецепт</button>
+        <button class="primary-action create-recipe-button" type="button" (click)="createRecipe()">
+          ＋ Создать рецепт
+        </button>
       </section>
     }
 
@@ -788,7 +833,11 @@
         </div>
 
         <div class="profile-menu">
-          <button type="button">
+          <button
+            type="button"
+            [class.active]="profileSection() === 'household'"
+            (click)="setProfileSection('household')"
+          >
             <span>⌂</span>
             Дом и участники
             <strong>›</strong>
@@ -803,9 +852,22 @@
             Как пользоваться
             <strong>›</strong>
           </button>
-          <button type="button">
+          <button
+            type="button"
+            [class.active]="profileSection() === 'support'"
+            (click)="setProfileSection('support')"
+          >
             <span>✉</span>
             Поддержка
+            <strong>›</strong>
+          </button>
+          <button
+            type="button"
+            [class.active]="profileSection() === 'feedback'"
+            (click)="setProfileSection('feedback')"
+          >
+            <span>!</span>
+            Обратная связь
             <strong>›</strong>
           </button>
           <button type="button" (click)="logout()">
@@ -820,6 +882,14 @@
           </button>
         </div>
 
+        @if (profileSection() === 'menu') {
+          <div class="empty-state profile-hint">
+            <h3>Выберите раздел</h3>
+            <p>Настройки дома, поддержка и обратная связь открываются из меню выше.</p>
+          </div>
+        }
+
+        @if (profileSection() === 'support') {
         <div class="panel support-panel">
           <div>
             <p class="section-label">Техподдержка</p>
@@ -871,7 +941,9 @@
             }
           </div>
         </div>
+        }
 
+        @if (profileSection() === 'feedback') {
         <div class="panel support-panel">
           <div>
             <p class="section-label">Обратная связь</p>
@@ -894,7 +966,9 @@
             <button class="primary-action" type="submit" [disabled]="saving()">Отправить</button>
           </form>
         </div>
+        }
 
+        @if (profileSection() === 'household') {
         <div class="panel partner-panel">
           <div>
             <p class="section-label">Группа</p>
@@ -935,6 +1009,7 @@
             <button class="primary-action" type="submit" [disabled]="saving()">Добавить</button>
           </form>
         </div>
+        }
       </section>
     }
   </main>

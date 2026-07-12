@@ -22,6 +22,7 @@ import {
 type TabId = 'fridge' | 'shopping' | 'dishes' | 'recipes' | 'profile';
 type RecipeTab = 'mine' | 'likes' | 'all';
 type AuthMode = 'login' | 'register';
+type ProfileSection = 'menu' | 'household' | 'support' | 'feedback';
 
 interface OnboardingStep {
   tab: TabId;
@@ -38,6 +39,13 @@ interface Recipe {
   tags: string[];
   liked: boolean;
   mine: boolean;
+}
+
+interface DishIdea {
+  title: string;
+  subtitle: string;
+  badge: string;
+  description: string;
 }
 
 interface SwipeState {
@@ -111,6 +119,9 @@ export class App implements OnDestroy, OnInit {
   protected readonly activeTab = signal<TabId>('fridge');
   protected readonly activeCategory = signal<ItemCategory>('products');
   protected readonly activeRecipeTab = signal<RecipeTab>('mine');
+  protected readonly profileSection = signal<ProfileSection>('menu');
+  protected readonly activeDish = signal<DishIdea | null>(null);
+  protected readonly activeRecipe = signal<Recipe | null>(null);
   protected readonly today = new Date().toISOString().slice(0, 10);
 
   protected readonly newFridgeItem = {
@@ -206,6 +217,32 @@ export class App implements OnDestroy, OnInit {
       },
     ]),
   );
+  protected readonly dishIdeas: DishIdea[] = [
+    {
+      title: 'Паста с овощами',
+      subtitle: 'Ужин за 25 минут',
+      badge: '100%',
+      description: 'Быстрое блюдо из продуктов, которые уже есть дома.',
+    },
+    {
+      title: 'Омлет с сыром',
+      subtitle: '15 минут · 6 ингредиентов',
+      badge: '100%',
+      description: 'Подходит для завтрака или легкого ужина.',
+    },
+    {
+      title: 'Рис с курицей',
+      subtitle: '40 минут · 8 ингредиентов',
+      badge: '88%',
+      description: 'Не хватает одной-двух позиций, их можно сразу добавить в покупки.',
+    },
+    {
+      title: 'Овощной салат',
+      subtitle: '10 минут · 5 ингредиентов',
+      badge: '100%',
+      description: 'Хороший вариант, чтобы использовать свежие овощи вовремя.',
+    },
+  ];
 
   protected readonly visibleFridgeItems = computed(() =>
     this.fridgeItems()
@@ -387,6 +424,9 @@ export class App implements OnDestroy, OnInit {
 
   protected setTab(tab: TabId): void {
     this.activeTab.set(tab);
+    if (tab !== 'profile') {
+      this.profileSection.set('menu');
+    }
   }
 
   protected setCategory(category: ItemCategory): void {
@@ -579,6 +619,46 @@ export class App implements OnDestroy, OnInit {
       recipes.map((recipe) => (recipe.id === id ? { ...recipe, liked: !recipe.liked } : recipe)),
     );
     this.persistRecipes();
+  }
+
+  protected openDish(dish: DishIdea): void {
+    this.activeDish.set(dish);
+  }
+
+  protected closeDish(): void {
+    this.activeDish.set(null);
+  }
+
+  protected openRecipe(recipe: Recipe): void {
+    this.activeRecipe.set(recipe);
+  }
+
+  protected closeRecipe(): void {
+    this.activeRecipe.set(null);
+  }
+
+  protected setProfileSection(section: ProfileSection): void {
+    this.profileSection.set(section);
+  }
+
+  protected createRecipe(): void {
+    const title = window.prompt('Название рецепта')?.trim();
+    if (!title) {
+      return;
+    }
+
+    const recipe: Recipe = {
+      id: this.createId(),
+      title,
+      time: '30 мин',
+      tags: ['свой рецепт'],
+      liked: false,
+      mine: true,
+    };
+    this.recipes.update((recipes) => [recipe, ...recipes]);
+    this.activeRecipeTab.set('mine');
+    this.persistRecipes();
+    this.openRecipe(recipe);
   }
 
   protected async saveGroupName(): Promise<void> {

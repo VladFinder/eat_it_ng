@@ -118,6 +118,8 @@ h3 {
 
 .auth-tabs button,
 .tabs-strip button {
+  display: grid;
+  place-items: center;
   min-height: 38px;
   border: 0;
   border-radius: 14px;
@@ -258,6 +260,18 @@ button:active {
   background: var(--surface);
 }
 
+.action-card {
+  width: 100%;
+  border: 1px solid var(--border);
+  color: inherit;
+  text-align: left;
+}
+
+.action-card:focus-visible {
+  outline: 3px solid rgba(31, 100, 73, 0.22);
+  outline-offset: 2px;
+}
+
 .panel {
   display: grid;
   gap: 14px;
@@ -289,6 +303,9 @@ button:active {
 .section-switcher button,
 .filter-pills span,
 .filter-pills button {
+  display: inline-grid;
+  place-items: center;
+  height: 34px;
   min-height: 34px;
   border: 1px solid var(--border);
   border-radius: 17px;
@@ -297,6 +314,9 @@ button:active {
   padding: 0 12px;
   font-size: 12px;
   font-weight: 800;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
 }
 
 .section-switcher button.active,
@@ -375,12 +395,17 @@ textarea {
 .like-button,
 .move-button,
 .row-actions button,
+.dish-card .primary-action,
 .oauth-section button {
+  display: inline-grid;
+  place-items: center;
   min-height: 48px;
   border: 0;
   border-radius: 14px;
   padding: 0 14px;
   font-weight: 800;
+  line-height: 1.1;
+  text-align: center;
 }
 
 .primary-action {
@@ -558,6 +583,7 @@ textarea {
   border-radius: 10px;
   padding: 0 10px;
   font-size: 12px;
+  line-height: 1;
 }
 
 .row-chevron,
@@ -622,6 +648,10 @@ textarea {
   background:
     linear-gradient(135deg, rgba(31, 100, 73, 0.14), transparent 48%),
     var(--surface);
+}
+
+.dish-card.action-card {
+  border-color: var(--border);
 }
 
 .dish-card h2 {
@@ -694,7 +724,22 @@ textarea {
   font-size: 18px;
 }
 
-.profile-menu button,
+.profile-menu button {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 14px;
+  min-height: 58px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface);
+  color: var(--text);
+  padding: 0 16px;
+  text-align: left;
+  font-weight: 800;
+  line-height: 1;
+}
+
 .member-row,
 .support-row,
 .notification-row {
@@ -713,17 +758,63 @@ textarea {
 }
 
 .profile-menu button span {
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
   color: var(--primary);
-  font-size: 20px;
+  font-size: 18px;
+  line-height: 1;
 }
 
 .profile-menu button strong {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 24px;
   color: var(--muted);
-  font-size: 24px;
+  font-size: 22px;
+  line-height: 1;
 }
 
 .profile-menu .danger-menu-item {
   color: var(--danger);
+}
+
+.profile-menu button.active {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.profile-hint {
+  padding-block: 22px;
+}
+
+.detail-dialog {
+  gap: 16px;
+}
+
+.detail-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.detail-stats span,
+.tag-row span {
+  border-radius: 999px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .account-actions {
