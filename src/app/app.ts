@@ -228,6 +228,44 @@ export class App implements OnDestroy, OnInit {
     const email = user?.email?.trim().toLowerCase();
     return Boolean(user?.isAdmin || (email && DEV_ALLOWED_EMAILS.has(email)));
   });
+  protected readonly activeDevSectionLabel = computed(
+    () => this.devMenu.find((item) => item.id === this.activeDevSection())?.label ?? 'Оперативная панель',
+  );
+  protected readonly devLastUpdated = signal('');
+  protected readonly devUnansweredTickets = computed(
+    () =>
+      this.devTickets().filter(
+        (ticket) => ticket.status !== 'closed' && ticket.lastMessage?.authorRole !== 'support',
+      ).length,
+  );
+  protected readonly devFeatureRows = computed(() => {
+    const summary = this.devSummary();
+    const rows = [
+      { label: 'Пользователи', count: summary?.users.total ?? 0 },
+      { label: 'Дома', count: summary?.households.total ?? 0 },
+      { label: 'Продукты дома', count: summary?.usage.fridgeProducts ?? 0 },
+      { label: 'Бытовая химия дома', count: summary?.usage.fridgeHousehold ?? 0 },
+      { label: 'Покупки', count: summary?.usage.shoppingItems ?? 0 },
+      { label: 'Обращения в поддержку', count: summary?.support.openTickets ?? 0 },
+      { label: 'Фидбек', count: summary?.support.openFeedback ?? 0 },
+    ];
+    const max = Math.max(...rows.map((row) => row.count), 1);
+    return rows.map((row) => ({ ...row, width: `${Math.max((row.count / max) * 100, 6)}%` }));
+  });
+  protected readonly devActivityMax = computed(() => {
+    const days = this.devSummary()?.activity.days ?? [];
+    return Math.max(
+      ...days.flatMap((day) => [
+        day.users,
+        day.sessions,
+        day.fridgeItems,
+        day.shoppingItems,
+        day.supportTickets,
+        day.feedback,
+      ]),
+      1,
+    );
+  });
   protected readonly fridgeItems = signal<FridgeItem[]>([]);
   protected readonly shoppingItems = signal<ShoppingItem[]>([]);
   protected readonly recipes = signal<Recipe[]>(
@@ -1069,6 +1107,10 @@ export class App implements OnDestroy, OnInit {
     return date.toLocaleDateString('ru-RU', { day: '2-digit', month: 'short' });
   }
 
+  protected devActivityHeight(value: number): string {
+    return `${Math.max((value / this.devActivityMax()) * 100, value > 0 ? 8 : 2)}%`;
+  }
+
   private async loadState(): Promise<void> {
     this.loading.set(true);
     this.apiError.set('');
@@ -1134,6 +1176,7 @@ export class App implements OnDestroy, OnInit {
     this.devSummary.set(summary);
     this.devTickets.set(tickets.tickets);
     this.devFeedback.set(feedback.feedback);
+    this.devLastUpdated.set(new Date().toLocaleTimeString('ru-RU'));
   }
 
   private async deleteFridgeItem(id: string): Promise<void> {

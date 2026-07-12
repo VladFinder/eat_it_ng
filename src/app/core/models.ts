@@ -128,10 +128,53 @@ export interface DevSummary {
   usage: {
     fridgeItems: number;
     shoppingItems: number;
+    fridgeProducts: number;
+    fridgeHousehold: number;
+    shoppingProducts: number;
+    shoppingHousehold: number;
+    checkedShoppingItems: number;
+    expiringFridgeItems: number;
   };
   support: {
     openTickets: number;
     closedTickets: number;
     openFeedback: number;
+    closedFeedback: number;
+    newTicketsToday: number;
+    newFeedbackToday: number;
   };
+  households: {
+    total: number;
+    pendingInvitations: number;
+  };
+  notifications: {
+    unread: number;
+  };
+  sessions: {
+    active: number;
+    onlineWindowMinutes: number;
+  };
+  today: {
+    newUsers: number;
+    newTickets: number;
+    newFeedback: number;
+  };
+  activity: {
+    days: Array<{
+      date: string;
+      users: number;
+      sessions: number;
+      fridgeItems: number;
+      shoppingItems: number;
+      supportTickets: number;
+      feedback: number;
+    }>;
+  };
+  events: Array<{
+    id: string;
+    type: string;
+    title: string;
+    body: string;
+    createdAt: string;
+  }>;
 }

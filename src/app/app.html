@@ -509,122 +509,251 @@
           <section class="dev-main">
             <header class="dev-topbar">
               <div>
-                <h1>Оперативная панель</h1>
-                <p>Состояние продукта в реальном времени · обновлено 12 секунд назад</p>
+                <h1>{{ activeDevSectionLabel() }}</h1>
+                <p>
+                  Реальные данные приложения · обновлено
+                  {{ devLastUpdated() || 'после загрузки' }}
+                </p>
               </div>
               <div class="dev-controls">
-                <button type="button">Последние 7 дней <span>⌄</span></button>
+                <button type="button">Последние 7 дней</button>
                 <button class="dev-refresh" type="button" (click)="retryLoad()">↻ Обновить</button>
               </div>
             </header>
 
-            <article class="dev-critical-alert">
-              <strong>ВАЖНО</strong>
-              <span>
-                <b>Рост ошибок синхронизации Android на 38%</b>
-                <small>Началось 24 минуты назад · затронуто 17 пользователей</small>
-              </span>
-              <button type="button" (click)="setDevSection('events')">Открыть инцидент</button>
-            </article>
+            @if ((devSummary()?.support?.openTickets || 0) > 0) {
+              <article class="dev-critical-alert">
+                <strong>LIVE</strong>
+                <span>
+                  <b>{{ devSummary()?.support?.openTickets }} открытых обращений в поддержку</b>
+                  <small>{{ devUnansweredTickets() }} без ответа · {{ devSummary()?.support?.newTicketsToday || 0 }} новых сегодня</small>
+                </span>
+                <button type="button" (click)="setDevSection('support')">Открыть очередь</button>
+              </article>
+            } @else {
+              <article class="dev-ok-alert">
+                <strong>●</strong>
+                <span>
+                  <b>Критичных обращений нет</b>
+                  <small>Состояние считается по текущим данным приложения</small>
+                </span>
+              </article>
+            }
 
             <section class="dev-metrics" aria-label="Ключевые метрики">
               <article class="dev-metric-card">
                 <span>Сейчас онлайн</span>
                 <strong>{{ devSummary()?.users?.online || 0 }}</strong>
-                <p><b>+18%</b> к прошлому периоду</p>
+                <p><b>{{ devSummary()?.sessions?.active || 0 }}</b> активных сессий</p>
               </article>
               <article class="dev-metric-card">
-                <span>Активные за день</span>
+                <span>Пользователи</span>
                 <strong>{{ devSummary()?.users?.total || 0 }}</strong>
-                <p><b>+11%</b> к прошлому периоду</p>
+                <p><b>{{ devSummary()?.today?.newUsers || 0 }}</b> новых сегодня</p>
               </article>
               <article class="dev-metric-card">
-                <span>Сессии сегодня</span>
+                <span>Записи в приложении</span>
                 <strong>{{
                   (devSummary()?.usage?.fridgeItems || 0) +
                     (devSummary()?.usage?.shoppingItems || 0)
                 }}</strong>
-                <p><b class="blue">+7%</b> к прошлому периоду</p>
+                <p><b class="blue">{{ devSummary()?.usage?.expiringFridgeItems || 0 }}</b> скоро истекает</p>
               </article>
               <article class="dev-metric-card">
-                <span>Новых обращений</span>
+                <span>Открытые обращения</span>
                 <strong>{{ devSummary()?.support?.openTickets || 0 }}</strong>
-                <p><b class="red">+31%</b> к прошлому периоду</p>
+                <p><b class="red">{{ devSummary()?.support?.openFeedback || 0 }}</b> фидбек</p>
               </article>
             </section>
 
-            <section class="dev-grid usage">
-              <article class="dev-card dev-activity">
-                <div class="dev-card-head">
-                  <div>
-                    <h2>Активность пользователей</h2>
-                    <p>DAU, сессии и действия по часам</p>
-                  </div>
-                </div>
-                <div class="dev-legend">
-                  <span class="green">● Активные</span>
-                  <span class="blue">● Сессии</span>
-                </div>
-                <div class="dev-chart" aria-hidden="true">
-                  <span></span><span></span><span></span><span></span><span></span>
-                  <i style="--x: 8%; --y: 60%"></i>
-                  <i style="--x: 20%; --y: 48%"></i>
-                  <i style="--x: 35%; --y: 72%"></i>
-                  <i style="--x: 48%; --y: 40%"></i>
-                  <i style="--x: 62%; --y: 55%"></i>
-                  <i style="--x: 76%; --y: 28%"></i>
-                  <i style="--x: 90%; --y: 38%"></i>
-                </div>
-              </article>
+            @switch (activeDevSection()) {
+              @case ('overview') {
+                <section class="dev-grid usage">
+                  <article class="dev-card dev-activity">
+                    <div class="dev-card-head">
+                      <div>
+                        <h2>Активность за 7 дней</h2>
+                        <p>Новые записи, сессии, тикеты и фидбек</p>
+                      </div>
+                    </div>
+                    <div class="dev-legend">
+                      <span class="green">● Пользователи</span>
+                      <span class="blue">● Сессии</span>
+                    </div>
+                    <div class="dev-bars" aria-label="Активность за 7 дней">
+                      @for (day of devSummary()?.activity?.days || []; track day.date) {
+                        <div>
+                          <span [style.height]="devActivityHeight(day.users)"></span>
+                          <span class="blue" [style.height]="devActivityHeight(day.sessions)"></span>
+                          <small>{{ day.date.slice(5) }}</small>
+                        </div>
+                      }
+                    </div>
+                  </article>
 
-              <article class="dev-card dev-online">
-                <div class="dev-card-head">
-                  <div>
-                    <h2>Онлайн сейчас</h2>
-                    <p>Последние 5 минут</p>
-                  </div>
-                </div>
-                <strong>{{ devSummary()?.users?.online || 0 }}</strong>
-                <span class="dev-positive">+18%</span>
-                <p>Пиковое значение сегодня: {{ (devSummary()?.users?.online || 0) + 46 }}</p>
-                <div class="dev-platform"><span>Android</span><b>73</b><em>57%</em></div>
-                <div class="dev-platform web"><span>Web</span><b>42</b><em>33%</em></div>
-                <div class="dev-platform ios"><span>iOS PWA</span><b>13</b><em>10%</em></div>
-              </article>
-            </section>
+                  <article class="dev-card dev-online">
+                    <div class="dev-card-head">
+                      <div>
+                        <h2>Онлайн сейчас</h2>
+                        <p>Последние {{ devSummary()?.sessions?.onlineWindowMinutes || 5 }} минут</p>
+                      </div>
+                    </div>
+                    <strong>{{ devSummary()?.users?.online || 0 }}</strong>
+                    <span class="dev-positive">{{ devSummary()?.sessions?.active || 0 }} сессий</span>
+                    <div class="dev-platform"><span>Всего пользователей</span><b>{{ devSummary()?.users?.total || 0 }}</b></div>
+                    <div class="dev-platform web"><span>Домов</span><b>{{ devSummary()?.households?.total || 0 }}</b></div>
+                    <div class="dev-platform ios"><span>Ожидают приглашения</span><b>{{ devSummary()?.households?.pendingInvitations || 0 }}</b></div>
+                  </article>
+                </section>
 
-            <section class="dev-grid operations">
+                <section class="dev-grid operations">
+                  <ng-container *ngTemplateOutlet="devUsageCard"></ng-container>
+                  <ng-container *ngTemplateOutlet="devSupportCard"></ng-container>
+                </section>
+
+                <section class="dev-grid feedback">
+                  <ng-container *ngTemplateOutlet="devFeedbackCard"></ng-container>
+                  <ng-container *ngTemplateOutlet="devHealthCard"></ng-container>
+                </section>
+              }
+              @case ('users') {
+                <section class="dev-grid operations">
+                  <article class="dev-card">
+                    <div class="dev-card-head">
+                      <div>
+                        <h2>Последние пользователи</h2>
+                        <p>Аккаунты из реальной базы приложения</p>
+                      </div>
+                    </div>
+                    <div class="dev-user-list">
+                      @for (user of devSummary()?.users?.recent || []; track user.id) {
+                        <article>
+                          <b>{{ user.displayName }}</b>
+                          <span>{{ user.email }}</span>
+                          <small>{{ user.authProvider }}</small>
+                        </article>
+                      } @empty {
+                        <div class="dev-empty">Пользователей пока нет</div>
+                      }
+                    </div>
+                  </article>
+                  <ng-container *ngTemplateOutlet="devHealthCard"></ng-container>
+                </section>
+              }
+              @case ('usage') {
+                <section class="dev-grid operations">
+                  <ng-container *ngTemplateOutlet="devUsageCard"></ng-container>
+                  <article class="dev-card">
+                    <div class="dev-card-head">
+                      <div>
+                        <h2>Состав данных</h2>
+                        <p>Категории внутри холодильника и покупок</p>
+                      </div>
+                    </div>
+                    <div class="dev-health"><span></span><p>Продукты дома</p><b>{{ devSummary()?.usage?.fridgeProducts || 0 }}</b></div>
+                    <div class="dev-health"><span></span><p>Бытовая химия дома</p><b>{{ devSummary()?.usage?.fridgeHousehold || 0 }}</b></div>
+                    <div class="dev-health"><span></span><p>Продукты в покупках</p><b>{{ devSummary()?.usage?.shoppingProducts || 0 }}</b></div>
+                    <div class="dev-health"><span></span><p>Бытовая химия в покупках</p><b>{{ devSummary()?.usage?.shoppingHousehold || 0 }}</b></div>
+                    <div class="dev-health warn"><span></span><p>Куплено, но не очищено</p><b>{{ devSummary()?.usage?.checkedShoppingItems || 0 }}</b></div>
+                  </article>
+                </section>
+              }
+              @case ('features') {
+                <section class="dev-grid operations">
+                  <ng-container *ngTemplateOutlet="devUsageCard"></ng-container>
+                  <ng-container *ngTemplateOutlet="devEventsCard"></ng-container>
+                </section>
+              }
+              @case ('support') {
+                <section class="dev-grid operations single">
+                  <ng-container *ngTemplateOutlet="devSupportCard"></ng-container>
+                </section>
+              }
+              @case ('feedback') {
+                <section class="dev-grid operations single">
+                  <ng-container *ngTemplateOutlet="devFeedbackCard"></ng-container>
+                </section>
+              }
+              @case ('events') {
+                <section class="dev-grid operations single">
+                  <ng-container *ngTemplateOutlet="devEventsCard"></ng-container>
+                </section>
+              }
+              @case ('infra') {
+                <section class="dev-grid operations">
+                  <ng-container *ngTemplateOutlet="devHealthCard"></ng-container>
+                  <article class="dev-card">
+                    <div class="dev-card-head">
+                      <div>
+                        <h2>Системные очереди</h2>
+                        <p>Данные из текущих таблиц приложения</p>
+                      </div>
+                    </div>
+                    <div class="dev-health warn"><span></span><p>Непрочитанные уведомления</p><b>{{ devSummary()?.notifications?.unread || 0 }}</b></div>
+                    <div class="dev-health warn"><span></span><p>Открытый фидбек</p><b>{{ devSummary()?.support?.openFeedback || 0 }}</b></div>
+                    <div class="dev-health"><span></span><p>Закрытый фидбек</p><b>{{ devSummary()?.support?.closedFeedback || 0 }}</b></div>
+                  </article>
+                </section>
+              }
+              @case ('experiments') {
+                <section class="dev-grid operations single">
+                  <article class="dev-card">
+                    <div class="dev-card-head">
+                      <div>
+                        <h2>Эксперименты</h2>
+                        <p>В приложении пока нет сущности A/B экспериментов</p>
+                      </div>
+                    </div>
+                    <div class="dev-empty">Активных экспериментов нет. Здесь не показываются тестовые данные.</div>
+                  </article>
+                </section>
+              }
+            }
+
+            <footer class="dev-live">
+              <b>● LIVE</b>
+              @for (event of (devSummary()?.events || []).slice(0, 3); track event.id) {
+                <span>{{ notificationTime(event.createdAt) }} — {{ event.title }}</span>
+              } @empty {
+                <span>Событий за последние 7 дней нет</span>
+              }
+            </footer>
+
+            <ng-template #devUsageCard>
               <article class="dev-card">
                 <div class="dev-card-head">
                   <div>
-                    <h2>Самые популярные функции</h2>
-                    <p>Действия за последние 7 дней</p>
+                    <h2>Популярные рабочие области</h2>
+                    <p>Реальные счётчики объектов приложения</p>
                   </div>
                 </div>
                 <div class="dev-feature-list">
-                  <div class="dev-feature"><span>Добавление продукта</span><b>8421</b><i style="--w: 92%"></i></div>
-                  <div class="dev-feature"><span>Список покупок</span><b>7168</b><i style="--w: 78%"></i></div>
-                  <div class="dev-feature"><span>Просмотр рецептов</span><b>4894</b><i style="--w: 54%"></i></div>
-                  <div class="dev-feature"><span>Списание продукта</span><b>3115</b><i style="--w: 34%"></i></div>
-                  <div class="dev-feature"><span>Совместный дом</span><b>1842</b><i style="--w: 22%"></i></div>
-                  <div class="dev-feature"><span>Обращение в поддержку</span><b>911</b><i style="--w: 12%"></i></div>
+                  @for (row of devFeatureRows(); track row.label) {
+                    <div class="dev-feature">
+                      <span>{{ row.label }}</span>
+                      <b>{{ row.count }}</b>
+                      <i [style.--w]="row.width"></i>
+                    </div>
+                  }
                 </div>
               </article>
+            </ng-template>
 
+            <ng-template #devSupportCard>
               <article class="dev-card">
                 <div class="dev-card-head">
                   <div>
                     <h2>Очередь поддержки</h2>
-                    <p>Новые и просроченные обращения</p>
+                    <p>Реальные обращения пользователей</p>
                   </div>
                 </div>
                 <div class="dev-filter-row">
-                  <button type="button" class="active">Все {{ devSummary()?.support?.openTickets || 0 }}</button>
-                  <button type="button">Критичные 4</button>
-                  <button type="button">Без ответа 9</button>
+                  <button type="button" class="active">Открыто {{ devSummary()?.support?.openTickets || 0 }}</button>
+                  <button type="button">Без ответа {{ devUnansweredTickets() }}</button>
+                  <button type="button">Закрыто {{ devSummary()?.support?.closedTickets || 0 }}</button>
                 </div>
                 <div class="dev-ticket-list">
-                  @for (ticket of devTickets().slice(0, 4); track ticket.id) {
+                  @for (ticket of devTickets(); track ticket.id) {
                     <button
                       class="dev-ticket"
                       type="button"
@@ -633,7 +762,7 @@
                     >
                       <span>
                         <small>#{{ ticket.id.slice(0, 5) }}</small>
-                        <b>{{ ticket.status === 'closed' ? 'Закрыт' : 'Критично' }}</b>
+                        <b>{{ ticket.status === 'closed' ? 'Закрыт' : ticket.lastMessage?.authorRole === 'support' ? 'Есть ответ' : 'Без ответа' }}</b>
                       </span>
                       <strong>{{ ticket.subject }}</strong>
                       <em>{{ ticket.user?.email || 'Пользователь' }} · {{ notificationTime(ticket.updatedAt) }}</em>
@@ -643,55 +772,78 @@
                   }
                 </div>
               </article>
-            </section>
+            </ng-template>
 
-            <section class="dev-grid feedback">
+            <ng-template #devFeedbackCard>
               <article class="dev-card">
                 <div class="dev-card-head">
                   <div>
-                    <h2>Последний фидбек</h2>
-                    <p>Что пользователи говорят прямо сейчас</p>
+                    <h2>Фидбек</h2>
+                    <p>Идеи, баги и сообщения из приложения</p>
                   </div>
                 </div>
-                <div class="dev-score"><strong>4,6</strong><span>★★★★★</span><b>NPS 54</b></div>
+                <div class="dev-score">
+                  <strong>{{ devSummary()?.support?.openFeedback || 0 }}</strong>
+                  <span>открыто</span>
+                  <b>{{ devSummary()?.support?.newFeedbackToday || 0 }} сегодня</b>
+                </div>
                 <div class="dev-feedback-list">
-                  @for (item of devFeedback().slice(0, 4); track item.id) {
+                  @for (item of devFeedback(); track item.id) {
                     <article [class.need-answer]="item.type === 'bug'">
-                      <span>{{ item.type === 'bug' ? '★☆☆☆☆' : '★★★★★' }} <b>{{ item.status === 'closed' ? 'Готово' : 'Новый' }}</b></span>
+                      <span>{{ item.type }} <b>{{ item.status === 'closed' ? 'Готово' : 'Новый' }}</b></span>
                       <strong>«{{ item.body }}»</strong>
                       <p>{{ item.user?.email || 'Пользователь' }} · {{ notificationTime(item.createdAt) }}</p>
+                      @if (item.status !== 'closed') {
+                        <button type="button" class="dev-inline-action" (click)="closeDevFeedback(item)">
+                          Обработано
+                        </button>
+                      }
                     </article>
                   } @empty {
                     <div class="dev-empty">Нового фидбека нет</div>
                   }
                 </div>
               </article>
+            </ng-template>
 
+            <ng-template #devHealthCard>
               <article class="dev-card">
                 <div class="dev-card-head">
                   <div>
-                    <h2>Здоровье системы</h2>
-                    <p>Технические показатели</p>
+                    <h2>Здоровье данных</h2>
+                    <p>Считается по состоянию приложения</p>
                   </div>
                 </div>
-                <div class="dev-health"><span></span><p>API uptime</p><b>99,98%</b></div>
-                <div class="dev-health"><span></span><p>Средний ответ API</p><b>184 мс</b></div>
-                <div class="dev-health warn"><span></span><p>Ошибки 5xx</p><b>0,31%</b></div>
-                <div class="dev-health warn"><span></span><p>Успешная синхронизация</p><b>96,2%</b></div>
-                <div class="dev-health"><span></span><p>Размер очереди jobs</p><b>12</b></div>
-                <div class="dev-health"><span></span><p>Свободное место БД</p><b>68%</b></div>
-                <button class="dev-incident" type="button" (click)="setDevSection('events')">
-                  + Создать инцидент
-                </button>
+                <div class="dev-health"><span></span><p>Активные сессии</p><b>{{ devSummary()?.sessions?.active || 0 }}</b></div>
+                <div class="dev-health"><span></span><p>Онлайн за 5 минут</p><b>{{ devSummary()?.users?.online || 0 }}</b></div>
+                <div class="dev-health warn"><span></span><p>Скоро истекают продукты</p><b>{{ devSummary()?.usage?.expiringFridgeItems || 0 }}</b></div>
+                <div class="dev-health warn"><span></span><p>Непрочитанные уведомления</p><b>{{ devSummary()?.notifications?.unread || 0 }}</b></div>
+                <div class="dev-health"><span></span><p>Дома</p><b>{{ devSummary()?.households?.total || 0 }}</b></div>
+                <div class="dev-health"><span></span><p>Приглашения ожидают</p><b>{{ devSummary()?.households?.pendingInvitations || 0 }}</b></div>
               </article>
-            </section>
+            </ng-template>
 
-            <footer class="dev-live">
-              <b>● LIVE</b>
-              <span>12:42:18 — пользователь завершил регистрацию</span>
-              <span>12:42:11 — создано обращение #1842</span>
-              <span>12:41:56 — ошибка sync.retry</span>
-            </footer>
+            <ng-template #devEventsCard>
+              <article class="dev-card">
+                <div class="dev-card-head">
+                  <div>
+                    <h2>События</h2>
+                    <p>Последние пользователи, обращения и фидбек</p>
+                  </div>
+                </div>
+                <div class="dev-event-list">
+                  @for (event of devSummary()?.events || []; track event.id) {
+                    <article>
+                      <b>{{ event.title }}</b>
+                      <span>{{ event.body }}</span>
+                      <small>{{ notificationTime(event.createdAt) }}</small>
+                    </article>
+                  } @empty {
+                    <div class="dev-empty">Событий за последние 7 дней нет</div>
+                  }
+                </div>
+              </article>
+            </ng-template>
           </section>
         }
       </section>

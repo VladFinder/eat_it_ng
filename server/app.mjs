@@ -182,6 +182,41 @@ function serializeFeedbackItem(item) {
   };
 }
 
+function dayKey(date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function emptyDailyBuckets(days = 7) {
+  const buckets = [];
+  const start = new Date();
+  start.setUTCHours(0, 0, 0, 0);
+  start.setUTCDate(start.getUTCDate() - (days - 1));
+  for (let index = 0; index < days; index += 1) {
+    const date = new Date(start);
+    date.setUTCDate(start.getUTCDate() + index);
+    buckets.push({
+      date: dayKey(date),
+      users: 0,
+      sessions: 0,
+      fridgeItems: 0,
+      shoppingItems: 0,
+      supportTickets: 0,
+      feedback: 0,
+    });
+  }
+  return buckets;
+}
+
+function countByDay(items, buckets, field) {
+  const byDate = new Map(buckets.map((bucket) => [bucket.date, bucket]));
+  for (const item of items) {
+    const bucket = byDate.get(dayKey(item.createdAt));
+    if (bucket) {
+      bucket[field] += 1;
+    }
+  }
+}
+
 async function getHousehold(prisma, householdId) {
   const household = await prisma.household.findUnique({
     where: { id: householdId },
@@ -679,16 +714,43 @@ export function createApiServer(prisma, logger = console) {
 
       if (method === 'GET' && url.pathname === '/api/dev/summary') {
         requireAdmin(user);
-        const since = new Date(Date.now() - 5 * 60 * 1000);
+        const now = new Date();
+        const since = new Date(now.getTime() - 5 * 60 * 1000);
+        const dayStart = new Date(now);
+        dayStart.setUTCHours(0, 0, 0, 0);
+        const sevenDaysAgo = new Date(dayStart);
+        sevenDaysAgo.setUTCDate(dayStart.getUTCDate() - 6);
+        const expiringSoon = new Date(now);
+        expiringSoon.setUTCDate(expiringSoon.getUTCDate() + 2);
         const [
           userCount,
           onlineUsers,
+          activeSessions,
+          householdCount,
           fridgeItems,
+          fridgeProducts,
+          fridgeHousehold,
+          expiringFridgeItems,
           shoppingItems,
+          shoppingProducts,
+          shoppingHousehold,
+          checkedShoppingItems,
           openTickets,
           closedTickets,
           feedbackCount,
+          closedFeedback,
+          unreadNotifications,
+          pendingInvitations,
+          newUsersToday,
+          newTicketsToday,
+          newFeedbackToday,
           recentUsers,
+          recentUserActivity,
+          recentSessions,
+          recentFridgeItems,
+          recentShoppingItems,
+          recentTickets,
+          recentFeedback,
         ] = await Promise.all([
           prisma.user.count(),
           prisma.session
@@ -697,17 +759,120 @@ export function createApiServer(prisma, logger = console) {
               distinct: ['userId'],
             })
             .then((sessions) => sessions.length),
+          prisma.session.count({ where: { expiresAt: { gt: now } } }),
+          prisma.household.count(),
           prisma.fridgeItem.count(),
+          prisma.fridgeItem.count({ where: { category: 'products' } }),
+          prisma.fridgeItem.count({ where: { category: 'household' } }),
+          prisma.fridgeItem.count({ where: { expiresAt: { lte: expiringSoon } } }),
           prisma.shoppingItem.count(),
+          prisma.shoppingItem.count({ where: { category: 'products' } }),
+          prisma.shoppingItem.count({ where: { category: 'household' } }),
+          prisma.shoppingItem.count({ where: { checked: true } }),
           prisma.supportTicket.count({ where: { status: 'open' } }),
           prisma.supportTicket.count({ where: { status: 'closed' } }),
           prisma.feedbackItem.count({ where: { status: 'open' } }),
+          prisma.feedbackItem.count({ where: { status: 'closed' } }),
+          prisma.notification.count({ where: { readAt: null } }),
+          prisma.householdInvitation.count({ where: { status: 'pending' } }),
+          prisma.user.count({ where: { createdAt: { gte: dayStart } } }),
+          prisma.supportTicket.count({ where: { createdAt: { gte: dayStart } } }),
+          prisma.feedbackItem.count({ where: { createdAt: { gte: dayStart } } }),
           prisma.user.findMany({ orderBy: { createdAt: 'desc' }, take: 5 }),
+          prisma.user.findMany({
+            where: { createdAt: { gte: sevenDaysAgo } },
+            select: { createdAt: true },
+            take: 500,
+          }),
+          prisma.session.findMany({
+            where: { createdAt: { gte: sevenDaysAgo } },
+            select: { createdAt: true },
+            take: 500,
+          }),
+          prisma.fridgeItem.findMany({
+            where: { createdAt: { gte: sevenDaysAgo } },
+            select: { createdAt: true },
+            take: 500,
+          }),
+          prisma.shoppingItem.findMany({
+            where: { createdAt: { gte: sevenDaysAgo } },
+            select: { createdAt: true },
+            take: 500,
+          }),
+          prisma.supportTicket.findMany({
+            where: { createdAt: { gte: sevenDaysAgo } },
+            orderBy: { createdAt: 'desc' },
+            include: { user: true, messages: { orderBy: { createdAt: 'desc' }, take: 1 } },
+            take: 20,
+          }),
+          prisma.feedbackItem.findMany({
+            where: { createdAt: { gte: sevenDaysAgo } },
+            orderBy: { createdAt: 'desc' },
+            include: { user: true },
+            take: 20,
+          }),
         ]);
+
+        const daily = emptyDailyBuckets(7);
+        countByDay(recentUserActivity, daily, 'users');
+        countByDay(recentSessions, daily, 'sessions');
+        countByDay(recentFridgeItems, daily, 'fridgeItems');
+        countByDay(recentShoppingItems, daily, 'shoppingItems');
+        countByDay(recentTickets, daily, 'supportTickets');
+        countByDay(recentFeedback, daily, 'feedback');
+
+        const events = [
+          ...recentUsers.map((item) => ({
+            id: `user-${item.id}`,
+            type: 'user',
+            title: 'Новый пользователь',
+            body: `${item.displayName} · ${item.email}`,
+            createdAt: item.createdAt.toISOString(),
+          })),
+          ...recentTickets.map((item) => ({
+            id: `ticket-${item.id}`,
+            type: 'support',
+            title: 'Обращение в поддержку',
+            body: `${item.subject} · ${item.user?.email ?? 'пользователь'}`,
+            createdAt: item.createdAt.toISOString(),
+          })),
+          ...recentFeedback.map((item) => ({
+            id: `feedback-${item.id}`,
+            type: 'feedback',
+            title: item.type === 'bug' ? 'Сообщение о баге' : 'Новый фидбек',
+            body: `${item.body} · ${item.user?.email ?? 'пользователь'}`,
+            createdAt: item.createdAt.toISOString(),
+          })),
+        ]
+          .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+          .slice(0, 12);
+
         json(response, 200, {
           users: { total: userCount, online: onlineUsers, recent: recentUsers.map(serializeUser) },
-          usage: { fridgeItems, shoppingItems },
-          support: { openTickets, closedTickets, openFeedback: feedbackCount },
+          usage: {
+            fridgeItems,
+            shoppingItems,
+            fridgeProducts,
+            fridgeHousehold,
+            shoppingProducts,
+            shoppingHousehold,
+            checkedShoppingItems,
+            expiringFridgeItems,
+          },
+          support: {
+            openTickets,
+            closedTickets,
+            openFeedback: feedbackCount,
+            closedFeedback,
+            newTicketsToday,
+            newFeedbackToday,
+          },
+          households: { total: householdCount, pendingInvitations },
+          notifications: { unread: unreadNotifications },
+          sessions: { active: activeSessions, onlineWindowMinutes: 5 },
+          today: { newUsers: newUsersToday, newTickets: newTicketsToday, newFeedback: newFeedbackToday },
+          activity: { days: daily },
+          events,
         });
         return;
       }
