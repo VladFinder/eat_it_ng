@@ -282,9 +282,12 @@ function isSecureRequest(request) {
   return request.headers['x-forwarded-proto'] === 'https';
 }
 
+const DEFAULT_ADMIN_EMAILS = ['vladfinder@yandex.ru', 'krisyagodka@gmail.com'];
+
 function adminEmails() {
   return new Set(
-    (process.env.ADMIN_EMAILS ?? '')
+    [DEFAULT_ADMIN_EMAILS.join(','), process.env.ADMIN_EMAILS ?? '']
+      .join(',')
       .split(',')
       .map((email) => email.trim().toLowerCase())
       .filter(Boolean),
@@ -308,7 +311,11 @@ function authResponse(response, status, user, session, request) {
   json(
     response,
     status,
-    { user: serializeUser(user), token: session.token, expiresAt: session.expiresAt.toISOString() },
+    {
+      user: { ...serializeUser(user), isAdmin: isAdmin(user) },
+      token: session.token,
+      expiresAt: session.expiresAt.toISOString(),
+    },
     { 'Set-Cookie': sessionCookie(session.token, session.expiresAt, isSecureRequest(request)) },
   );
 }

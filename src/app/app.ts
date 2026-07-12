@@ -23,6 +23,16 @@ type TabId = 'fridge' | 'shopping' | 'dishes' | 'recipes' | 'profile';
 type RecipeTab = 'mine' | 'likes' | 'all';
 type AuthMode = 'login' | 'register';
 type ProfileSection = 'menu' | 'household' | 'notifications' | 'support' | 'feedback';
+type DevSection =
+  | 'overview'
+  | 'users'
+  | 'usage'
+  | 'features'
+  | 'support'
+  | 'feedback'
+  | 'events'
+  | 'infra'
+  | 'experiments';
 
 interface OnboardingStep {
   tab: TabId;
@@ -60,6 +70,8 @@ const STORAGE_KEYS = {
   notificationsEnabled: 'eat-it.notifications.enabled',
   clearedNotifications: 'eat-it.notifications.cleared',
 };
+
+const DEV_ALLOWED_EMAILS = new Set(['vladfinder@yandex.ru', 'krisyagodka@gmail.com']);
 
 const ONBOARDING_STEPS: OnboardingStep[] = [
   {
@@ -115,6 +127,17 @@ export class App implements OnDestroy, OnInit {
     { id: 'dishes', label: 'Блюда', icon: 'spark' },
     { id: 'recipes', label: 'Рецепты', icon: 'book' },
     { id: 'profile', label: 'Профиль', icon: 'user' },
+  ];
+  protected readonly devMenu: { id: DevSection; label: string; icon: string }[] = [
+    { id: 'overview', label: 'Обзор', icon: '▦' },
+    { id: 'users', label: 'Пользователи', icon: '◉' },
+    { id: 'usage', label: 'Использование', icon: '↗' },
+    { id: 'features', label: 'Популярные функции', icon: '★' },
+    { id: 'support', label: 'Поддержка', icon: '?' },
+    { id: 'feedback', label: 'Фидбек', icon: '✦' },
+    { id: 'events', label: 'Ошибки и события', icon: '!' },
+    { id: 'infra', label: 'Инфраструктура', icon: '⌁' },
+    { id: 'experiments', label: 'Эксперименты', icon: 'A/B' },
   ];
 
   protected readonly units: Unit[] = ['шт', 'г', 'кг', 'мл', 'л', 'упак', 'банка', 'бут'];
@@ -199,6 +222,12 @@ export class App implements OnDestroy, OnInit {
   protected readonly activeDevTicket = signal<SupportTicket | null>(null);
   protected readonly devMessages = signal<SupportMessage[]>([]);
   protected readonly devReply = signal('');
+  protected readonly activeDevSection = signal<DevSection>('overview');
+  protected readonly hasDevAccess = computed(() => {
+    const user = this.currentUser();
+    const email = user?.email?.trim().toLowerCase();
+    return Boolean(user?.isAdmin || (email && DEV_ALLOWED_EMAILS.has(email)));
+  });
   protected readonly fridgeItems = signal<FridgeItem[]>([]);
   protected readonly shoppingItems = signal<ShoppingItem[]>([]);
   protected readonly recipes = signal<Recipe[]>(
@@ -451,6 +480,10 @@ export class App implements OnDestroy, OnInit {
     this.activeCategory.set(category);
   }
 
+  protected setDevSection(section: DevSection): void {
+    this.activeDevSection.set(section);
+  }
+
   protected async addFridgeItem(): Promise<void> {
     const name = this.newFridgeItem.name.trim();
     if (!name || this.saving()) {
@@ -622,7 +655,13 @@ export class App implements OnDestroy, OnInit {
   }
 
   protected retryLoad(): void {
-    void (this.devMode() ? this.loadDevData() : this.loadState());
+    if (this.devMode()) {
+      if (this.hasDevAccess()) {
+        void this.loadDevData();
+      }
+      return;
+    }
+    void this.loadState();
   }
 
   protected toggleNotifications(): void {
@@ -1040,9 +1079,6 @@ export class App implements OnDestroy, OnInit {
       this.household.set(state.household);
       this.groupName.set(state.household.name);
       await Promise.all([this.loadNotifications(), this.loadSupportTickets()]);
-      if (this.devMode()) {
-        await this.loadDevData();
-      }
     } catch {
       this.apiError.set('Не удалось загрузить данные. Проверьте подключение к серверу.');
     } finally {
@@ -1057,8 +1093,10 @@ export class App implements OnDestroy, OnInit {
 
     try {
       if (this.devMode()) {
-        await this.loadDevData();
-        this.apiError.set('');
+        if (this.hasDevAccess()) {
+          await this.loadDevData();
+          this.apiError.set('');
+        }
         return;
       }
 
@@ -1068,9 +1106,6 @@ export class App implements OnDestroy, OnInit {
       this.household.set(state.household);
       this.groupName.set(state.household.name);
       await Promise.all([this.loadNotifications(), this.loadSupportTickets()]);
-      if (this.devMode()) {
-        await this.loadDevData();
-      }
       this.apiError.set('');
     } catch {
       // Keep the current UI visible during transient mobile network drops.
@@ -1154,8 +1189,10 @@ export class App implements OnDestroy, OnInit {
       if (session.status === 'fulfilled') {
         this.currentUser.set(session.value.user);
         if (this.devMode()) {
-          await this.loadDevData();
-          this.startRealtimeRefresh();
+          if (this.hasDevAccess()) {
+            await this.loadDevData();
+            this.startRealtimeRefresh();
+          }
           return;
         }
         await this.loadState();

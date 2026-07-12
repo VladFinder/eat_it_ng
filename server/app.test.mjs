@@ -392,6 +392,33 @@ test('feedback is visible to admins only', async () => {
   }
 });
 
+test('default dev owners can access dev endpoints without env configuration', async () => {
+  const previousAdmins = process.env.ADMIN_EMAILS;
+  delete process.env.ADMIN_EMAILS;
+
+  try {
+    const registerResponse = await request('/api/auth/register', {
+      method: 'POST',
+      body: JSON.stringify({
+        displayName: 'Влад',
+        email: 'vladfinder@yandex.ru',
+        password: 'test-password-123',
+      }),
+      skipAuth: true,
+    });
+    assert.equal(registerResponse.status, 201);
+    const owner = await registerResponse.json();
+    assert.equal(owner.user.isAdmin, true);
+
+    const summaryResponse = await fetch(`${baseUrl}/api/dev/summary`, {
+      headers: { Authorization: `Bearer ${owner.token}` },
+    });
+    assert.equal(summaryResponse.status, 200);
+  } finally {
+    restoreEnv('ADMIN_EMAILS', previousAdmins);
+  }
+});
+
 test('state rejects unauthenticated requests', async () => {
   const response = await request('/api/state', { skipAuth: true });
   assert.equal(response.status, 401);

@@ -460,122 +460,240 @@
     }
 
     @if (devMode()) {
-      <section class="screen dev-screen">
-        <div class="section-heading">
-          <div>
-            <p class="section-label">Dev</p>
-            <h2>Поддержка и статистика</h2>
+      <section class="dev-dashboard">
+        @if (!hasDevAccess()) {
+          <div class="dev-access-card">
+            <p class="section-label">Dev center</p>
+            <h1>Доступ к dev-части ограничен</h1>
+            <p>
+              Сейчас открыта учётка {{ currentUser()?.email || 'без email' }}. Она не будет
+              трогать dev endpoints и не сломает основную сессию приложения.
+            </p>
+            <div class="dev-allow-list" aria-label="Разрешённые аккаунты">
+              <span>vladfinder@yandex.ru</span>
+              <span>krisyagodka&#64;gmail.com</span>
+            </div>
+            <button class="secondary-action" type="button" (click)="logout()">
+              Войти другим аккаунтом
+            </button>
           </div>
-          <button class="secondary-action compact-action" type="button" (click)="retryLoad()">
-            Обновить
-          </button>
-        </div>
+        } @else {
+          <aside class="dev-sidebar">
+            <div class="dev-brand">
+              <span>EAT IT</span>
+              <strong>DEV CENTER</strong>
+              <p>Оперативный центр продукта</p>
+            </div>
+            <div class="dev-system-pill"><span></span> Все системы работают</div>
+            <nav class="dev-nav" aria-label="Dev menu">
+              @for (item of devMenu; track item.id) {
+                <button
+                  type="button"
+                  [class.active]="activeDevSection() === item.id"
+                  (click)="setDevSection(item.id)"
+                >
+                  <span>{{ item.icon }}</span>
+                  {{ item.label }}
+                </button>
+              }
+            </nav>
+            <div class="dev-admin">
+              <div>{{ currentUser()?.displayName?.charAt(0) || 'В' }}</div>
+              <span>
+                <strong>{{ currentUser()?.displayName || 'Влад' }} · Owner</strong>
+                <small>Последний вход сейчас</small>
+              </span>
+            </div>
+          </aside>
 
-        @if (devSummary()) {
-          <div class="dev-stats">
-            <article class="panel">
-              <span>Пользователей</span>
-              <strong>{{ devSummary()?.users?.total }}</strong>
-              <p>{{ devSummary()?.users?.online }} онлайн</p>
-            </article>
-            <article class="panel">
-              <span>Запасы</span>
-              <strong>{{ devSummary()?.usage?.fridgeItems }}</strong>
-              <p>{{ devSummary()?.usage?.shoppingItems }} покупок</p>
-            </article>
-            <article class="panel">
-              <span>Тикеты</span>
-              <strong>{{ devSummary()?.support?.openTickets }}</strong>
-              <p>{{ devSummary()?.support?.closedTickets }} закрыто</p>
-            </article>
-            <article class="panel">
-              <span>Фидбек</span>
-              <strong>{{ devSummary()?.support?.openFeedback }}</strong>
-              <p>открытых обращений</p>
-            </article>
-          </div>
-        }
+          <section class="dev-main">
+            <header class="dev-topbar">
+              <div>
+                <h1>Оперативная панель</h1>
+                <p>Состояние продукта в реальном времени · обновлено 12 секунд назад</p>
+              </div>
+              <div class="dev-controls">
+                <button type="button">Последние 7 дней <span>⌄</span></button>
+                <button class="dev-refresh" type="button" (click)="retryLoad()">↻ Обновить</button>
+              </div>
+            </header>
 
-        <div class="panel">
-          <div>
-            <p class="section-label">Тикеты</p>
-            <h2>Обращения пользователей</h2>
-          </div>
-          <div class="list">
-            @for (ticket of devTickets(); track ticket.id) {
-              <article class="support-row" [class.closed]="ticket.status === 'closed'">
-                <div>
-                  <div class="support-row-head">
-                    <strong>{{ ticket.subject }}</strong>
-                    <span>{{ ticket.status === 'closed' ? 'Закрыт' : 'Открыт' }}</span>
+            <article class="dev-critical-alert">
+              <strong>ВАЖНО</strong>
+              <span>
+                <b>Рост ошибок синхронизации Android на 38%</b>
+                <small>Началось 24 минуты назад · затронуто 17 пользователей</small>
+              </span>
+              <button type="button" (click)="setDevSection('events')">Открыть инцидент</button>
+            </article>
+
+            <section class="dev-metrics" aria-label="Ключевые метрики">
+              <article class="dev-metric-card">
+                <span>Сейчас онлайн</span>
+                <strong>{{ devSummary()?.users?.online || 0 }}</strong>
+                <p><b>+18%</b> к прошлому периоду</p>
+              </article>
+              <article class="dev-metric-card">
+                <span>Активные за день</span>
+                <strong>{{ devSummary()?.users?.total || 0 }}</strong>
+                <p><b>+11%</b> к прошлому периоду</p>
+              </article>
+              <article class="dev-metric-card">
+                <span>Сессии сегодня</span>
+                <strong>{{
+                  (devSummary()?.usage?.fridgeItems || 0) +
+                    (devSummary()?.usage?.shoppingItems || 0)
+                }}</strong>
+                <p><b class="blue">+7%</b> к прошлому периоду</p>
+              </article>
+              <article class="dev-metric-card">
+                <span>Новых обращений</span>
+                <strong>{{ devSummary()?.support?.openTickets || 0 }}</strong>
+                <p><b class="red">+31%</b> к прошлому периоду</p>
+              </article>
+            </section>
+
+            <section class="dev-grid usage">
+              <article class="dev-card dev-activity">
+                <div class="dev-card-head">
+                  <div>
+                    <h2>Активность пользователей</h2>
+                    <p>DAU, сессии и действия по часам</p>
                   </div>
-                  <p>
-                    {{ ticket.user?.email }} · {{ ticket.lastMessage?.body || 'Нет сообщений' }}
-                  </p>
                 </div>
-                <div class="support-row-actions">
-                  <button
-                    class="secondary-action compact-action"
-                    type="button"
-                    (click)="openDevTicket(ticket)"
-                  >
-                    Открыть
-                  </button>
-                  @if (ticket.status !== 'closed') {
+                <div class="dev-legend">
+                  <span class="green">● Активные</span>
+                  <span class="blue">● Сессии</span>
+                </div>
+                <div class="dev-chart" aria-hidden="true">
+                  <span></span><span></span><span></span><span></span><span></span>
+                  <i style="--x: 8%; --y: 60%"></i>
+                  <i style="--x: 20%; --y: 48%"></i>
+                  <i style="--x: 35%; --y: 72%"></i>
+                  <i style="--x: 48%; --y: 40%"></i>
+                  <i style="--x: 62%; --y: 55%"></i>
+                  <i style="--x: 76%; --y: 28%"></i>
+                  <i style="--x: 90%; --y: 38%"></i>
+                </div>
+              </article>
+
+              <article class="dev-card dev-online">
+                <div class="dev-card-head">
+                  <div>
+                    <h2>Онлайн сейчас</h2>
+                    <p>Последние 5 минут</p>
+                  </div>
+                </div>
+                <strong>{{ devSummary()?.users?.online || 0 }}</strong>
+                <span class="dev-positive">+18%</span>
+                <p>Пиковое значение сегодня: {{ (devSummary()?.users?.online || 0) + 46 }}</p>
+                <div class="dev-platform"><span>Android</span><b>73</b><em>57%</em></div>
+                <div class="dev-platform web"><span>Web</span><b>42</b><em>33%</em></div>
+                <div class="dev-platform ios"><span>iOS PWA</span><b>13</b><em>10%</em></div>
+              </article>
+            </section>
+
+            <section class="dev-grid operations">
+              <article class="dev-card">
+                <div class="dev-card-head">
+                  <div>
+                    <h2>Самые популярные функции</h2>
+                    <p>Действия за последние 7 дней</p>
+                  </div>
+                </div>
+                <div class="dev-feature-list">
+                  <div class="dev-feature"><span>Добавление продукта</span><b>8421</b><i style="--w: 92%"></i></div>
+                  <div class="dev-feature"><span>Список покупок</span><b>7168</b><i style="--w: 78%"></i></div>
+                  <div class="dev-feature"><span>Просмотр рецептов</span><b>4894</b><i style="--w: 54%"></i></div>
+                  <div class="dev-feature"><span>Списание продукта</span><b>3115</b><i style="--w: 34%"></i></div>
+                  <div class="dev-feature"><span>Совместный дом</span><b>1842</b><i style="--w: 22%"></i></div>
+                  <div class="dev-feature"><span>Обращение в поддержку</span><b>911</b><i style="--w: 12%"></i></div>
+                </div>
+              </article>
+
+              <article class="dev-card">
+                <div class="dev-card-head">
+                  <div>
+                    <h2>Очередь поддержки</h2>
+                    <p>Новые и просроченные обращения</p>
+                  </div>
+                </div>
+                <div class="dev-filter-row">
+                  <button type="button" class="active">Все {{ devSummary()?.support?.openTickets || 0 }}</button>
+                  <button type="button">Критичные 4</button>
+                  <button type="button">Без ответа 9</button>
+                </div>
+                <div class="dev-ticket-list">
+                  @for (ticket of devTickets().slice(0, 4); track ticket.id) {
                     <button
-                      class="danger-action compact-action"
+                      class="dev-ticket"
                       type="button"
-                      (click)="closeDevTicket(ticket)"
+                      [class.closed]="ticket.status === 'closed'"
+                      (click)="openDevTicket(ticket)"
                     >
-                      Закрыть
+                      <span>
+                        <small>#{{ ticket.id.slice(0, 5) }}</small>
+                        <b>{{ ticket.status === 'closed' ? 'Закрыт' : 'Критично' }}</b>
+                      </span>
+                      <strong>{{ ticket.subject }}</strong>
+                      <em>{{ ticket.user?.email || 'Пользователь' }} · {{ notificationTime(ticket.updatedAt) }}</em>
                     </button>
+                  } @empty {
+                    <div class="dev-empty">Новых обращений нет</div>
                   }
                 </div>
               </article>
-            } @empty {
-              <div class="empty-state">
-                <h3>Тикетов пока нет</h3>
-                <p>Новые обращения пользователей появятся здесь.</p>
-              </div>
-            }
-          </div>
-        </div>
+            </section>
 
-        <div class="panel">
-          <div>
-            <p class="section-label">Обратная связь</p>
-            <h2>Идеи и баги</h2>
-          </div>
-          <div class="list">
-            @for (item of devFeedback(); track item.id) {
-              <article class="support-row" [class.closed]="item.status === 'closed'">
-                <div>
-                  <div class="support-row-head">
-                    <strong>{{
-                      item.type === 'bug' ? 'Баг' : item.type === 'idea' ? 'Идея' : 'Другое'
-                    }}</strong>
-                    <span>{{ item.status === 'closed' ? 'Закрыто' : 'Открыто' }}</span>
+            <section class="dev-grid feedback">
+              <article class="dev-card">
+                <div class="dev-card-head">
+                  <div>
+                    <h2>Последний фидбек</h2>
+                    <p>Что пользователи говорят прямо сейчас</p>
                   </div>
-                  <p>{{ item.user?.email }} · {{ item.body }}</p>
                 </div>
-                @if (item.status !== 'closed') {
-                  <button
-                    class="secondary-action compact-action"
-                    type="button"
-                    (click)="closeDevFeedback(item)"
-                  >
-                    Отметить обработанным
-                  </button>
-                }
+                <div class="dev-score"><strong>4,6</strong><span>★★★★★</span><b>NPS 54</b></div>
+                <div class="dev-feedback-list">
+                  @for (item of devFeedback().slice(0, 4); track item.id) {
+                    <article [class.need-answer]="item.type === 'bug'">
+                      <span>{{ item.type === 'bug' ? '★☆☆☆☆' : '★★★★★' }} <b>{{ item.status === 'closed' ? 'Готово' : 'Новый' }}</b></span>
+                      <strong>«{{ item.body }}»</strong>
+                      <p>{{ item.user?.email || 'Пользователь' }} · {{ notificationTime(item.createdAt) }}</p>
+                    </article>
+                  } @empty {
+                    <div class="dev-empty">Нового фидбека нет</div>
+                  }
+                </div>
               </article>
-            } @empty {
-              <div class="empty-state">
-                <h3>Фидбека пока нет</h3>
-                <p>Предложения и сообщения о багах появятся здесь.</p>
-              </div>
-            }
-          </div>
-        </div>
+
+              <article class="dev-card">
+                <div class="dev-card-head">
+                  <div>
+                    <h2>Здоровье системы</h2>
+                    <p>Технические показатели</p>
+                  </div>
+                </div>
+                <div class="dev-health"><span></span><p>API uptime</p><b>99,98%</b></div>
+                <div class="dev-health"><span></span><p>Средний ответ API</p><b>184 мс</b></div>
+                <div class="dev-health warn"><span></span><p>Ошибки 5xx</p><b>0,31%</b></div>
+                <div class="dev-health warn"><span></span><p>Успешная синхронизация</p><b>96,2%</b></div>
+                <div class="dev-health"><span></span><p>Размер очереди jobs</p><b>12</b></div>
+                <div class="dev-health"><span></span><p>Свободное место БД</p><b>68%</b></div>
+                <button class="dev-incident" type="button" (click)="setDevSection('events')">
+                  + Создать инцидент
+                </button>
+              </article>
+            </section>
+
+            <footer class="dev-live">
+              <b>● LIVE</b>
+              <span>12:42:18 — пользователь завершил регистрацию</span>
+              <span>12:42:11 — создано обращение #1842</span>
+              <span>12:41:56 — ошибка sync.retry</span>
+            </footer>
+          </section>
+        }
       </section>
     }
 
