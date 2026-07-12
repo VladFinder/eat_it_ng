@@ -22,7 +22,7 @@ import {
 type TabId = 'fridge' | 'shopping' | 'dishes' | 'recipes' | 'profile';
 type RecipeTab = 'mine' | 'likes' | 'all';
 type AuthMode = 'login' | 'register';
-type ProfileSection = 'menu' | 'household' | 'support' | 'feedback';
+type ProfileSection = 'menu' | 'household' | 'notifications' | 'support' | 'feedback';
 
 interface OnboardingStep {
   tab: TabId;
@@ -57,6 +57,8 @@ interface SwipeState {
 const STORAGE_KEYS = {
   recipes: 'eat-it.recipes',
   onboarding: 'eat-it.onboarding.completed',
+  notificationsEnabled: 'eat-it.notifications.enabled',
+  clearedNotifications: 'eat-it.notifications.cleared',
 };
 
 const ONBOARDING_STEPS: OnboardingStep[] = [
@@ -123,6 +125,9 @@ export class App implements OnDestroy, OnInit {
   protected readonly fridgeAddOpen = signal(false);
   protected readonly activeDish = signal<DishIdea | null>(null);
   protected readonly activeRecipe = signal<Recipe | null>(null);
+  protected readonly cookingDish = signal<DishIdea | null>(null);
+  protected readonly cookingStepIndex = signal(0);
+  protected readonly toastMessage = signal('');
   protected readonly today = new Date().toISOString().slice(0, 10);
 
   protected readonly newFridgeItem = {
@@ -167,6 +172,12 @@ export class App implements OnDestroy, OnInit {
   protected readonly notifications = signal<AppNotification[]>([]);
   protected readonly unreadNotifications = signal(0);
   protected readonly notificationsOpen = signal(false);
+  protected readonly notificationsEnabled = signal(
+    this.load<boolean>(STORAGE_KEYS.notificationsEnabled, true),
+  );
+  protected readonly clearedNotificationIds = signal(
+    this.load<string[]>(STORAGE_KEYS.clearedNotifications, []),
+  );
   protected readonly supportTickets = signal<SupportTicket[]>([]);
   protected readonly activeSupportTicket = signal<SupportTicket | null>(null);
   protected readonly supportMessages = signal<SupportMessage[]>([]);
@@ -243,6 +254,12 @@ export class App implements OnDestroy, OnInit {
       badge: '100%',
       description: 'Хороший вариант, чтобы использовать свежие овощи вовремя.',
     },
+  ];
+  protected readonly cookingSteps = [
+    'Подготовьте ингредиенты и рабочую поверхность.',
+    'Нарежьте овощи и разогрейте сковороду.',
+    'Смешайте основу блюда и доведите до готовности.',
+    'Разложите по тарелкам и отметьте использованные продукты.',
   ];
 
   protected readonly visibleFridgeItems = computed(() =>
@@ -616,6 +633,13 @@ export class App implements OnDestroy, OnInit {
     this.notificationsOpen.set(false);
   }
 
+  protected toggleNotificationsEnabled(): void {
+    const next = !this.notificationsEnabled();
+    this.notificationsEnabled.set(next);
+    localStorage.setItem(STORAGE_KEYS.notificationsEnabled, JSON.stringify(next));
+    this.showToast(next ? 'Уведомления включены' : 'Уведомления выключены');
+  }
+
   protected toggleRecipeLike(id: string): void {
     this.recipes.update((recipes) =>
       recipes.map((recipe) => (recipe.id === id ? { ...recipe, liked: !recipe.liked } : recipe)),
@@ -629,6 +653,30 @@ export class App implements OnDestroy, OnInit {
 
   protected closeDish(): void {
     this.activeDish.set(null);
+  }
+
+  protected startCooking(dish = this.activeDish()): void {
+    if (!dish) {
+      return;
+    }
+    this.activeDish.set(null);
+    this.cookingDish.set(dish);
+    this.cookingStepIndex.set(0);
+  }
+
+  protected closeCooking(): void {
+    this.cookingDish.set(null);
+    this.cookingStepIndex.set(0);
+  }
+
+  protected nextCookingStep(): void {
+    const next = this.cookingStepIndex() + 1;
+    if (next >= this.cookingSteps.length) {
+      this.showToast('Готовка завершена');
+      this.closeCooking();
+      return;
+    }
+    this.cookingStepIndex.set(next);
   }
 
   protected openRecipe(recipe: Recipe): void {
@@ -835,6 +883,43 @@ export class App implements OnDestroy, OnInit {
     this.unreadNotifications.update((count) => Math.max(0, count - 1));
   }
 
+  protected async markAllNotificationsRead(): Promise<void> {
+    const unread = this.notifications().filter((notification) => !notification.readAt);
+    if (!unread.length || this.saving()) {
+      return;
+    }
+
+    this.saving.set(true);
+    try {
+      const updated = await Promise.all(
+        unread.map((notification) => firstValueFrom(this.api.markNotification(notification.id, true))),
+      );
+      const updatedById = new Map(updated.map((notification) => [notification.id, notification]));
+      this.notifications.update((items) =>
+        items.map((item) => updatedById.get(item.id) ?? item),
+      );
+      this.unreadNotifications.set(0);
+      this.showToast('Все уведомления прочитаны');
+    } catch (error) {
+      this.apiError.set(this.errorMessage(error, 'Не удалось прочитать уведомления.'));
+    } finally {
+      this.saving.set(false);
+    }
+  }
+
+  protected clearNotifications(): void {
+    const ids = this.notifications().map((notification) => notification.id);
+    if (!ids.length) {
+      return;
+    }
+    const nextIds = Array.from(new Set([...this.clearedNotificationIds(), ...ids]));
+    this.clearedNotificationIds.set(nextIds);
+    localStorage.setItem(STORAGE_KEYS.clearedNotifications, JSON.stringify(nextIds));
+    this.notifications.set([]);
+    this.unreadNotifications.set(0);
+    this.showToast('Уведомления очищены');
+  }
+
   protected beginSwipe(event: PointerEvent, id: string): void {
     this.swipe = { id, startX: event.clientX, deltaX: 0 };
   }
@@ -994,8 +1079,10 @@ export class App implements OnDestroy, OnInit {
 
   private async loadNotifications(): Promise<void> {
     const result = await firstValueFrom(this.api.getNotifications());
-    this.notifications.set(result.notifications);
-    this.unreadNotifications.set(result.unreadCount);
+    const cleared = new Set(this.clearedNotificationIds());
+    const notifications = result.notifications.filter((notification) => !cleared.has(notification.id));
+    this.notifications.set(notifications);
+    this.unreadNotifications.set(notifications.filter((notification) => !notification.readAt).length);
   }
 
   private async loadSupportTickets(): Promise<void> {
@@ -1218,5 +1305,14 @@ export class App implements OnDestroy, OnInit {
 
   private persistRecipes(): void {
     localStorage.setItem(STORAGE_KEYS.recipes, JSON.stringify(this.recipes()));
+  }
+
+  private showToast(message: string): void {
+    this.toastMessage.set(message);
+    window.setTimeout(() => {
+      if (this.toastMessage() === message) {
+        this.toastMessage.set('');
+      }
+    }, 2500);
   }
 }

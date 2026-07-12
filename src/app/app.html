@@ -133,6 +133,25 @@
           </button>
         </div>
 
+        <div class="notification-toolbar">
+          <button
+            class="secondary-action compact-action"
+            type="button"
+            (click)="markAllNotificationsRead()"
+            [disabled]="unreadNotifications() === 0 || saving()"
+          >
+            Прочитать все
+          </button>
+          <button
+            class="danger-action compact-action"
+            type="button"
+            (click)="clearNotifications()"
+            [disabled]="!hasNotifications()"
+          >
+            Очистить
+          </button>
+        </div>
+
         @if (hasNotifications()) {
           <div class="notification-list">
             @for (notification of notifications(); track notification.id) {
@@ -250,7 +269,7 @@
           <span>{{ activeDish()?.badge }} совпадение</span>
           <span>Ингредиенты дома</span>
         </div>
-        <button class="primary-action" type="button" (click)="closeDish()">Готовить</button>
+        <button class="primary-action" type="button" (click)="startCooking()">Готовить</button>
       </section>
     }
 
@@ -275,7 +294,43 @@
             <span>{{ tag }}</span>
           }
         </div>
-        <button class="primary-action" type="button" (click)="closeRecipe()">Открыть готовку</button>
+        <button
+          class="primary-action"
+          type="button"
+          (click)="startCooking({ title: activeRecipe()?.title || 'Рецепт', subtitle: activeRecipe()?.time || 'Готовка', badge: '100%', description: 'Следуйте шагам приготовления.' })"
+        >
+          Открыть готовку
+        </button>
+      </section>
+    }
+
+    @if (!devMode() && cookingDish()) {
+      <button
+        class="notification-backdrop"
+        type="button"
+        aria-label="Закрыть готовку"
+        (click)="closeCooking()"
+      ></button>
+      <section class="panel ticket-dialog cooking-dialog" role="dialog" aria-modal="true">
+        <div class="notifications-head">
+          <div>
+            <p class="section-label">{{ cookingDish()?.subtitle }}</p>
+            <h2>{{ cookingDish()?.title }}</h2>
+          </div>
+          <button class="icon-button close-button" type="button" (click)="closeCooking()">×</button>
+        </div>
+        <div class="cooking-progress" aria-hidden="true">
+          @for (step of cookingSteps; track step; let index = $index) {
+            <span [class.active]="index <= cookingStepIndex()"></span>
+          }
+        </div>
+        <article class="cooking-step-card">
+          <span>Шаг {{ cookingStepIndex() + 1 }} из {{ cookingSteps.length }}</span>
+          <p>{{ cookingSteps[cookingStepIndex()] }}</p>
+        </article>
+        <button class="primary-action" type="button" (click)="nextCookingStep()">
+          {{ cookingStepIndex() + 1 === cookingSteps.length ? 'Завершить готовку' : 'Следующий шаг' }}
+        </button>
       </section>
     }
 
@@ -861,7 +916,7 @@
               Дом и участники
               <strong>›</strong>
             </button>
-            <button type="button" (click)="toggleNotifications()">
+            <button type="button" (click)="setProfileSection('notifications')">
               <span>◉</span>
               Уведомления
               <strong>›</strong>
@@ -951,6 +1006,57 @@
                 <p>Если возникнет вопрос, создайте первый тикет здесь.</p>
               </div>
             }
+          </div>
+        </div>
+        }
+
+        @if (profileSection() === 'notifications') {
+        <div class="subscreen-head">
+          <button class="back-button" type="button" (click)="setProfileSection('menu')">‹</button>
+          <div>
+            <p class="section-label">Профиль</p>
+            <h2>Уведомления</h2>
+          </div>
+        </div>
+        <div class="panel settings-panel">
+          <button class="setting-row" type="button" (click)="toggleNotificationsEnabled()">
+            <div>
+              <strong>Уведомления</strong>
+              <p>{{ notificationsEnabled() ? 'Включены' : 'Выключены' }}</p>
+            </div>
+            <span class="toggle" [class.active]="notificationsEnabled()">
+              <i></i>
+            </span>
+          </button>
+          <div class="setting-row static">
+            <div>
+              <strong>Скоро истекает срок</strong>
+              <p>За 1 день</p>
+            </div>
+          </div>
+          <div class="setting-row static">
+            <div>
+              <strong>Продукт закончился</strong>
+              <p>Сразу</p>
+            </div>
+          </div>
+          <div class="setting-row static">
+            <div>
+              <strong>Новая покупка</strong>
+              <p>Сразу</p>
+            </div>
+          </div>
+          <div class="setting-row static">
+            <div>
+              <strong>Изменения участников</strong>
+              <p>Сразу</p>
+            </div>
+          </div>
+          <div class="setting-row static">
+            <div>
+              <strong>Советы и идеи</strong>
+              <p>Раз в неделю</p>
+            </div>
           </div>
         </div>
         }
@@ -1049,6 +1155,10 @@
         </button>
       }
     </nav>
+  }
+
+  @if (toastMessage()) {
+    <div class="toast" role="status">{{ toastMessage() }}</div>
   }
 
   @if (!devMode() && onboardingOpen()) {
