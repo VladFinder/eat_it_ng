@@ -21,6 +21,8 @@ import {
 
 type TabId = 'fridge' | 'shopping' | 'dishes' | 'recipes' | 'profile';
 type RecipeTab = 'mine' | 'likes' | 'all';
+type ShoppingFilter = 'all' | ItemCategory;
+type DishFilter = 'available' | 'almost' | 'planned';
 type AuthMode = 'login' | 'register';
 type ProfileSection = 'menu' | 'household' | 'notifications' | 'support' | 'feedback';
 type DevSection =
@@ -79,19 +81,19 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
     label: 'Шаг 1 из 5',
     title: 'Начните с того, что уже есть дома',
     body: 'Добавляйте продукты или бытовую химию, количество и срок годности. Так приложение покажет, что скоро закончится или испортится.',
-    action: 'Показать покупки',
+    action: 'Далее',
   },
   {
     tab: 'shopping',
     label: 'Шаг 2 из 5',
     title: 'Покупки собираются в один список',
     body: 'Отмечайте купленное, меняйте количество и переносите покупки обратно в запасы, когда принесли их домой.',
-    action: 'Показать блюда',
+    action: 'Далее',
   },
   {
     tab: 'dishes',
     label: 'Шаг 3 из 5',
-    title: 'Блюда помогут решить, что приготовить',
+    title: 'Раздел "Блюда" поможет решить, что приготовить',
     body: 'Этот раздел будет подбирать идеи из того, что уже лежит дома, чтобы меньше выбрасывать и быстрее выбирать ужин.',
     action: 'Показать рецепты',
   },
@@ -140,9 +142,11 @@ export class App implements OnDestroy, OnInit {
     { id: 'experiments', label: 'Эксперименты', icon: 'A/B' },
   ];
 
-  protected readonly units: Unit[] = ['шт', 'г', 'кг', 'мл', 'л', 'упак', 'банка', 'бут'];
+  protected readonly units: Unit[] = ['шт.', 'г', 'кг', 'мг', 'мл', 'л', 'упак.', 'бан.', 'бут.'];
   protected readonly activeTab = signal<TabId>('fridge');
   protected readonly activeCategory = signal<ItemCategory>('products');
+  protected readonly activeShoppingFilter = signal<ShoppingFilter>('all');
+  protected readonly activeDishFilter = signal<DishFilter>('available');
   protected readonly activeRecipeTab = signal<RecipeTab>('mine');
   protected readonly profileSection = signal<ProfileSection>('menu');
   protected readonly fridgeAddOpen = signal(false);
@@ -156,7 +160,7 @@ export class App implements OnDestroy, OnInit {
   protected readonly newFridgeItem = {
     name: '',
     quantity: 1,
-    unit: 'шт' as Unit,
+    unit: 'шт.' as Unit,
     expiresAt: this.addDays(5),
     reminderDays: 1,
   };
@@ -164,7 +168,7 @@ export class App implements OnDestroy, OnInit {
   protected readonly newShoppingItem = {
     name: '',
     quantity: 1,
-    unit: 'шт' as Unit,
+    unit: 'шт.' as Unit,
     category: 'products' as ItemCategory,
   };
   protected readonly loading = signal(true);
@@ -353,6 +357,12 @@ export class App implements OnDestroy, OnInit {
   protected readonly shoppingOpenCount = computed(
     () => this.shoppingItems().filter((item) => !item.checked).length,
   );
+  protected readonly visibleShoppingItems = computed(() => {
+    const filter = this.activeShoppingFilter();
+    return filter === 'all'
+      ? this.shoppingItems()
+      : this.shoppingItems().filter((item) => item.category === filter);
+  });
   protected readonly shoppingProductsCount = computed(
     () => this.shoppingItems().filter((item) => item.category === 'products').length,
   );
@@ -380,7 +390,7 @@ export class App implements OnDestroy, OnInit {
   });
   protected readonly activeTabSubtitle = computed(() => {
     if (this.activeTab() === 'fridge') {
-      return 'Сроки, остатки и напоминания';
+      return 'Сроки, запасы и напоминания';
     }
     if (this.activeTab() === 'shopping') {
       return 'Общий список для дома';
@@ -518,6 +528,14 @@ export class App implements OnDestroy, OnInit {
     this.activeCategory.set(category);
   }
 
+  protected setShoppingFilter(filter: ShoppingFilter): void {
+    this.activeShoppingFilter.set(filter);
+  }
+
+  protected setDishFilter(filter: DishFilter): void {
+    this.activeDishFilter.set(filter);
+  }
+
   protected setDevSection(section: DevSection): void {
     this.activeDevSection.set(section);
   }
@@ -543,7 +561,7 @@ export class App implements OnDestroy, OnInit {
 
       this.newFridgeItem.name = '';
       this.newFridgeItem.quantity = 1;
-      this.newFridgeItem.unit = 'шт';
+      this.newFridgeItem.unit = 'шт.';
       this.newFridgeItem.expiresAt = this.addDays(5);
       this.newFridgeItem.reminderDays = 1;
       this.fridgeAddOpen.set(false);
@@ -614,7 +632,7 @@ export class App implements OnDestroy, OnInit {
       this.shoppingItems.update((items) => [item, ...items]);
       this.newShoppingItem.name = '';
       this.newShoppingItem.quantity = 1;
-      this.newShoppingItem.unit = 'шт';
+      this.newShoppingItem.unit = 'шт.';
     });
   }
 
@@ -642,8 +660,10 @@ export class App implements OnDestroy, OnInit {
     if (!Number.isFinite(quantity) || quantity <= 0) {
       return;
     }
-    const unit = window.prompt('Единица измерения', item.unit ?? 'шт')?.trim() as Unit | undefined;
-    if (!unit || !this.units.includes(unit)) {
+    const unit = this.normalizeUnit(
+      window.prompt('Единица измерения', this.displayUnit(item.unit ?? 'шт.'))?.trim(),
+    );
+    if (!unit) {
       return;
     }
 
@@ -671,7 +691,7 @@ export class App implements OnDestroy, OnInit {
       const fridgeItem = await firstValueFrom(
         this.api.moveShoppingToFridge(item.id, {
           quantity: item.quantity ?? 1,
-          unit: item.unit ?? 'шт',
+          unit: this.normalizeUnit(item.unit) ?? 'шт.',
           expiresAt,
           reminderDays,
           category: item.category,
@@ -1024,11 +1044,6 @@ export class App implements OnDestroy, OnInit {
 
     if (deltaX > 0) {
       void this.moveFridgeToShopping(item);
-      return;
-    }
-
-    if (window.confirm(`Удалить «${item.name}» из холодильника?`)) {
-      void this.deleteFridgeItem(item.id);
     }
   }
 
@@ -1068,6 +1083,10 @@ export class App implements OnDestroy, OnInit {
 
   protected categoryLabel(category: ItemCategory): string {
     return category === 'products' ? 'Продукты' : 'Бытовая химия';
+  }
+
+  protected displayUnit(unit: Unit | string | null | undefined): Unit {
+    return this.normalizeUnit(unit) ?? 'шт.';
   }
 
   protected notificationKindLabel(notification: AppNotification): string {
@@ -1179,7 +1198,11 @@ export class App implements OnDestroy, OnInit {
     this.devLastUpdated.set(new Date().toLocaleTimeString('ru-RU'));
   }
 
-  private async deleteFridgeItem(id: string): Promise<void> {
+  protected async deleteFridgeItem(id: string): Promise<void> {
+    if (!window.confirm('Удалить позицию из запасов?')) {
+      return;
+    }
+
     await this.runMutation(async () => {
       await firstValueFrom(this.api.deleteFridgeItem(id));
       this.fridgeItems.update((items) => items.filter((item) => item.id !== id));
@@ -1362,6 +1385,21 @@ export class App implements OnDestroy, OnInit {
     const normalized = `${year}-${month}-${day}`;
     const date = new Date(`${normalized}T00:00:00Z`);
     return date.toISOString().slice(0, 10) === normalized ? normalized : null;
+  }
+
+  private normalizeUnit(unit: Unit | string | null | undefined): Unit | null {
+    const normalized = unit?.trim();
+    if (!normalized) {
+      return null;
+    }
+    const legacyUnits: Record<string, Unit> = {
+      шт: 'шт.',
+      упак: 'упак.',
+      банка: 'бан.',
+      бут: 'бут.',
+    };
+    const nextUnit = legacyUnits[normalized] ?? (normalized as Unit);
+    return this.units.includes(nextUnit) ? nextUnit : null;
   }
 
   private createId(): string {

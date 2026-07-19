@@ -430,7 +430,7 @@ test('fridge item can be created and partially consumed', async () => {
     body: JSON.stringify({
       name: 'Творог',
       quantity: 2,
-      unit: 'упак',
+      unit: 'упак.',
       expiresAt: '2026-06-12',
       reminderDays: 3,
       category: 'household',
@@ -488,7 +488,7 @@ test('shopping item defaults to one piece and preserves its category', async () 
   assert.equal(createResponse.status, 201);
   const shoppingItem = await createResponse.json();
   assert.equal(shoppingItem.quantity, 1);
-  assert.equal(shoppingItem.unit, 'шт');
+  assert.equal(shoppingItem.unit, 'шт.');
   assert.equal(shoppingItem.category, 'household');
 
   const updateResponse = await request(`/api/shopping/${shoppingItem.id}`, {
@@ -518,7 +518,7 @@ test('household invitation can be accepted and items are shared', async () => {
     body: JSON.stringify({
       name: '\u0421\u044b\u0440',
       quantity: 1,
-      unit: '\u0448\u0442',
+      unit: '\u0448\u0442.',
       expiresAt: '2026-06-20',
     }),
   });
@@ -573,7 +573,7 @@ test('expiry notifications are generated once per day', async () => {
     body: JSON.stringify({
       name: '\u0419\u043e\u0433\u0443\u0440\u0442',
       quantity: 1,
-      unit: '\u0448\u0442',
+      unit: '\u0448\u0442.',
       expiresAt: new Date().toISOString().slice(0, 10),
       reminderDays: 1,
       category: 'products',

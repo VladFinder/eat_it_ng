@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const units = ['шт', 'г', 'кг', 'мл', 'л', 'упак', 'банка', 'бут'];
+export const units = ['шт.', 'г', 'кг', 'мг', 'мл', 'л', 'упак.', 'бан.', 'бут.'];
 export const categories = ['products', 'household'];
 
 const name = z.string().trim().min(1).max(120);
@@ -77,7 +77,7 @@ const shoppingFields = {
 export const shoppingCreateSchema = z.object({
   name,
   quantity: quantity.default(1),
-  unit: unit.default('шт'),
+  unit: unit.default('шт.'),
   category: category.default('products'),
 });
 

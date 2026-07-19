@@ -269,7 +269,14 @@
           <span>{{ activeDish()?.badge }} совпадение</span>
           <span>Ингредиенты дома</span>
         </div>
-        <button class="primary-action" type="button" (click)="startCooking()">Готовить</button>
+        <div class="recipe-longread">
+          @for (step of cookingSteps; track step; let index = $index) {
+            <article>
+              <span>{{ index + 1 }}</span>
+              <p>{{ step }}</p>
+            </article>
+          }
+        </div>
       </section>
     }
 
@@ -294,13 +301,14 @@
             <span>{{ tag }}</span>
           }
         </div>
-        <button
-          class="primary-action"
-          type="button"
-          (click)="startCooking({ title: activeRecipe()?.title || 'Рецепт', subtitle: activeRecipe()?.time || 'Готовка', badge: '100%', description: 'Следуйте шагам приготовления.' })"
-        >
-          Открыть готовку
-        </button>
+        <div class="recipe-longread">
+          @for (step of cookingSteps; track step; let index = $index) {
+            <article>
+              <span>{{ index + 1 }}</span>
+              <p>{{ step }}</p>
+            </article>
+          }
+        </div>
       </section>
     }
 
@@ -355,7 +363,7 @@
             <input
               name="fridge-name"
               [(ngModel)]="newFridgeItem.name"
-              placeholder="Например, молоко"
+              [placeholder]="activeCategory() === 'household' ? 'Например, шампунь' : 'Например, молоко'"
               autocomplete="off"
             />
           </label>
@@ -384,13 +392,13 @@
             <input name="fridge-expires" [(ngModel)]="newFridgeItem.expiresAt" type="date" />
           </label>
           <label>
-            Напомнить за
+            Напомнить об истечении срока:
             <select name="fridge-reminder" [(ngModel)]="newFridgeItem.reminderDays">
               <option [ngValue]="0">в день окончания</option>
-              <option [ngValue]="1">1 день</option>
-              <option [ngValue]="3">3 дня</option>
-              <option [ngValue]="5">5 дней</option>
-              <option [ngValue]="7">7 дней</option>
+              <option [ngValue]="1">за 1 день</option>
+              <option [ngValue]="3">за 3 дня</option>
+              <option [ngValue]="5">за 5 дней</option>
+              <option [ngValue]="7">за 7 дней</option>
             </select>
           </label>
           <button class="primary-action" type="submit" [disabled]="saving()">Добавить</button>
@@ -869,8 +877,8 @@
               Бытовая химия
             </button>
           </div>
-          <button class="primary-action add-shortcut" type="button" (click)="openFridgeAdd()">
-            ＋
+          <button class="primary-action add-shortcut" type="button" (click)="openFridgeAdd()" aria-label="Добавить">
+            +
           </button>
         </div>
 
@@ -909,7 +917,7 @@
                   <div class="item-thumb"></div>
                   <div class="item-content">
                     <h3>{{ item.name }}</h3>
-                    <p>{{ item.quantity }} {{ item.unit }} · {{ expiryLabel(item.expiresAt) }}</p>
+                    <p>{{ item.quantity }} {{ displayUnit(item.unit) }} · {{ expiryLabel(item.expiresAt) }}</p>
                     <div class="row-actions">
                       <button type="button" (pointerdown)="$event.stopPropagation()" (click)="editFridgeItem(item)">
                         Изменить
@@ -917,19 +925,21 @@
                       <button type="button" (pointerdown)="$event.stopPropagation()" (click)="consumeFridgeItem(item)">
                         Израсходовать
                       </button>
+                      <button type="button" (pointerdown)="$event.stopPropagation()" (click)="deleteFridgeItem(item.id)">
+                        Удалить
+                      </button>
                     </div>
                   </div>
                   <span class="status" [ngClass]="expiryClass(item.expiresAt)">{{
                     item.reminderDays
                   }} дн.</span>
-                  <span class="row-chevron">›</span>
                 </article>
               }
             </div>
           }
 
           <div class="section-heading compact-heading">
-            <h2>Остальные {{ activeTabLabel().toLowerCase() }}</h2>
+            <h2>{{ activeTabLabel() }} в наличии:</h2>
           </div>
           <div class="list fridge-list">
             @for (item of stableFridgeItems(); track item.id) {
@@ -946,7 +956,7 @@
                 <div class="item-thumb"></div>
                 <div class="item-content">
                   <h3>{{ item.name }}</h3>
-                  <p>{{ item.quantity }} {{ item.unit }} · {{ expiryLabel(item.expiresAt) }}</p>
+                  <p>{{ item.quantity }} {{ displayUnit(item.unit) }} · {{ expiryLabel(item.expiresAt) }}</p>
                   <div class="row-actions">
                     <button
                       type="button"
@@ -962,9 +972,15 @@
                     >
                       Израсходовать
                     </button>
+                    <button
+                      type="button"
+                      (pointerdown)="$event.stopPropagation()"
+                      (click)="deleteFridgeItem(item.id)"
+                    >
+                      Удалить
+                    </button>
                   </div>
                 </div>
-                <span class="row-chevron">›</span>
               </article>
             } @empty {
               <div class="empty-state">
@@ -990,7 +1006,7 @@
               [(ngModel)]="newShoppingItem.name"
               placeholder="Название товара"
             />
-            <button class="primary-action" type="submit">Добавить</button>
+            <button class="primary-action shopping-submit" type="submit">Добавить</button>
           </form>
           <div class="shopping-details">
             <input
@@ -1022,10 +1038,16 @@
           }
         </div>
 
-        <div class="filter-pills" aria-label="Фильтры покупок">
-          <span class="active">Все {{ shoppingItems().length }}</span>
-          <span>Продукты {{ shoppingProductsCount() }}</span>
-          <span>Бытовое {{ shoppingHouseholdCount() }}</span>
+        <div class="filter-pills" role="tablist" aria-label="Фильтры покупок">
+          <button type="button" [class.active]="activeShoppingFilter() === 'all'" (click)="setShoppingFilter('all')">
+            Все {{ shoppingItems().length }}
+          </button>
+          <button type="button" [class.active]="activeShoppingFilter() === 'products'" (click)="setShoppingFilter('products')">
+            Продукты {{ shoppingProductsCount() }}
+          </button>
+          <button type="button" [class.active]="activeShoppingFilter() === 'household'" (click)="setShoppingFilter('household')">
+            Бытовое {{ shoppingHouseholdCount() }}
+          </button>
         </div>
 
         @if (loading()) {
@@ -1036,7 +1058,7 @@
           </div>
         } @else {
           <div class="list">
-            @for (item of shoppingItems(); track item.id) {
+            @for (item of visibleShoppingItems(); track item.id) {
               <article class="shopping-row" [class.done]="item.checked">
                 <button class="check-button" type="button" (click)="toggleShoppingItem(item)">
                   @if (item.checked) {
@@ -1046,7 +1068,7 @@
                 <div class="item-content">
                   <h3>{{ item.name }}</h3>
                   <p>
-                    {{ item.quantity ?? 1 }} {{ item.unit ?? 'шт' }} ·
+                    {{ item.quantity ?? 1 }} {{ displayUnit(item.unit) }} ·
                     {{ categoryLabel(item.category) }}
                   </p>
                   @if (item.checked) {
@@ -1073,9 +1095,15 @@
     @if (!devMode() && activeTab() === 'dishes') {
       <section class="screen">
         <div class="filter-pills" role="tablist" aria-label="Подбор блюд">
-          <span class="active">Можно сейчас</span>
-          <span>Почти готово</span>
-          <span>Запланировано</span>
+          <button type="button" [class.active]="activeDishFilter() === 'available'" (click)="setDishFilter('available')">
+            Все ингредиенты есть
+          </button>
+          <button type="button" [class.active]="activeDishFilter() === 'almost'" (click)="setDishFilter('almost')">
+            Нужна пара ингредиентов
+          </button>
+          <button type="button" [class.active]="activeDishFilter() === 'planned'" (click)="setDishFilter('planned')">
+            Запланировано
+          </button>
         </div>
         <button class="dish-card action-card" type="button" (click)="openDish(dishIdeas[0])">
           <p class="section-label">Ужин за 25 минут</p>
@@ -1163,7 +1191,7 @@
           }
         </div>
         <button class="primary-action create-recipe-button" type="button" (click)="createRecipe()">
-          ＋ Создать рецепт
+          + Создать рецепт
         </button>
       </section>
     }
@@ -1244,11 +1272,11 @@
             <textarea
               name="support-message"
               [(ngModel)]="supportForm.message"
-              placeholder="Опишите, что случилось или что непонятно"
+              placeholder="Опишите вопрос или проблему"
               required
             ></textarea>
             <button class="primary-action" type="submit" [disabled]="saving()">
-              Создать тикет
+              Отправить
             </button>
           </form>
 
@@ -1466,7 +1494,7 @@
             </div>
             <div class="preview-row">
               <span class="check-button empty" aria-hidden="true"></span>
-              <strong>Хлеб · 1 шт</strong>
+              <strong>Хлеб · 1 шт.</strong>
             </div>
           } @else if (onboardingStep().tab === 'dishes') {
             <div class="preview-choice">

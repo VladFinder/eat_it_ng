@@ -137,6 +137,7 @@ h3 {
 .auth-form,
 .oauth-section,
 .support-form,
+.inline-form,
 .support-reply {
   display: grid;
   gap: 12px;
@@ -351,10 +352,12 @@ button:active {
 .add-shortcut {
   width: 46px;
   min-width: 46px;
+  height: 38px;
   min-height: 38px;
   border-radius: 14px;
   padding: 0;
   font-size: 22px;
+  line-height: 1;
 }
 
 .form-grid {
@@ -371,7 +374,7 @@ button:active {
 
 .shopping-form {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 76px;
+  grid-template-columns: minmax(0, 1fr) 96px;
   gap: 10px;
 }
 
@@ -401,6 +404,10 @@ textarea {
   color: var(--text);
   padding: 0 14px;
   outline: none;
+}
+
+select {
+  padding-right: 36px;
 }
 
 input[type='date'] {
@@ -897,12 +904,49 @@ textarea {
   gap: 8px;
 }
 
+.recipe-longread {
+  display: grid;
+  gap: 10px;
+}
+
+.recipe-longread article {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr);
+  gap: 10px;
+  align-items: start;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-strong);
+  padding: 10px;
+}
+
+.recipe-longread span {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 10px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.recipe-longread p {
+  margin: 0;
+}
+
 .account-actions {
   grid-template-columns: 1fr;
 }
 
 .partner-panel p {
   margin-top: 8px;
+}
+
+.partner-panel .inline-form,
+.partner-panel .member-list {
+  margin-top: 6px;
 }
 
 .member-row {

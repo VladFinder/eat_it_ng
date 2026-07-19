@@ -1312,7 +1312,7 @@ export function createApiServer(prisma, logger = console) {
               householdId: user.householdId,
               name: current.name,
               quantity: input.quantity ?? current.quantity ?? 1,
-              unit: input.unit ?? current.unit ?? 'шт',
+              unit: input.unit ?? current.unit ?? 'шт.',
               expiresAt: toDate(input.expiresAt),
               reminderDays: input.reminderDays ?? 1,
               category: input.category ?? current.category,

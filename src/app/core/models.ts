@@ -1,4 +1,17 @@
-export type Unit = 'шт' | 'г' | 'кг' | 'мл' | 'л' | 'упак' | 'банка' | 'бут';
+export type Unit =
+  | 'шт.'
+  | 'шт'
+  | 'г'
+  | 'кг'
+  | 'мг'
+  | 'мл'
+  | 'л'
+  | 'упак.'
+  | 'упак'
+  | 'бан.'
+  | 'банка'
+  | 'бут.'
+  | 'бут';
 export type ItemCategory = 'products' | 'household';
 
 export interface FridgeItem {
