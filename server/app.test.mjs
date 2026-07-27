@@ -152,7 +152,7 @@ before(async () => {
       "name" TEXT NOT NULL,
       "quantity" REAL NOT NULL,
       "unit" TEXT NOT NULL,
-      "expiresAt" DATETIME NOT NULL,
+      "expiresAt" DATETIME,
       "reminderDays" INTEGER NOT NULL DEFAULT 1,
       "category" TEXT NOT NULL DEFAULT 'products',
       "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -477,6 +477,46 @@ test('completed shopping item can be moved to the fridge', async () => {
   assert.equal(
     state.shoppingItems.some((item) => item.id === shoppingItem.id),
     false,
+  );
+});
+
+test('fridge items can be stored without an expiry date', async () => {
+  const createResponse = await request('/api/fridge', {
+    method: 'POST',
+    body: JSON.stringify({
+      name: 'Соль',
+      quantity: 1,
+      unit: 'шт.',
+      expiresAt: null,
+      reminderDays: 0,
+      category: 'products',
+    }),
+  });
+  assert.equal(createResponse.status, 201);
+  const created = await createResponse.json();
+  assert.equal(created.expiresAt, null);
+
+  const shoppingResponse = await request('/api/shopping', {
+    method: 'POST',
+    body: JSON.stringify({ name: 'Губка', category: 'household' }),
+  });
+  assert.equal(shoppingResponse.status, 201);
+  const shoppingItem = await shoppingResponse.json();
+
+  const moveResponse = await request(`/api/shopping/${shoppingItem.id}/move-to-fridge`, {
+    method: 'POST',
+    body: JSON.stringify({ expiresAt: null, reminderDays: 0, category: 'household' }),
+  });
+  assert.equal(moveResponse.status, 200);
+  const moved = await moveResponse.json();
+  assert.equal(moved.expiresAt, null);
+  assert.equal(moved.category, 'household');
+
+  const stateResponse = await request('/api/state');
+  const state = await stateResponse.json();
+  assert.equal(
+    state.fridgeItems.some((item) => item.id === created.id && item.expiresAt === null),
+    true,
   );
 });
 

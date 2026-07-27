@@ -19,7 +19,7 @@ export interface FridgeItem {
   name: string;
   quantity: number;
   unit: Unit;
-  expiresAt: string;
+  expiresAt: string | null;
   reminderDays: number;
   category: ItemCategory;
   createdAt: string;

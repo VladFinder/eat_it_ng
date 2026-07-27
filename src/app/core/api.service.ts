@@ -253,7 +253,7 @@ export class ApiService {
     input: {
       quantity?: number;
       unit?: Unit;
-      expiresAt: string;
+      expiresAt: string | null;
       reminderDays?: number;
       category?: ItemCategory;
     },

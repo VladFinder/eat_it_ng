@@ -310,6 +310,7 @@ button:active {
 
 .fridge-toolbar {
   justify-content: space-between;
+  flex-wrap: nowrap;
 }
 
 .section-switcher,
@@ -319,6 +320,7 @@ button:active {
 
 .section-switcher {
   display: flex;
+  flex: 1 1 auto;
   gap: 8px;
 }
 
@@ -350,6 +352,9 @@ button:active {
 }
 
 .add-shortcut {
+  display: inline-grid;
+  place-items: center;
+  flex: 0 0 46px;
   width: 46px;
   min-width: 46px;
   height: 38px;
@@ -358,6 +363,7 @@ button:active {
   padding: 0;
   font-size: 22px;
   line-height: 1;
+  text-align: center;
 }
 
 .form-grid {
@@ -374,7 +380,7 @@ button:active {
 
 .shopping-form {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 96px;
+  grid-template-columns: minmax(0, 1fr) minmax(118px, auto);
   gap: 10px;
 }
 
@@ -407,7 +413,19 @@ textarea {
 }
 
 select {
-  padding-right: 36px;
+  padding-right: 44px;
+}
+
+.checkbox-row {
+  display: inline-grid;
+  grid-template-columns: 22px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.checkbox-row input {
+  width: 18px;
+  min-height: 18px;
 }
 
 input[type='date'] {
@@ -543,6 +561,11 @@ textarea {
   color: var(--danger);
 }
 
+.status.neutral {
+  background: var(--surface-strong);
+  color: var(--muted);
+}
+
 .list,
 .notification-list,
 .member-list,
@@ -581,6 +604,38 @@ textarea {
 .fridge-row.move-left {
   border-color: var(--danger);
   background: #fff0ed;
+}
+
+.fridge-row.actions-open {
+  border-color: var(--primary-soft);
+}
+
+.swipe-actions {
+  display: grid;
+  grid-template-columns: repeat(2, 46px);
+  justify-content: end;
+  gap: 8px;
+  margin-top: -4px;
+}
+
+.swipe-action {
+  display: grid;
+  place-items: center;
+  width: 46px;
+  height: 42px;
+  border: 0;
+  border-radius: 12px;
+  font-size: 20px;
+}
+
+.swipe-action.shopping {
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.swipe-action.delete {
+  background: var(--danger-soft);
+  color: var(--danger);
 }
 
 .item-thumb,
@@ -1299,6 +1354,12 @@ textarea {
   color: var(--text);
   font-size: 18px;
   font-weight: 800;
+}
+
+.cooking-actions {
+  display: grid;
+  grid-template-columns: minmax(92px, auto) minmax(0, 1fr);
+  gap: 10px;
 }
 
 .toast {
@@ -2456,7 +2517,7 @@ textarea {
   }
 
   .section-switcher {
-    flex: 1 1 100%;
+    flex: 1 1 auto;
   }
 
   .add-shortcut {

@@ -162,6 +162,7 @@ export class App implements OnDestroy, OnInit {
     quantity: 1,
     unit: 'шт.' as Unit,
     expiresAt: this.addDays(5),
+    noExpiry: false,
     reminderDays: 1,
   };
 
@@ -338,21 +339,25 @@ export class App implements OnDestroy, OnInit {
       .filter((item) => item.category === this.activeCategory())
       .sort(
         (left, right) =>
-          left.expiresAt.localeCompare(right.expiresAt) ||
+          this.expirySortValue(left).localeCompare(this.expirySortValue(right)) ||
           right.createdAt.localeCompare(left.createdAt),
       ),
   );
   protected readonly expiringSoonCount = computed(
     () =>
       this.visibleFridgeItems().filter(
-        (item) => this.daysUntil(item.expiresAt) <= item.reminderDays,
+        (item) => item.expiresAt && this.daysUntil(item.expiresAt) <= item.reminderDays,
       ).length,
   );
   protected readonly expiringSoonItems = computed(() =>
-    this.visibleFridgeItems().filter((item) => this.daysUntil(item.expiresAt) <= item.reminderDays),
+    this.visibleFridgeItems().filter(
+      (item) => item.expiresAt && this.daysUntil(item.expiresAt) <= item.reminderDays,
+    ),
   );
   protected readonly stableFridgeItems = computed(() =>
-    this.visibleFridgeItems().filter((item) => this.daysUntil(item.expiresAt) > item.reminderDays),
+    this.visibleFridgeItems().filter(
+      (item) => !item.expiresAt || this.daysUntil(item.expiresAt) > item.reminderDays,
+    ),
   );
   protected readonly shoppingOpenCount = computed(
     () => this.shoppingItems().filter((item) => !item.checked).length,
@@ -417,6 +422,7 @@ export class App implements OnDestroy, OnInit {
   });
 
   private swipe: SwipeState | null = null;
+  protected readonly openedSwipeItemId = signal<string | null>(null);
 
   ngOnInit(): void {
     void this.initializeSession();
@@ -526,6 +532,8 @@ export class App implements OnDestroy, OnInit {
 
   protected setCategory(category: ItemCategory): void {
     this.activeCategory.set(category);
+    this.openedSwipeItemId.set(null);
+    this.newFridgeItem.noExpiry = category === 'household';
   }
 
   protected setShoppingFilter(filter: ShoppingFilter): void {
@@ -545,6 +553,10 @@ export class App implements OnDestroy, OnInit {
     if (!name || this.saving()) {
       return;
     }
+    const expiresAt =
+      this.activeCategory() === 'household' || this.newFridgeItem.noExpiry
+        ? null
+        : this.newFridgeItem.expiresAt || this.today;
 
     await this.runMutation(async () => {
       const item = await firstValueFrom(
@@ -552,8 +564,8 @@ export class App implements OnDestroy, OnInit {
           name,
           quantity: Number(this.newFridgeItem.quantity) || 1,
           unit: this.newFridgeItem.unit,
-          expiresAt: this.newFridgeItem.expiresAt || this.today,
-          reminderDays: Number(this.newFridgeItem.reminderDays) || 0,
+          expiresAt,
+          reminderDays: expiresAt ? Number(this.newFridgeItem.reminderDays) || 0 : 0,
           category: this.activeCategory(),
         }),
       );
@@ -563,6 +575,7 @@ export class App implements OnDestroy, OnInit {
       this.newFridgeItem.quantity = 1;
       this.newFridgeItem.unit = 'шт.';
       this.newFridgeItem.expiresAt = this.addDays(5);
+      this.newFridgeItem.noExpiry = false;
       this.newFridgeItem.reminderDays = 1;
       this.fridgeAddOpen.set(false);
     });
@@ -577,15 +590,22 @@ export class App implements OnDestroy, OnInit {
     if (!Number.isFinite(quantity) || quantity <= 0) {
       return;
     }
-    const expiresAt = this.parseDisplayDate(
-      window.prompt('Годен до (ДД.ММ.ГГГГ)', this.formatDate(item.expiresAt))?.trim() ?? '',
-    );
-    if (!expiresAt) {
+    const rawExpiresAt =
+      item.category === 'household'
+        ? ''
+        : window
+            .prompt(
+              'Годен до (ДД.ММ.ГГГГ), оставьте пустым для товара без срока',
+              item.expiresAt ? this.formatDate(item.expiresAt) : '',
+            )
+            ?.trim() ?? '';
+    const expiresAt = rawExpiresAt ? this.parseDisplayDate(rawExpiresAt) : null;
+    if (rawExpiresAt && !expiresAt) {
       return;
     }
-    const reminderDays = Number(
-      window.prompt('Напомнить за сколько дней?', String(item.reminderDays)),
-    );
+    const reminderDays = expiresAt
+      ? Number(window.prompt('Напомнить за сколько дней?', String(item.reminderDays)))
+      : 0;
     if (!Number.isInteger(reminderDays) || reminderDays < 0 || reminderDays > 365) {
       return;
     }
@@ -676,13 +696,17 @@ export class App implements OnDestroy, OnInit {
   }
 
   protected async moveShoppingToFridge(item: ShoppingItem): Promise<void> {
-    const expiresAt = this.parseDisplayDate(
-      window.prompt('Годен до (ДД.ММ.ГГГГ)', this.formatDate(this.addDays(5)))?.trim() ?? '',
-    );
-    if (!expiresAt) {
+    const rawExpiresAt =
+      item.category === 'household'
+        ? ''
+        : window
+            .prompt('Годен до (ДД.ММ.ГГГГ), оставьте пустым для товара без срока', this.formatDate(this.addDays(5)))
+            ?.trim() ?? '';
+    const expiresAt = rawExpiresAt ? this.parseDisplayDate(rawExpiresAt) : null;
+    if (rawExpiresAt && !expiresAt) {
       return;
     }
-    const reminderDays = Number(window.prompt('Напомнить за сколько дней?', '1'));
+    const reminderDays = expiresAt ? Number(window.prompt('Напомнить за сколько дней?', '1')) : 0;
     if (!Number.isInteger(reminderDays) || reminderDays < 0 || reminderDays > 365) {
       return;
     }
@@ -766,6 +790,10 @@ export class App implements OnDestroy, OnInit {
     this.cookingStepIndex.set(0);
   }
 
+  protected previousCookingStep(): void {
+    this.cookingStepIndex.update((index) => Math.max(index - 1, 0));
+  }
+
   protected nextCookingStep(): void {
     const next = this.cookingStepIndex() + 1;
     if (next >= this.cookingSteps.length) {
@@ -789,6 +817,7 @@ export class App implements OnDestroy, OnInit {
   }
 
   protected openFridgeAdd(): void {
+    this.newFridgeItem.noExpiry = this.activeCategory() === 'household';
     this.fridgeAddOpen.set(true);
   }
 
@@ -1019,6 +1048,9 @@ export class App implements OnDestroy, OnInit {
 
   protected beginSwipe(event: PointerEvent, id: string): void {
     this.swipe = { id, startX: event.clientX, deltaX: 0 };
+    if (this.openedSwipeItemId() !== id) {
+      this.openedSwipeItemId.set(null);
+    }
   }
 
   protected moveSwipe(event: PointerEvent, id: string): void {
@@ -1038,20 +1070,39 @@ export class App implements OnDestroy, OnInit {
     const deltaX = this.swipe.deltaX;
     this.swipe = null;
 
-    if (!item || Math.abs(deltaX) < 72) {
+    if (!item) {
       return;
     }
 
-    if (deltaX > 0) {
-      void this.moveFridgeToShopping(item);
-    }
+    this.openedSwipeItemId.set(Math.abs(deltaX) >= 72 ? id : null);
   }
 
   protected swipeOffset(id: string): number {
     return this.swipe?.id === id ? this.swipe.deltaX : 0;
   }
 
-  protected expiryLabel(date: string): string {
+  protected isSwipeActionsOpen(id: string): boolean {
+    return this.openedSwipeItemId() === id;
+  }
+
+  protected closeSwipeActions(): void {
+    this.openedSwipeItemId.set(null);
+  }
+
+  protected async moveSwipedFridgeToShopping(item: FridgeItem): Promise<void> {
+    this.closeSwipeActions();
+    await this.moveFridgeToShopping(item);
+  }
+
+  protected async deleteSwipedFridgeItem(id: string): Promise<void> {
+    this.closeSwipeActions();
+    await this.deleteFridgeItem(id);
+  }
+
+  protected expiryLabel(date: string | null): string {
+    if (!date) {
+      return 'Без срока';
+    }
     const days = this.daysUntil(date);
     if (days < 0) {
       return `Просрочено ${Math.abs(days)} дн.`;
@@ -1065,7 +1116,10 @@ export class App implements OnDestroy, OnInit {
     return `Осталось ${days} дн.`;
   }
 
-  protected expiryClass(date: string): string {
+  protected expiryClass(date: string | null): string {
+    if (!date) {
+      return 'neutral';
+    }
     const days = this.daysUntil(date);
     if (days < 0) {
       return 'danger';
@@ -1076,7 +1130,10 @@ export class App implements OnDestroy, OnInit {
     return 'fresh';
   }
 
-  protected formatDate(date: string): string {
+  protected formatDate(date: string | null): string {
+    if (!date) {
+      return '';
+    }
     const [year, month, day] = date.split('-');
     return year && month && day ? `${day}.${month}.${year}` : date;
   }
@@ -1362,6 +1419,10 @@ export class App implements OnDestroy, OnInit {
       return error.error.error;
     }
     return fallback;
+  }
+
+  private expirySortValue(item: FridgeItem): string {
+    return item.expiresAt ?? '9999-12-31';
   }
 
   private daysUntil(date: string): number {

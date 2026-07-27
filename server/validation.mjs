@@ -47,7 +47,7 @@ const fridgeFields = {
   name,
   quantity,
   unit,
-  expiresAt: date,
+  expiresAt: date.nullable(),
   reminderDays,
   category,
 };
@@ -94,7 +94,7 @@ export const shoppingUpdateSchema = z
 export const shoppingToFridgeSchema = z.object({
   quantity: quantity.optional(),
   unit: unit.optional(),
-  expiresAt: date,
+  expiresAt: date.nullable(),
   reminderDays: reminderDays.optional(),
   category: category.optional(),
 });

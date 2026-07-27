@@ -13,7 +13,7 @@ model FridgeItem {
   name         String
   quantity     Float
   unit         String
-  expiresAt    DateTime
+  expiresAt    DateTime?
   reminderDays Int       @default(1)
   category     String    @default("products")
   createdAt    DateTime  @default(now())

@@ -88,13 +88,16 @@ async function readForm(request) {
 }
 
 function toDate(value) {
+  if (!value) {
+    return null;
+  }
   return new Date(`${value}T00:00:00.000Z`);
 }
 
 function serializeFridgeItem({ householdId, ...item }) {
   return {
     ...item,
-    expiresAt: item.expiresAt.toISOString().slice(0, 10),
+    expiresAt: item.expiresAt ? item.expiresAt.toISOString().slice(0, 10) : null,
     createdAt: item.createdAt.toISOString(),
     updatedAt: item.updatedAt.toISOString(),
   };
@@ -276,7 +279,7 @@ async function ensureExpiryNotifications(prisma, user) {
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
   const items = await prisma.fridgeItem.findMany({
-    where: { householdId: user.householdId },
+    where: { householdId: user.householdId, expiresAt: { not: null } },
     orderBy: [{ expiresAt: 'asc' }, { createdAt: 'desc' }],
   });
 
@@ -1193,7 +1196,7 @@ export function createApiServer(prisma, logger = console) {
           where: { id: fridgeRoute.id },
           data: {
             ...input,
-            ...(input.expiresAt ? { expiresAt: toDate(input.expiresAt) } : {}),
+            ...(Object.hasOwn(input, 'expiresAt') ? { expiresAt: toDate(input.expiresAt) } : {}),
           },
         });
         json(response, 200, serializeFridgeItem(item));

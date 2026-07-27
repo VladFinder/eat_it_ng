@@ -336,9 +336,19 @@
           <span>Шаг {{ cookingStepIndex() + 1 }} из {{ cookingSteps.length }}</span>
           <p>{{ cookingSteps[cookingStepIndex()] }}</p>
         </article>
-        <button class="primary-action" type="button" (click)="nextCookingStep()">
+        <div class="cooking-actions">
+          <button
+            class="secondary-action"
+            type="button"
+            (click)="previousCookingStep()"
+            [disabled]="cookingStepIndex() === 0"
+          >
+            Назад
+          </button>
+          <button class="primary-action" type="button" (click)="nextCookingStep()">
           {{ cookingStepIndex() + 1 === cookingSteps.length ? 'Завершить готовку' : 'Следующий шаг' }}
-        </button>
+          </button>
+        </div>
       </section>
     }
 
@@ -387,13 +397,29 @@
               </select>
             </label>
           </div>
+          @if (activeCategory() === 'products') {
+            <label class="checkbox-row">
+              <input name="fridge-no-expiry" [(ngModel)]="newFridgeItem.noExpiry" type="checkbox" />
+              <span>Без срока годности</span>
+            </label>
+          }
+          @if (activeCategory() === 'products' && !newFridgeItem.noExpiry) {
           <label>
             Годен до
-            <input name="fridge-expires" [(ngModel)]="newFridgeItem.expiresAt" type="date" />
+            <input
+              name="fridge-expires"
+              [(ngModel)]="newFridgeItem.expiresAt"
+              [disabled]="activeCategory() === 'household' || newFridgeItem.noExpiry"
+              type="date"
+            />
           </label>
           <label>
             Напомнить об истечении срока:
-            <select name="fridge-reminder" [(ngModel)]="newFridgeItem.reminderDays">
+            <select
+              name="fridge-reminder"
+              [(ngModel)]="newFridgeItem.reminderDays"
+              [disabled]="activeCategory() === 'household' || newFridgeItem.noExpiry"
+            >
               <option [ngValue]="0">в день окончания</option>
               <option [ngValue]="1">за 1 день</option>
               <option [ngValue]="3">за 3 дня</option>
@@ -401,6 +427,7 @@
               <option [ngValue]="7">за 7 дней</option>
             </select>
           </label>
+          }
           <button class="primary-action" type="submit" [disabled]="saving()">Добавить</button>
         </form>
       </section>
@@ -908,6 +935,7 @@
                   class="fridge-row"
                   [class.move-right]="swipeOffset(item.id) > 36"
                   [class.move-left]="swipeOffset(item.id) < -36"
+                  [class.actions-open]="isSwipeActionsOpen(item.id)"
                   [style.transform]="'translateX(' + swipeOffset(item.id) + 'px)'"
                   (pointerdown)="beginSwipe($event, item.id)"
                   (pointermove)="moveSwipe($event, item.id)"
@@ -934,6 +962,16 @@
                     item.reminderDays
                   }} дн.</span>
                 </article>
+                @if (isSwipeActionsOpen(item.id)) {
+                  <div class="swipe-actions" role="group" aria-label="Действия с товаром">
+                    <button class="swipe-action shopping" type="button" (click)="moveSwipedFridgeToShopping(item)" aria-label="В список покупок">
+                      🛒
+                    </button>
+                    <button class="swipe-action delete" type="button" (click)="deleteSwipedFridgeItem(item.id)" aria-label="Удалить">
+                      🗑
+                    </button>
+                  </div>
+                }
               }
             </div>
           }
@@ -947,6 +985,7 @@
                 class="fridge-row"
                 [class.move-right]="swipeOffset(item.id) > 36"
                 [class.move-left]="swipeOffset(item.id) < -36"
+                [class.actions-open]="isSwipeActionsOpen(item.id)"
                 [style.transform]="'translateX(' + swipeOffset(item.id) + 'px)'"
                 (pointerdown)="beginSwipe($event, item.id)"
                 (pointermove)="moveSwipe($event, item.id)"
@@ -982,6 +1021,16 @@
                   </div>
                 </div>
               </article>
+              @if (isSwipeActionsOpen(item.id)) {
+                <div class="swipe-actions" role="group" aria-label="Действия с товаром">
+                  <button class="swipe-action shopping" type="button" (click)="moveSwipedFridgeToShopping(item)" aria-label="В список покупок">
+                    🛒
+                  </button>
+                  <button class="swipe-action delete" type="button" (click)="deleteSwipedFridgeItem(item.id)" aria-label="Удалить">
+                    🗑
+                  </button>
+                </div>
+              }
             } @empty {
               <div class="empty-state">
                 <div class="empty-illustration">⌂</div>
@@ -1123,7 +1172,6 @@
                 <p>{{ dish.subtitle }}</p>
               </div>
               <span class="status fresh">{{ dish.badge }}</span>
-              <span class="row-chevron">›</span>
             </button>
           }
         </div>
