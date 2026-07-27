@@ -66,6 +66,8 @@ interface SwipeState {
   deltaX: number;
 }
 
+type SwipeAction = 'shopping' | 'delete';
+
 const STORAGE_KEYS = {
   recipes: 'eat-it.recipes',
   onboarding: 'eat-it.onboarding.completed',
@@ -423,6 +425,7 @@ export class App implements OnDestroy, OnInit {
 
   private swipe: SwipeState | null = null;
   protected readonly openedSwipeItemId = signal<string | null>(null);
+  protected readonly openedSwipeAction = signal<{ id: string; action: SwipeAction } | null>(null);
 
   ngOnInit(): void {
     void this.initializeSession();
@@ -533,6 +536,7 @@ export class App implements OnDestroy, OnInit {
   protected setCategory(category: ItemCategory): void {
     this.activeCategory.set(category);
     this.openedSwipeItemId.set(null);
+    this.openedSwipeAction.set(null);
     this.newFridgeItem.noExpiry = category === 'household';
   }
 
@@ -1050,6 +1054,7 @@ export class App implements OnDestroy, OnInit {
     this.swipe = { id, startX: event.clientX, deltaX: 0 };
     if (this.openedSwipeItemId() !== id) {
       this.openedSwipeItemId.set(null);
+      this.openedSwipeAction.set(null);
     }
   }
 
@@ -1058,7 +1063,7 @@ export class App implements OnDestroy, OnInit {
       return;
     }
 
-    this.swipe.deltaX = Math.max(-96, Math.min(96, event.clientX - this.swipe.startX));
+    this.swipe.deltaX = Math.max(-148, Math.min(148, event.clientX - this.swipe.startX));
   }
 
   protected endSwipe(id: string): void {
@@ -1074,11 +1079,44 @@ export class App implements OnDestroy, OnInit {
       return;
     }
 
-    this.openedSwipeItemId.set(Math.abs(deltaX) >= 72 ? id : null);
+    if (Math.abs(deltaX) >= 72) {
+      this.openedSwipeItemId.set(id);
+      this.openedSwipeAction.set({ id, action: deltaX > 0 ? 'shopping' : 'delete' });
+      return;
+    }
+
+    this.openedSwipeItemId.set(null);
+    this.openedSwipeAction.set(null);
   }
 
   protected swipeOffset(id: string): number {
-    return this.swipe?.id === id ? this.swipe.deltaX : 0;
+    if (this.swipe?.id === id) {
+      return this.swipe.deltaX;
+    }
+    const openAction = this.openedSwipeAction();
+    if (openAction?.id !== id) {
+      return 0;
+    }
+    return openAction.action === 'shopping' ? 118 : -118;
+  }
+
+  protected swipeProgress(id: string): number {
+    return Math.min(Math.abs(this.swipeOffset(id)) / 118, 1);
+  }
+
+  protected swipeAction(id: string): SwipeAction | null {
+    if (this.swipe?.id === id && Math.abs(this.swipe.deltaX) > 8) {
+      return this.swipe.deltaX > 0 ? 'shopping' : 'delete';
+    }
+    const openAction = this.openedSwipeAction();
+    return openAction?.id === id ? openAction.action : null;
+  }
+
+  protected swipeStyle(id: string): Record<string, string> {
+    return {
+      '--swipe-progress': String(this.swipeProgress(id)),
+      '--swipe-offset': `${this.swipeOffset(id)}px`,
+    };
   }
 
   protected isSwipeActionsOpen(id: string): boolean {
@@ -1087,6 +1125,7 @@ export class App implements OnDestroy, OnInit {
 
   protected closeSwipeActions(): void {
     this.openedSwipeItemId.set(null);
+    this.openedSwipeAction.set(null);
   }
 
   protected async moveSwipedFridgeToShopping(item: FridgeItem): Promise<void> {
@@ -1097,6 +1136,18 @@ export class App implements OnDestroy, OnInit {
   protected async deleteSwipedFridgeItem(id: string): Promise<void> {
     this.closeSwipeActions();
     await this.deleteFridgeItem(id);
+  }
+
+  protected async runSwipeAction(item: FridgeItem): Promise<void> {
+    const action = this.openedSwipeAction();
+    if (action?.id !== item.id) {
+      return;
+    }
+    if (action.action === 'shopping') {
+      await this.moveSwipedFridgeToShopping(item);
+      return;
+    }
+    await this.deleteSwipedFridgeItem(item.id);
   }
 
   protected expiryLabel(date: string | null): string {

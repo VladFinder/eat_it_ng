@@ -1,4 +1,4 @@
-@if (!currentUser()) {
+﻿@if (!currentUser()) {
   <main class="auth-shell">
     <section class="auth-card">
       <div>
@@ -935,7 +935,10 @@
                   class="fridge-row"
                   [class.move-right]="swipeOffset(item.id) > 36"
                   [class.move-left]="swipeOffset(item.id) < -36"
+                  [class.swipe-shopping]="swipeAction(item.id) === 'shopping'"
+                  [class.swipe-delete]="swipeAction(item.id) === 'delete'"
                   [class.actions-open]="isSwipeActionsOpen(item.id)"
+                  [style.--swipe-progress]="swipeProgress(item.id)"
                   [style.transform]="'translateX(' + swipeOffset(item.id) + 'px)'"
                   (pointerdown)="beginSwipe($event, item.id)"
                   (pointermove)="moveSwipe($event, item.id)"
@@ -964,11 +967,14 @@
                 </article>
                 @if (isSwipeActionsOpen(item.id)) {
                   <div class="swipe-actions" role="group" aria-label="Действия с товаром">
-                    <button class="swipe-action shopping" type="button" (click)="moveSwipedFridgeToShopping(item)" aria-label="В список покупок">
-                      🛒
-                    </button>
-                    <button class="swipe-action delete" type="button" (click)="deleteSwipedFridgeItem(item.id)" aria-label="Удалить">
-                      🗑
+                    <button
+                      class="swipe-action"
+                      [ngClass]="openedSwipeAction()?.action"
+                      type="button"
+                      (click)="runSwipeAction(item)"
+                      [attr.aria-label]="openedSwipeAction()?.action === 'shopping' ? 'В список покупок' : 'Удалить'"
+                    >
+                      {{ openedSwipeAction()?.action === 'shopping' ? '🛒' : '🗑' }}
                     </button>
                   </div>
                 }
@@ -985,7 +991,10 @@
                 class="fridge-row"
                 [class.move-right]="swipeOffset(item.id) > 36"
                 [class.move-left]="swipeOffset(item.id) < -36"
+                [class.swipe-shopping]="swipeAction(item.id) === 'shopping'"
+                [class.swipe-delete]="swipeAction(item.id) === 'delete'"
                 [class.actions-open]="isSwipeActionsOpen(item.id)"
+                [style.--swipe-progress]="swipeProgress(item.id)"
                 [style.transform]="'translateX(' + swipeOffset(item.id) + 'px)'"
                 (pointerdown)="beginSwipe($event, item.id)"
                 (pointermove)="moveSwipe($event, item.id)"
@@ -1023,12 +1032,15 @@
               </article>
               @if (isSwipeActionsOpen(item.id)) {
                 <div class="swipe-actions" role="group" aria-label="Действия с товаром">
-                  <button class="swipe-action shopping" type="button" (click)="moveSwipedFridgeToShopping(item)" aria-label="В список покупок">
-                    🛒
-                  </button>
-                  <button class="swipe-action delete" type="button" (click)="deleteSwipedFridgeItem(item.id)" aria-label="Удалить">
-                    🗑
-                  </button>
+                  <button
+                      class="swipe-action"
+                      [ngClass]="openedSwipeAction()?.action"
+                      type="button"
+                      (click)="runSwipeAction(item)"
+                      [attr.aria-label]="openedSwipeAction()?.action === 'shopping' ? 'В список покупок' : 'Удалить'"
+                    >
+                      {{ openedSwipeAction()?.action === 'shopping' ? '🛒' : '🗑' }}
+                    </button>
                 </div>
               }
             } @empty {

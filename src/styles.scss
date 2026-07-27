@@ -578,6 +578,7 @@ textarea {
 .fridge-row,
 .shopping-row {
   position: relative;
+  isolation: isolate;
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
@@ -586,7 +587,7 @@ textarea {
   padding: 14px;
   touch-action: pan-y;
   transition:
-    transform 160ms ease,
+    transform 260ms cubic-bezier(0.2, 0.8, 0.2, 1),
     border-color 160ms ease,
     background 160ms ease;
 }
@@ -596,14 +597,61 @@ textarea {
   min-height: 76px;
 }
 
+.fridge-row > * {
+  position: relative;
+  z-index: 1;
+}
+
+.fridge-row::before,
+.fridge-row::after {
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  display: grid;
+  place-items: center;
+  width: 92px;
+  border-radius: 16px;
+  font-size: 28px;
+  opacity: 0;
+  transform: scale(0.76);
+  transition:
+    opacity 160ms ease,
+    transform 220ms cubic-bezier(0.2, 1.2, 0.2, 1);
+  z-index: 0;
+}
+
+.fridge-row::before {
+  left: 14px;
+  content: '🛒';
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.fridge-row::after {
+  right: 14px;
+  content: '🗑';
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+
+.fridge-row.swipe-shopping::before {
+  opacity: var(--swipe-progress, 0);
+  transform: scale(1);
+}
+
+.fridge-row.swipe-delete::after {
+  opacity: var(--swipe-progress, 0);
+  transform: scale(1);
+}
+
 .fridge-row.move-right {
   border-color: var(--primary);
-  background: #edf8ef;
+  background: linear-gradient(90deg, #edf8ef, var(--surface));
 }
 
 .fridge-row.move-left {
   border-color: var(--danger);
-  background: #fff0ed;
+  background: linear-gradient(270deg, #fff0ed, var(--surface));
 }
 
 .fridge-row.actions-open {
@@ -612,20 +660,22 @@ textarea {
 
 .swipe-actions {
   display: grid;
-  grid-template-columns: repeat(2, 46px);
+  grid-template-columns: 56px;
   justify-content: end;
   gap: 8px;
   margin-top: -4px;
+  animation: swipe-action-in 180ms ease-out both;
 }
 
 .swipe-action {
   display: grid;
   place-items: center;
-  width: 46px;
-  height: 42px;
+  width: 56px;
+  height: 46px;
   border: 0;
   border-radius: 12px;
-  font-size: 20px;
+  font-size: 22px;
+  box-shadow: 0 12px 24px rgba(31, 100, 73, 0.14);
 }
 
 .swipe-action.shopping {
@@ -636,6 +686,17 @@ textarea {
 .swipe-action.delete {
   background: var(--danger-soft);
   color: var(--danger);
+}
+
+@keyframes swipe-action-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .item-thumb,
