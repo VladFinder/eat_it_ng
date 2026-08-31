@@ -81,6 +81,12 @@ const STORAGE_KEYS = {
   clearedNotifications: 'eat-it.notifications.cleared',
 };
 
+const LEGACY_DEMO_RECIPE_TITLES = new Set([
+  'Паста с курицей и томатами',
+  'Омлет с зеленью',
+  'Теплый салат с фасолью',
+]);
+
 const DEV_ALLOWED_EMAILS = new Set(['vladfinder@yandex.ru', 'krisyagodka@gmail.com']);
 
 const ONBOARDING_STEPS: OnboardingStep[] = [
@@ -284,60 +290,11 @@ export class App implements OnDestroy, OnInit {
   protected readonly fridgeItems = signal<FridgeItem[]>([]);
   protected readonly shoppingItems = signal<ShoppingItem[]>([]);
   protected readonly recipes = signal<Recipe[]>(
-    this.load<Recipe[]>(STORAGE_KEYS.recipes, [
-      {
-        id: this.createId(),
-        title: 'Паста с курицей и томатами',
-        time: '25 мин',
-        tags: ['ужин', 'быстро'],
-        liked: true,
-        mine: false,
-      },
-      {
-        id: this.createId(),
-        title: 'Омлет с зеленью',
-        time: '12 мин',
-        tags: ['завтрак', 'из холодильника'],
-        liked: false,
-        mine: true,
-      },
-      {
-        id: this.createId(),
-        title: 'Теплый салат с фасолью',
-        time: '18 мин',
-        tags: ['легко', 'обед'],
-        liked: false,
-        mine: false,
-      },
-    ]),
+    this.load<Recipe[]>(STORAGE_KEYS.recipes, []).filter(
+      (recipe) => !LEGACY_DEMO_RECIPE_TITLES.has(recipe.title),
+    ),
   );
-  protected readonly fallbackDishIdeas: DishIdea[] = [
-    {
-      title: 'Паста с овощами',
-      subtitle: 'Ужин за 25 минут',
-      badge: '100%',
-      description: 'Быстрое блюдо из продуктов, которые уже есть дома.',
-    },
-    {
-      title: 'Омлет с сыром',
-      subtitle: '15 минут · 6 ингредиентов',
-      badge: '100%',
-      description: 'Подходит для завтрака или легкого ужина.',
-    },
-    {
-      title: 'Рис с курицей',
-      subtitle: '40 минут · 8 ингредиентов',
-      badge: '88%',
-      description: 'Не хватает одной-двух позиций, их можно сразу добавить в покупки.',
-    },
-    {
-      title: 'Овощной салат',
-      subtitle: '10 минут · 5 ингредиентов',
-      badge: '100%',
-      description: 'Хороший вариант, чтобы использовать свежие овощи вовремя.',
-    },
-  ];
-  protected readonly recipeDishIdeas = signal<DishIdea[]>(this.fallbackDishIdeas);
+  protected readonly recipeDishIdeas = signal<DishIdea[]>([]);
   protected readonly cookingSteps = [
     'Подготовьте ингредиенты и рабочую поверхность.',
     'Нарежьте овощи и разогрейте сковороду.',
@@ -542,7 +499,7 @@ export class App implements OnDestroy, OnInit {
     if (tab !== 'profile') {
       this.profileSection.set('menu');
     }
-    if (tab === 'dishes') {
+    if (tab === 'dishes' || tab === 'recipes') {
       void this.loadRecipeSuggestions();
     }
   }
@@ -881,11 +838,15 @@ export class App implements OnDestroy, OnInit {
       this.recipeDishIdeas.set(
         result.recipes.length
           ? result.recipes.map((recipe) => this.toDishIdea(recipe))
-          : this.fallbackDishIdeas,
+          : [],
       );
+      this.recipes.update((recipes) => [
+        ...recipes.filter((recipe) => recipe.mine),
+        ...result.recipes.map((recipe) => this.toRecipe(recipe)),
+      ]);
     } catch (error) {
       this.recipeSuggestionsError.set(this.errorMessage(error, 'Не удалось загрузить блюда.'));
-      this.recipeDishIdeas.set(this.fallbackDishIdeas);
+      this.recipeDishIdeas.set([]);
     } finally {
       this.recipeSuggestionsLoading.set(false);
     }
@@ -909,6 +870,20 @@ export class App implements OnDestroy, OnInit {
       usedIngredients: recipe.usedIngredients,
       missedIngredients: recipe.missedIngredients,
       instructions: recipe.instructions,
+    };
+  }
+
+  private toRecipe(recipe: RecipeSuggestion): Recipe {
+    return {
+      id: recipe.id,
+      title: recipe.title,
+      time: recipe.subtitle ?? 'Рецепт из базы',
+      tags:
+        recipe.missedIngredientCount > 0
+          ? [`докупить ${recipe.missedIngredientCount}`, `${recipe.matchPercent}%`]
+          : ['все есть', `${recipe.matchPercent}%`],
+      liked: false,
+      mine: false,
     };
   }
 

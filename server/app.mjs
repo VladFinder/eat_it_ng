@@ -319,12 +319,13 @@ function serializeLocalDishSuggestion(dish, ingredients) {
 }
 
 async function localRecipeSuggestions(prisma, householdId) {
-  const [fridgeItems, rows] = await Promise.all([
+  const [fridgeItems, dishCount, rows] = await Promise.all([
     prisma.fridgeItem.findMany({
       where: { householdId, category: 'products' },
       orderBy: [{ expiresAt: 'asc' }, { createdAt: 'desc' }],
       take: 100,
     }),
+    prisma.dish.count(),
     prisma.$queryRaw`
       SELECT
         d.id AS dishId,
@@ -386,6 +387,7 @@ async function localRecipeSuggestions(prisma, householdId) {
   return {
     recipes,
     ingredients: Array.from(fridgeNames),
+    hasLocalCatalog: dishCount > 0,
   };
 }
 
@@ -823,7 +825,8 @@ export function createApiServer(prisma, logger = console) {
 
       if (method === 'GET' && url.pathname === '/api/recipes/suggestions') {
         const local = await localRecipeSuggestions(prisma, user.householdId);
-        if (local.recipes.length > 0 || !spoonacularApiKey()) {
+        if (local.hasLocalCatalog || !spoonacularApiKey()) {
+          delete local.hasLocalCatalog;
           json(response, 200, local);
           return;
         }

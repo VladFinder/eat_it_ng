@@ -1201,6 +1201,11 @@
             <p>{{ mainDish.description }}</p>
             <span class="primary-action compact-action">Открыть блюдо</span>
           </button>
+        } @else {
+          <div class="empty-state">
+            <h3>Пока нет подходящих блюд</h3>
+            <p>Добавьте продукты в холодильник или пополните базу рецептов.</p>
+          </div>
         }
         @if (recipeSuggestionsError()) {
           <p class="form-error">{{ recipeSuggestionsError() }}</p>
