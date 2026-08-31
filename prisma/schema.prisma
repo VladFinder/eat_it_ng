@@ -38,6 +38,44 @@ model ShoppingItem {
   @@index([householdId])
 }
 
+model Product {
+  id             String           @id @default(cuid())
+  name           String
+  normalizedName String           @unique
+  aliases        String?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  dishIngredients DishIngredient[]
+}
+
+model Dish {
+  id           String           @id @default(cuid())
+  title        String
+  subtitle     String?
+  description  String?
+  instructions String?
+  source       String           @default("local")
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+  ingredients  DishIngredient[]
+
+  @@index([source, title])
+}
+
+model DishIngredient {
+  id        String   @id @default(cuid())
+  dishId    String
+  productId String
+  quantity  Float?
+  unit      String?
+  required  Boolean  @default(true)
+  dish      Dish     @relation(fields: [dishId], references: [id], onDelete: Cascade)
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([dishId, productId])
+  @@index([productId])
+}
+
 model Household {
   id                   String                @id @default(cuid())
   name                 String

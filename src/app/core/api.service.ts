@@ -14,6 +14,7 @@ import {
   FridgeItem,
   Household,
   ItemCategory,
+  RecipeSuggestion,
   ShoppingInput,
   ShoppingItem,
   SupportMessage,
@@ -161,6 +162,13 @@ export class ApiService {
 
   getState(): Observable<AppState> {
     return this.http.get<AppState>(`${this.baseUrl}/state`, this.options());
+  }
+
+  getRecipeSuggestions(): Observable<{ recipes: RecipeSuggestion[]; ingredients: string[] }> {
+    return this.http.get<{ recipes: RecipeSuggestion[]; ingredients: string[] }>(
+      `${this.baseUrl}/recipes/suggestions`,
+      this.options(),
+    );
   }
 
   getHousehold(): Observable<Household> {

@@ -36,6 +36,8 @@ import {
 } from './validation.mjs';
 
 const BODY_LIMIT = 64 * 1024;
+const RECIPE_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
+const recipeSuggestionsCache = new Map();
 
 function json(response, status, body, headers = {}) {
   response.writeHead(status, {
@@ -182,6 +184,208 @@ function serializeFeedbackItem(item) {
     createdAt: item.createdAt.toISOString(),
     updatedAt: item.updatedAt.toISOString(),
     user: item.user ? serializeUser(item.user) : undefined,
+  };
+}
+
+function spoonacularApiKey() {
+  return process.env.SPOONACULAR_API_KEY ?? process.env.RECIPE_API_KEY ?? '';
+}
+
+function normalizeProductName(value) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/ё/g, 'е')
+    .replace(/[^\p{L}\p{N}\s-]/gu, '')
+    .replace(/\s+/g, ' ');
+}
+
+function recipeTitle(value) {
+  return typeof value === 'string' && value.trim() ? value.trim() : 'Рецепт';
+}
+
+function serializeRecipeSuggestion(recipe) {
+  const used = Number(recipe.usedIngredientCount ?? recipe.usedIngredients?.length ?? 0);
+  const missed = Number(recipe.missedIngredientCount ?? recipe.missedIngredients?.length ?? 0);
+  const total = Math.max(used + missed, 1);
+  const match = Math.round((used / total) * 100);
+  return {
+    id: String(recipe.id),
+    title: recipeTitle(recipe.title),
+    image: typeof recipe.image === 'string' ? recipe.image : null,
+    usedIngredientCount: used,
+    missedIngredientCount: missed,
+    matchPercent: match,
+    usedIngredients: Array.isArray(recipe.usedIngredients)
+      ? recipe.usedIngredients.map((item) => recipeTitle(item.name ?? item.originalName)).slice(0, 8)
+      : [],
+    missedIngredients: Array.isArray(recipe.missedIngredients)
+      ? recipe.missedIngredients.map((item) => recipeTitle(item.name ?? item.originalName)).slice(0, 8)
+      : [],
+  };
+}
+
+async function fetchRecipeSuggestions(ingredients) {
+  const apiKey = spoonacularApiKey();
+  if (!apiKey) {
+    const error = new Error('Recipe API is not configured');
+    error.status = 503;
+    throw error;
+  }
+
+  const cacheKey = ingredients.map((ingredient) => ingredient.toLowerCase()).sort().join('|');
+  const cached = recipeSuggestionsCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.recipes;
+  }
+
+  const params = new URLSearchParams({
+    apiKey,
+    ingredients: ingredients.join(','),
+    number: '5',
+    ranking: '1',
+    ignorePantry: 'true',
+  });
+  const response = await fetch(
+    `https://api.spoonacular.com/recipes/findByIngredients?${params.toString()}`,
+    { headers: { Accept: 'application/json' } },
+  );
+
+  if (!response.ok) {
+    const error = new Error('Recipe API request failed');
+    error.status = response.status === 402 || response.status === 429 ? 429 : 502;
+    throw error;
+  }
+
+  const recipes = await response.json();
+  const suggestions = Array.isArray(recipes) ? recipes.map(serializeRecipeSuggestion) : [];
+  recipeSuggestionsCache.set(cacheKey, {
+    recipes: suggestions,
+    expiresAt: Date.now() + RECIPE_CACHE_TTL_MS,
+  });
+  return suggestions;
+}
+
+function parseJsonArray(value) {
+  if (!value) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+function productMatchesFridge(product, fridgeNames) {
+  const names = [product.normalizedName, ...parseJsonArray(product.aliases)];
+  return names.some((name) => fridgeNames.has(name));
+}
+
+function formatIngredient(product, ingredient) {
+  const amount =
+    ingredient.quantity && ingredient.unit
+      ? `${ingredient.quantity} ${ingredient.unit}`
+      : ingredient.quantity
+        ? String(ingredient.quantity)
+        : '';
+  return amount ? `${product.name} ${amount}` : product.name;
+}
+
+function serializeLocalDishSuggestion(dish, ingredients) {
+  const requiredIngredients = ingredients.filter((ingredient) => ingredient.required);
+  const usedIngredients = requiredIngredients.filter((ingredient) => ingredient.available);
+  const missedIngredients = requiredIngredients.filter((ingredient) => !ingredient.available);
+  const total = Math.max(requiredIngredients.length, 1);
+  const matchPercent = Math.round((usedIngredients.length / total) * 100);
+  return {
+    id: dish.id,
+    title: dish.title,
+    image: null,
+    subtitle: dish.subtitle,
+    description: dish.description,
+    instructions: parseJsonArray(dish.instructions),
+    usedIngredientCount: usedIngredients.length,
+    missedIngredientCount: missedIngredients.length,
+    matchPercent,
+    usedIngredients: usedIngredients.map((ingredient) =>
+      formatIngredient(ingredient.product, ingredient),
+    ),
+    missedIngredients: missedIngredients.map((ingredient) =>
+      formatIngredient(ingredient.product, ingredient),
+    ),
+  };
+}
+
+async function localRecipeSuggestions(prisma, householdId) {
+  const [fridgeItems, rows] = await Promise.all([
+    prisma.fridgeItem.findMany({
+      where: { householdId, category: 'products' },
+      orderBy: [{ expiresAt: 'asc' }, { createdAt: 'desc' }],
+      take: 100,
+    }),
+    prisma.$queryRaw`
+      SELECT
+        d.id AS dishId,
+        d.title AS dishTitle,
+        d.subtitle AS dishSubtitle,
+        d.description AS dishDescription,
+        d.instructions AS dishInstructions,
+        di.quantity AS quantity,
+        di.unit AS unit,
+        di.required AS required,
+        p.id AS productId,
+        p.name AS productName,
+        p."normalizedName" AS productNormalizedName,
+        p.aliases AS productAliases
+      FROM "Dish" d
+      JOIN "DishIngredient" di ON di."dishId" = d.id
+      JOIN "Product" p ON p.id = di."productId"
+      ORDER BY d.title ASC, p.name ASC
+    `,
+  ]);
+  const fridgeNames = new Set(fridgeItems.map((item) => normalizeProductName(item.name)));
+  const dishes = new Map();
+  for (const row of rows) {
+    const dish = dishes.get(row.dishId) ?? {
+      dish: {
+        id: row.dishId,
+        title: row.dishTitle,
+        subtitle: row.dishSubtitle,
+        description: row.dishDescription,
+        instructions: row.dishInstructions,
+      },
+      ingredients: [],
+    };
+    const product = {
+      id: row.productId,
+      name: row.productName,
+      normalizedName: row.productNormalizedName,
+      aliases: row.productAliases,
+    };
+    dish.ingredients.push({
+      product,
+      quantity: row.quantity,
+      unit: row.unit,
+      required: Boolean(row.required),
+      available: productMatchesFridge(product, fridgeNames),
+    });
+    dishes.set(row.dishId, dish);
+  }
+  const recipes = Array.from(dishes.values())
+    .map(({ dish, ingredients }) => serializeLocalDishSuggestion(dish, ingredients))
+    .filter((recipe) => recipe.usedIngredientCount > 0)
+    .sort(
+      (left, right) =>
+        right.matchPercent - left.matchPercent ||
+        left.missedIngredientCount - right.missedIngredientCount ||
+        left.title.localeCompare(right.title),
+    )
+    .slice(0, 8);
+  return {
+    recipes,
+    ingredients: Array.from(fridgeNames),
   };
 }
 
@@ -614,6 +818,30 @@ export function createApiServer(prisma, logger = console) {
 
       if (method === 'GET' && url.pathname === '/api/auth/me') {
         json(response, 200, { user: { ...serializeUser(user), isAdmin: isAdmin(user) } });
+        return;
+      }
+
+      if (method === 'GET' && url.pathname === '/api/recipes/suggestions') {
+        const local = await localRecipeSuggestions(prisma, user.householdId);
+        if (local.recipes.length > 0 || !spoonacularApiKey()) {
+          json(response, 200, local);
+          return;
+        }
+        const fridgeItems = await prisma.fridgeItem.findMany({
+          where: { householdId: user.householdId, category: 'products' },
+          orderBy: [{ expiresAt: 'asc' }, { createdAt: 'desc' }],
+          take: 20,
+        });
+        const ingredients = Array.from(
+          new Set(fridgeItems.map((item) => item.name.trim()).filter(Boolean)),
+        ).slice(0, 10);
+        if (!ingredients.length) {
+          json(response, 200, { recipes: [], ingredients: [] });
+          return;
+        }
+
+        const recipes = await fetchRecipeSuggestions(ingredients);
+        json(response, 200, { recipes, ingredients });
         return;
       }
 

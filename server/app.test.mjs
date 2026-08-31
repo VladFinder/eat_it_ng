@@ -174,6 +174,44 @@ before(async () => {
       FOREIGN KEY ("householdId") REFERENCES "Household" ("id") ON DELETE CASCADE
     )
   `);
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE "Product" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "name" TEXT NOT NULL,
+      "normalizedName" TEXT NOT NULL UNIQUE,
+      "aliases" TEXT,
+      "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" DATETIME NOT NULL
+    )
+  `);
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE "Dish" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "title" TEXT NOT NULL,
+      "subtitle" TEXT,
+      "description" TEXT,
+      "instructions" TEXT,
+      "source" TEXT NOT NULL DEFAULT 'local',
+      "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" DATETIME NOT NULL
+    )
+  `);
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE "DishIngredient" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "dishId" TEXT NOT NULL,
+      "productId" TEXT NOT NULL,
+      "quantity" REAL,
+      "unit" TEXT,
+      "required" BOOLEAN NOT NULL DEFAULT true,
+      FOREIGN KEY ("dishId") REFERENCES "Dish" ("id") ON DELETE CASCADE,
+      FOREIGN KEY ("productId") REFERENCES "Product" ("id") ON DELETE CASCADE
+    )
+  `);
+  await prisma.$executeRawUnsafe(`
+    CREATE UNIQUE INDEX "DishIngredient_dishId_productId_key"
+    ON "DishIngredient"("dishId", "productId")
+  `);
   server = createApiServer(prisma, { error() {} });
   await new Promise((resolveListen) => server.listen(0, '127.0.0.1', resolveListen));
   const address = server.address();
@@ -422,6 +460,157 @@ test('default dev owners can access dev endpoints without env configuration', as
 test('state rejects unauthenticated requests', async () => {
   const response = await request('/api/state', { skipAuth: true });
   assert.equal(response.status, 401);
+});
+
+test('recipe suggestions return empty local result without external API key', async () => {
+  const previous = process.env.SPOONACULAR_API_KEY;
+  delete process.env.SPOONACULAR_API_KEY;
+
+  try {
+    const response = await request('/api/recipes/suggestions');
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { recipes: [], ingredients: [] });
+  } finally {
+    restoreEnv('SPOONACULAR_API_KEY', previous);
+  }
+});
+
+test('recipe suggestions calculate available and missing ingredients from local catalog', async () => {
+  await prisma.product.createMany({
+    data: [
+      {
+        id: 'product-egg',
+        name: 'Яйца',
+        normalizedName: 'яйца',
+        aliases: JSON.stringify(['яйцо']),
+      },
+      {
+        id: 'product-milk',
+        name: 'Молоко',
+        normalizedName: 'молоко',
+        aliases: JSON.stringify([]),
+      },
+      {
+        id: 'product-cheese',
+        name: 'Сыр',
+        normalizedName: 'сыр',
+        aliases: JSON.stringify([]),
+      },
+    ],
+  });
+  await prisma.dish.create({
+    data: {
+      id: 'dish-omelet',
+      title: 'Омлет с сыром',
+      subtitle: '15 минут',
+      description: 'Быстрый завтрак.',
+      instructions: JSON.stringify(['Взбейте яйца.', 'Добавьте сыр.']),
+      ingredients: {
+        createMany: {
+          data: [
+            { id: 'dish-omelet-egg', productId: 'product-egg', quantity: 2, unit: 'шт.' },
+            { id: 'dish-omelet-milk', productId: 'product-milk', quantity: 50, unit: 'мл' },
+            { id: 'dish-omelet-cheese', productId: 'product-cheese', quantity: 40, unit: 'г' },
+          ],
+        },
+      },
+    },
+  });
+  await request('/api/fridge', {
+    method: 'POST',
+    body: JSON.stringify({
+      name: 'яйцо',
+      quantity: 4,
+      unit: 'шт.',
+      expiresAt: '2026-06-12',
+      reminderDays: 3,
+      category: 'products',
+    }),
+  });
+
+  const response = await request('/api/recipes/suggestions');
+  assert.equal(response.status, 200);
+  const result = await response.json();
+  assert.equal(result.recipes[0].title, 'Омлет с сыром');
+  assert.equal(result.recipes[0].matchPercent, 33);
+  assert.deepEqual(result.recipes[0].usedIngredients, ['Яйца 2 шт.']);
+  assert.deepEqual(result.recipes[0].missedIngredients, ['Молоко 50 мл', 'Сыр 40 г']);
+});
+
+test('recipe suggestions fall back to Spoonacular when local catalog has no matches', async () => {
+  const previousKey = process.env.SPOONACULAR_API_KEY;
+  const previousFetch = globalThis.fetch;
+  await prisma.dishIngredient.deleteMany();
+  await prisma.dish.deleteMany();
+  await prisma.product.deleteMany();
+  process.env.SPOONACULAR_API_KEY = 'test-spoonacular-key';
+  let requestedUrl;
+
+  globalThis.fetch = async (url, options) => {
+    requestedUrl = new URL(url);
+    if (requestedUrl.origin === baseUrl) {
+      return previousFetch(url, options);
+    }
+    return Response.json([
+      {
+        id: 715538,
+        title: 'Apple Pancakes',
+        image: 'https://example.com/apple-pancakes.jpg',
+        usedIngredientCount: 2,
+        missedIngredientCount: 1,
+        usedIngredients: [{ name: 'apple' }, { name: 'flour' }],
+        missedIngredients: [{ name: 'egg' }],
+      },
+    ]);
+  };
+
+  try {
+    await request('/api/fridge', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: 'apple',
+        quantity: 2,
+        unit: 'шт.',
+        expiresAt: '2026-06-12',
+        reminderDays: 3,
+        category: 'products',
+      }),
+    });
+    await request('/api/fridge', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: 'flour',
+        quantity: 1,
+        unit: 'кг',
+        expiresAt: null,
+        reminderDays: 0,
+        category: 'products',
+      }),
+    });
+
+    const response = await request('/api/recipes/suggestions');
+    assert.equal(response.status, 200);
+    assert.equal(requestedUrl.origin, 'https://api.spoonacular.com');
+    assert.equal(requestedUrl.searchParams.get('apiKey'), 'test-spoonacular-key');
+    assert.match(requestedUrl.searchParams.get('ingredients'), /apple/);
+    assert.match(requestedUrl.searchParams.get('ingredients'), /flour/);
+
+    const result = await response.json();
+    assert.equal(result.ingredients.includes('apple'), true);
+    assert.deepEqual(result.recipes[0], {
+      id: '715538',
+      title: 'Apple Pancakes',
+      image: 'https://example.com/apple-pancakes.jpg',
+      usedIngredientCount: 2,
+      missedIngredientCount: 1,
+      matchPercent: 67,
+      usedIngredients: ['apple', 'flour'],
+      missedIngredients: ['egg'],
+    });
+  } finally {
+    globalThis.fetch = previousFetch;
+    restoreEnv('SPOONACULAR_API_KEY', previousKey);
+  }
 });
 
 test('fridge item can be created and partially consumed', async () => {

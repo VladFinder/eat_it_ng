@@ -43,6 +43,20 @@ export interface AppState {
   household: Household;
 }
 
+export interface RecipeSuggestion {
+  id: string;
+  title: string;
+  image: string | null;
+  subtitle?: string | null;
+  description?: string | null;
+  instructions?: string[];
+  usedIngredientCount: number;
+  missedIngredientCount: number;
+  matchPercent: number;
+  usedIngredients: string[];
+  missedIngredients: string[];
+}
+
 export interface AuthUser {
   id: string;
   email: string;

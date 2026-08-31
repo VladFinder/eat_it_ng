@@ -267,10 +267,24 @@
         <p>{{ activeDish()?.description }}</p>
         <div class="detail-stats">
           <span>{{ activeDish()?.badge }} совпадение</span>
-          <span>Ингредиенты дома</span>
+          <span>{{ activeDish()?.missedIngredients?.length ? 'Нужно докупить' : 'Ингредиенты дома' }}</span>
         </div>
+        @if (activeDish()?.usedIngredients?.length) {
+          <div class="tag-row">
+            @for (ingredient of activeDish()?.usedIngredients ?? []; track ingredient) {
+              <span>{{ ingredient }}</span>
+            }
+          </div>
+        }
+        @if (activeDish()?.missedIngredients?.length) {
+          <div class="tag-row">
+            @for (ingredient of activeDish()?.missedIngredients ?? []; track ingredient) {
+              <span>{{ ingredient }}</span>
+            }
+          </div>
+        }
         <div class="recipe-longread">
-          @for (step of cookingSteps; track step; let index = $index) {
+          @for (step of activeDish()?.instructions?.length ? activeDish()?.instructions : cookingSteps; track step; let index = $index) {
             <article>
               <span>{{ index + 1 }}</span>
               <p>{{ step }}</p>
@@ -1046,8 +1060,16 @@
             } @empty {
               <div class="empty-state">
                 <div class="empty-illustration">⌂</div>
-                <h3>Добавьте первый продукт</h3>
-                <p>Мы напомним о сроке годности и поможем составить список покупок.</p>
+                <h3>
+                  {{ activeCategory() === 'products' ? 'Добавьте первый продукт' : 'Добавьте первый товар' }}
+                </h3>
+                <p>
+                  {{
+                    activeCategory() === 'products'
+                      ? 'Мы напомним о сроке годности и поможем составить список покупок.'
+                      : 'Храните бытовые товары вместе с продуктами и следите за запасами в одном месте.'
+                  }}
+                </p>
               </div>
             }
           </div>
@@ -1166,17 +1188,28 @@
             Запланировано
           </button>
         </div>
-        <button class="dish-card action-card" type="button" (click)="openDish(dishIdeas[0])">
-          <p class="section-label">Ужин за 25 минут</p>
-          <h2>Паста с овощами</h2>
-          <p>Все ингредиенты уже дома</p>
-          <span class="primary-action compact-action">Открыть блюдо</span>
-        </button>
+        @let mainDish = recipeDishIdeas()[0];
+        @if (recipeSuggestionsLoading()) {
+          <div class="empty-state">
+            <h3>Подбираем блюда</h3>
+            <p>Смотрим продукты из холодильника.</p>
+          </div>
+        } @else if (mainDish) {
+          <button class="dish-card action-card" type="button" (click)="openDish(mainDish)">
+            <p class="section-label">{{ mainDish.subtitle }}</p>
+            <h2>{{ mainDish.title }}</h2>
+            <p>{{ mainDish.description }}</p>
+            <span class="primary-action compact-action">Открыть блюдо</span>
+          </button>
+        }
+        @if (recipeSuggestionsError()) {
+          <p class="form-error">{{ recipeSuggestionsError() }}</p>
+        }
         <div class="section-heading compact-heading">
           <h2>Еще можно приготовить</h2>
         </div>
         <div class="list">
-          @for (dish of dishIdeas.slice(1); track dish.title) {
+          @for (dish of recipeDishIdeas().slice(1); track dish.id ?? dish.title) {
             <button class="fridge-row action-card" type="button" (click)="openDish(dish)">
               <div class="item-thumb"></div>
               <div class="item-content">

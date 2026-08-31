@@ -13,6 +13,7 @@ import {
   FridgeItem,
   Household,
   ItemCategory,
+  RecipeSuggestion,
   ShoppingItem,
   SupportMessage,
   SupportTicket,
@@ -54,10 +55,15 @@ interface Recipe {
 }
 
 interface DishIdea {
+  id?: string;
   title: string;
   subtitle: string;
   badge: string;
   description: string;
+  image?: string | null;
+  usedIngredients?: string[];
+  missedIngredients?: string[];
+  instructions?: string[];
 }
 
 interface SwipeState {
@@ -154,6 +160,8 @@ export class App implements OnDestroy, OnInit {
   protected readonly fridgeAddOpen = signal(false);
   protected readonly activeDish = signal<DishIdea | null>(null);
   protected readonly activeRecipe = signal<Recipe | null>(null);
+  protected readonly recipeSuggestionsLoading = signal(false);
+  protected readonly recipeSuggestionsError = signal('');
   protected readonly cookingDish = signal<DishIdea | null>(null);
   protected readonly cookingStepIndex = signal(0);
   protected readonly toastMessage = signal('');
@@ -303,7 +311,7 @@ export class App implements OnDestroy, OnInit {
       },
     ]),
   );
-  protected readonly dishIdeas: DishIdea[] = [
+  protected readonly fallbackDishIdeas: DishIdea[] = [
     {
       title: 'Паста с овощами',
       subtitle: 'Ужин за 25 минут',
@@ -329,6 +337,7 @@ export class App implements OnDestroy, OnInit {
       description: 'Хороший вариант, чтобы использовать свежие овощи вовремя.',
     },
   ];
+  protected readonly recipeDishIdeas = signal<DishIdea[]>(this.fallbackDishIdeas);
   protected readonly cookingSteps = [
     'Подготовьте ингредиенты и рабочую поверхность.',
     'Нарежьте овощи и разогрейте сковороду.',
@@ -397,7 +406,9 @@ export class App implements OnDestroy, OnInit {
   });
   protected readonly activeTabSubtitle = computed(() => {
     if (this.activeTab() === 'fridge') {
-      return 'Сроки, запасы и напоминания';
+      return this.activeCategory() === 'products'
+        ? 'Сроки, запасы и напоминания'
+        : 'Запасы дома без привязки к сроку годности';
     }
     if (this.activeTab() === 'shopping') {
       return 'Общий список для дома';
@@ -531,6 +542,9 @@ export class App implements OnDestroy, OnInit {
     if (tab !== 'profile') {
       this.profileSection.set('menu');
     }
+    if (tab === 'dishes') {
+      void this.loadRecipeSuggestions();
+    }
   }
 
   protected setCategory(category: ItemCategory): void {
@@ -538,6 +552,11 @@ export class App implements OnDestroy, OnInit {
     this.openedSwipeItemId.set(null);
     this.openedSwipeAction.set(null);
     this.newFridgeItem.noExpiry = category === 'household';
+    if (category === 'household') {
+      this.newFridgeItem.reminderDays = 0;
+    } else if (!this.newFridgeItem.reminderDays) {
+      this.newFridgeItem.reminderDays = 1;
+    }
   }
 
   protected setShoppingFilter(filter: ShoppingFilter): void {
@@ -579,14 +598,14 @@ export class App implements OnDestroy, OnInit {
       this.newFridgeItem.quantity = 1;
       this.newFridgeItem.unit = 'шт.';
       this.newFridgeItem.expiresAt = this.addDays(5);
-      this.newFridgeItem.noExpiry = false;
-      this.newFridgeItem.reminderDays = 1;
+      this.newFridgeItem.noExpiry = this.activeCategory() === 'household';
+      this.newFridgeItem.reminderDays = this.activeCategory() === 'household' ? 0 : 1;
       this.fridgeAddOpen.set(false);
     });
   }
 
   protected async editFridgeItem(item: FridgeItem): Promise<void> {
-    const name = window.prompt('Название продукта', item.name)?.trim();
+    const name = window.prompt('Название товара', item.name)?.trim();
     if (!name) {
       return;
     }
@@ -822,6 +841,7 @@ export class App implements OnDestroy, OnInit {
 
   protected openFridgeAdd(): void {
     this.newFridgeItem.noExpiry = this.activeCategory() === 'household';
+    this.newFridgeItem.reminderDays = this.activeCategory() === 'household' ? 0 : 1;
     this.fridgeAddOpen.set(true);
   }
 
@@ -847,6 +867,61 @@ export class App implements OnDestroy, OnInit {
     this.activeRecipeTab.set('mine');
     this.persistRecipes();
     this.openRecipe(recipe);
+  }
+
+  protected async loadRecipeSuggestions(): Promise<void> {
+    if (this.recipeSuggestionsLoading()) {
+      return;
+    }
+
+    this.recipeSuggestionsLoading.set(true);
+    this.recipeSuggestionsError.set('');
+    try {
+      const result = await firstValueFrom(this.api.getRecipeSuggestions());
+      this.recipeDishIdeas.set(
+        result.recipes.length
+          ? result.recipes.map((recipe) => this.toDishIdea(recipe))
+          : this.fallbackDishIdeas,
+      );
+    } catch (error) {
+      this.recipeSuggestionsError.set(this.errorMessage(error, 'Не удалось загрузить блюда.'));
+      this.recipeDishIdeas.set(this.fallbackDishIdeas);
+    } finally {
+      this.recipeSuggestionsLoading.set(false);
+    }
+  }
+
+  private toDishIdea(recipe: RecipeSuggestion): DishIdea {
+    const missing = recipe.missedIngredientCount;
+    return {
+      id: recipe.id,
+      title: recipe.title,
+      subtitle: missing
+        ? `Не хватает ${missing} ингредиент${this.ingredientEnding(missing)}`
+        : 'Все ингредиенты уже дома',
+      badge: `${recipe.matchPercent}%`,
+      description:
+        recipe.description ??
+        (recipe.missedIngredients.length > 0
+          ? `Можно приготовить, если докупить: ${recipe.missedIngredients.join(', ')}.`
+          : `Подходит под ваши продукты: ${recipe.usedIngredients.join(', ')}.`),
+      image: recipe.image,
+      usedIngredients: recipe.usedIngredients,
+      missedIngredients: recipe.missedIngredients,
+      instructions: recipe.instructions,
+    };
+  }
+
+  private ingredientEnding(count: number): string {
+    const mod10 = count % 10;
+    const mod100 = count % 100;
+    if (mod10 === 1 && mod100 !== 11) {
+      return '';
+    }
+    if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
+      return 'а';
+    }
+    return 'ов';
   }
 
   protected async saveGroupName(): Promise<void> {

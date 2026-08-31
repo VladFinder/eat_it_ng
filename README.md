@@ -40,6 +40,12 @@ hashes are stored in the database.
 Google and Apple buttons appear only when their server credentials are set in
 `/opt/eat-it/app/.env`.
 
+Recipe suggestions use the Spoonacular API. Keep the key on the API server:
+
+```dotenv
+SPOONACULAR_API_KEY="..."
+```
+
 Google OAuth variables:
 
 ```dotenv
