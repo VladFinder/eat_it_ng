@@ -171,6 +171,26 @@ export class ApiService {
     );
   }
 
+  getDishes(): Observable<{ recipes: RecipeSuggestion[]; ingredients: string[] }> {
+    return this.http.get<{ recipes: RecipeSuggestion[]; ingredients: string[] }>(
+      `${this.baseUrl}/dishes`,
+      this.options(),
+    );
+  }
+
+  createDish(input: {
+    title: string;
+    description?: string;
+    imageUrl?: string;
+    ingredients: string[];
+  }): Observable<{ recipes: RecipeSuggestion[]; ingredients: string[] }> {
+    return this.http.post<{ recipes: RecipeSuggestion[]; ingredients: string[] }>(
+      `${this.baseUrl}/dishes`,
+      input,
+      this.options(),
+    );
+  }
+
   getHousehold(): Observable<Household> {
     return this.http.get<Household>(`${this.baseUrl}/household`, this.options());
   }

@@ -112,3 +112,10 @@ export const feedbackCreateSchema = z.object({
   type: feedbackType.default('other'),
   message: supportBody,
 });
+
+export const dishCreateSchema = z.object({
+  title: name,
+  description: z.string().trim().max(600).optional(),
+  imageUrl: z.string().trim().url().max(1000).optional(),
+  ingredients: z.array(name).min(1).max(20),
+});

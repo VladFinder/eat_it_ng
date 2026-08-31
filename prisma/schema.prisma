@@ -50,15 +50,19 @@ model Product {
 
 model Dish {
   id           String           @id @default(cuid())
+  householdId  String?
   title        String
   subtitle     String?
   description  String?
   instructions String?
-  source       String           @default("local")
+  imageUrl     String?
+  source       String           @default("catalog")
   createdAt    DateTime         @default(now())
   updatedAt    DateTime         @updatedAt
+  household    Household?       @relation(fields: [householdId], references: [id], onDelete: Cascade)
   ingredients  DishIngredient[]
 
+  @@index([householdId, updatedAt])
   @@index([source, title])
 }
 
@@ -84,6 +88,7 @@ model Household {
   users                User[]
   fridgeItems          FridgeItem[]
   shoppingItems        ShoppingItem[]
+  dishes               Dish[]
   householdInvitations HouseholdInvitation[]
 }
 

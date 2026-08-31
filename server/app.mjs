@@ -23,6 +23,7 @@ import {
   fridgeCreateSchema,
   fridgeUpdateSchema,
   feedbackCreateSchema,
+  dishCreateSchema,
   householdMemberSchema,
   householdUpdateSchema,
   loginSchema,
@@ -302,7 +303,7 @@ function serializeLocalDishSuggestion(dish, ingredients) {
   return {
     id: dish.id,
     title: dish.title,
-    image: null,
+    image: dish.imageUrl ?? null,
     subtitle: dish.subtitle,
     description: dish.description,
     instructions: parseJsonArray(dish.instructions),
@@ -318,21 +319,29 @@ function serializeLocalDishSuggestion(dish, ingredients) {
   };
 }
 
-async function localRecipeSuggestions(prisma, householdId) {
+async function matchedDishSuggestions(prisma, householdId, scope = 'catalog') {
+  const whereClause =
+    scope === 'user'
+      ? `WHERE d.source = 'user' AND d."householdId" = ?`
+      : `WHERE d.source != 'user' AND d."householdId" IS NULL`;
   const [fridgeItems, dishCount, rows] = await Promise.all([
     prisma.fridgeItem.findMany({
       where: { householdId, category: 'products' },
       orderBy: [{ expiresAt: 'asc' }, { createdAt: 'desc' }],
       take: 100,
     }),
-    prisma.dish.count(),
-    prisma.$queryRaw`
+    scope === 'user'
+      ? prisma.dish.count({ where: { source: 'user', householdId } })
+      : prisma.dish.count({ where: { source: { not: 'user' }, householdId: null } }),
+    prisma.$queryRawUnsafe(
+      `
       SELECT
         d.id AS dishId,
         d.title AS dishTitle,
         d.subtitle AS dishSubtitle,
         d.description AS dishDescription,
         d.instructions AS dishInstructions,
+        d."imageUrl" AS dishImageUrl,
         di.quantity AS quantity,
         di.unit AS unit,
         di.required AS required,
@@ -343,8 +352,11 @@ async function localRecipeSuggestions(prisma, householdId) {
       FROM "Dish" d
       JOIN "DishIngredient" di ON di."dishId" = d.id
       JOIN "Product" p ON p.id = di."productId"
+      ${whereClause}
       ORDER BY d.title ASC, p.name ASC
     `,
+      ...(scope === 'user' ? [householdId] : []),
+    ),
   ]);
   const fridgeNames = new Set(fridgeItems.map((item) => normalizeProductName(item.name)));
   const dishes = new Map();
@@ -356,6 +368,7 @@ async function localRecipeSuggestions(prisma, householdId) {
         subtitle: row.dishSubtitle,
         description: row.dishDescription,
         instructions: row.dishInstructions,
+        imageUrl: row.dishImageUrl,
       },
       ingredients: [],
     };
@@ -388,6 +401,55 @@ async function localRecipeSuggestions(prisma, householdId) {
     ingredients: Array.from(fridgeNames),
     hasLocalCatalog: dishCount > 0,
   };
+}
+
+async function createUserDish(prisma, user, input) {
+  return prisma.$transaction(async (transaction) => {
+    const dish = await transaction.dish.create({
+      data: {
+        householdId: user.householdId,
+        title: input.title,
+        subtitle: `${input.ingredients.length} ингредиент${ingredientEnding(input.ingredients.length)}`,
+        description: input.description ?? 'Блюдо вашей группы.',
+        imageUrl: input.imageUrl ?? null,
+        instructions: JSON.stringify(['Подготовьте ингредиенты.', 'Приготовьте блюдо привычным способом.']),
+        source: 'user',
+      },
+    });
+
+    for (const ingredient of input.ingredients) {
+      const normalizedName = normalizeProductName(ingredient);
+      const product = await transaction.product.upsert({
+        where: { normalizedName },
+        update: {},
+        create: {
+          name: ingredient,
+          normalizedName,
+          aliases: JSON.stringify([]),
+        },
+      });
+      await transaction.dishIngredient.create({
+        data: {
+          dishId: dish.id,
+          productId: product.id,
+        },
+      });
+    }
+
+    return dish;
+  });
+}
+
+function ingredientEnding(count) {
+  const mod10 = count % 10;
+  const mod100 = count % 100;
+  if (mod10 === 1 && mod100 !== 11) {
+    return '';
+  }
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) {
+    return 'а';
+  }
+  return 'ов';
 }
 
 function dayKey(date) {
@@ -823,7 +885,7 @@ export function createApiServer(prisma, logger = console) {
       }
 
       if (method === 'GET' && url.pathname === '/api/recipes/suggestions') {
-        const local = await localRecipeSuggestions(prisma, user.householdId);
+        const local = await matchedDishSuggestions(prisma, user.householdId, 'catalog');
         if (local.hasLocalCatalog || !spoonacularApiKey()) {
           delete local.hasLocalCatalog;
           json(response, 200, local);
@@ -844,6 +906,22 @@ export function createApiServer(prisma, logger = console) {
 
         const recipes = await fetchRecipeSuggestions(ingredients);
         json(response, 200, { recipes, ingredients });
+        return;
+      }
+
+      if (method === 'GET' && url.pathname === '/api/dishes') {
+        const local = await matchedDishSuggestions(prisma, user.householdId, 'user');
+        delete local.hasLocalCatalog;
+        json(response, 200, local);
+        return;
+      }
+
+      if (method === 'POST' && url.pathname === '/api/dishes') {
+        const input = dishCreateSchema.parse(await readJson(request));
+        await createUserDish(prisma, user, input);
+        const local = await matchedDishSuggestions(prisma, user.householdId, 'user');
+        delete local.hasLocalCatalog;
+        json(response, 201, local);
         return;
       }
 

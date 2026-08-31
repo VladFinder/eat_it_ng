@@ -265,6 +265,7 @@
           <button class="icon-button close-button" type="button" (click)="closeDish()">×</button>
         </div>
         <p>{{ activeDish()?.description }}</p>
+        <img class="detail-image" [src]="activeDish()?.image || defaultRecipeImage()" alt="" />
         <div class="detail-stats">
           <span>{{ activeDish()?.badge }} совпадение</span>
           <span>{{ activeDish()?.missedIngredients?.length ? 'Нужно докупить' : 'Ингредиенты дома' }}</span>
@@ -310,13 +311,14 @@
           <button class="icon-button close-button" type="button" (click)="closeRecipe()">×</button>
         </div>
         <p>{{ activeRecipe()?.time }} · {{ activeRecipe()?.mine ? 'ваш рецепт' : 'из каталога' }}</p>
+        <img class="detail-image" [src]="activeRecipe()?.image || defaultRecipeImage()" alt="" />
         <div class="tag-row">
           @for (tag of activeRecipe()?.tags ?? []; track tag) {
             <span>{{ tag }}</span>
           }
         </div>
         <div class="recipe-longread">
-          @for (step of cookingSteps; track step; let index = $index) {
+          @for (step of activeRecipe()?.instructions?.length ? activeRecipe()?.instructions : cookingSteps; track step; let index = $index) {
             <article>
               <span>{{ index + 1 }}</span>
               <p>{{ step }}</p>
@@ -1189,13 +1191,14 @@
           </button>
         </div>
         @let mainDish = filteredRecipeDishIdeas()[0];
-        @if (recipeSuggestionsLoading()) {
+        @if (dishesLoading()) {
           <div class="empty-state">
             <h3>Подбираем блюда</h3>
-            <p>Смотрим продукты из холодильника.</p>
+            <p>Смотрим блюда вашей группы.</p>
           </div>
         } @else if (mainDish) {
           <button class="dish-card action-card" type="button" (click)="openDish(mainDish)">
+            <img class="dish-image" [src]="mainDish.image || defaultRecipeImage()" alt="" />
             <p class="section-label">{{ mainDish.subtitle }}</p>
             <h2>{{ mainDish.title }}</h2>
             <p>{{ mainDish.description }}</p>
@@ -1204,19 +1207,19 @@
         } @else {
           <div class="empty-state">
             <h3>Пока нет подходящих блюд</h3>
-            <p>Добавьте продукты в холодильник или пополните базу рецептов.</p>
+            <p>Добавьте свое блюдо и список ингредиентов, чтобы видеть совпадения с продуктами группы.</p>
           </div>
         }
-        @if (recipeSuggestionsError()) {
-          <p class="form-error">{{ recipeSuggestionsError() }}</p>
+        @if (dishesError()) {
+          <p class="form-error">{{ dishesError() }}</p>
         }
         <div class="section-heading compact-heading">
-          <h2>Еще можно приготовить</h2>
+          <h2>Блюда группы</h2>
         </div>
         <div class="list">
           @for (dish of filteredRecipeDishIdeas().slice(1); track dish.id ?? dish.title) {
             <button class="fridge-row action-card" type="button" (click)="openDish(dish)">
-              <div class="item-thumb"></div>
+              <img class="item-thumb" [src]="dish.image || defaultRecipeImage()" alt="" />
               <div class="item-content">
                 <h3>{{ dish.title }}</h3>
                 <p>{{ dish.subtitle }}</p>
@@ -1225,6 +1228,9 @@
             </button>
           }
         </div>
+        <button class="primary-action create-recipe-button" type="button" (click)="createDish()">
+          + Добавить блюдо
+        </button>
       </section>
     }
 
@@ -1268,7 +1274,7 @@
               (click)="openRecipe(recipe)"
               (keydown.enter)="openRecipe(recipe)"
             >
-              <div class="recipe-thumb"></div>
+              <img class="recipe-thumb" [src]="recipe.image || defaultRecipeImage()" alt="" />
               <div class="item-content">
                 <h3>{{ recipe.title }}</h3>
                 <p>{{ recipe.time }}</p>
@@ -1288,9 +1294,6 @@
             </div>
           }
         </div>
-        <button class="primary-action create-recipe-button" type="button" (click)="createRecipe()">
-          + Создать рецепт
-        </button>
       </section>
     }
 

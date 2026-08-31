@@ -88,6 +88,7 @@ async function seedLocalRecipeCatalog(prismaClient) {
       title: 'Омлет с сыром',
       subtitle: '15 минут',
       description: 'Быстрый завтрак из базовых продуктов.',
+      imageUrl: 'https://img.spoonacular.com/recipes/638035-556x370.jpg',
       instructions: JSON.stringify([
         'Взбейте яйца с молоком и щепоткой соли.',
         'Вылейте смесь на разогретую сковороду.',
@@ -104,6 +105,7 @@ async function seedLocalRecipeCatalog(prismaClient) {
       title: 'Рис с курицей',
       subtitle: '40 минут',
       description: 'Сытный ужин, который легко собрать из запасов и пары покупок.',
+      imageUrl: 'https://img.spoonacular.com/recipes/641166-556x370.jpg',
       instructions: JSON.stringify([
         'Отварите рис до полуготовности.',
         'Обжарьте курицу с луком и морковью.',
@@ -121,6 +123,7 @@ async function seedLocalRecipeCatalog(prismaClient) {
       title: 'Паста с овощами',
       subtitle: '25 минут',
       description: 'Простой ужин, где овощи можно заменить тем, что уже есть дома.',
+      imageUrl: 'https://img.spoonacular.com/recipes/654959-556x370.jpg',
       instructions: JSON.stringify([
         'Отварите пасту до состояния аль денте.',
         'Обжарьте овощи на сковороде.',
@@ -138,6 +141,7 @@ async function seedLocalRecipeCatalog(prismaClient) {
       title: 'Сырники',
       subtitle: '25 минут',
       description: 'Завтрак или быстрый десерт из творога.',
+      imageUrl: 'https://img.spoonacular.com/recipes/655573-556x370.jpg',
       instructions: JSON.stringify([
         'Смешайте творог, яйцо, муку и сахар.',
         'Сформируйте небольшие сырники.',
@@ -154,19 +158,22 @@ async function seedLocalRecipeCatalog(prismaClient) {
 
   for (const dish of dishes) {
     await prismaClient.$executeRawUnsafe(
-      `INSERT INTO "Dish" ("id", "title", "subtitle", "description", "instructions", "source", "updatedAt")
-       VALUES (?, ?, ?, ?, ?, 'local', ?)
+      `INSERT INTO "Dish" ("id", "title", "subtitle", "description", "instructions", "imageUrl", "source", "updatedAt")
+       VALUES (?, ?, ?, ?, ?, ?, 'catalog', ?)
        ON CONFLICT("id") DO UPDATE SET
          "title" = excluded."title",
          "subtitle" = excluded."subtitle",
          "description" = excluded."description",
          "instructions" = excluded."instructions",
+         "imageUrl" = excluded."imageUrl",
+         "source" = excluded."source",
          "updatedAt" = excluded."updatedAt"`,
       dish.id,
       dish.title,
       dish.subtitle,
       dish.description,
       dish.instructions,
+      dish.imageUrl,
       nowIso(),
     );
     for (const ingredient of dish.ingredients) {
@@ -242,11 +249,13 @@ export async function ensureDatabaseSchema(prismaClient = prisma) {
     'Dish',
     `CREATE TABLE "Dish" (
       "id" TEXT NOT NULL PRIMARY KEY,
+      "householdId" TEXT,
       "title" TEXT NOT NULL,
       "subtitle" TEXT,
       "description" TEXT,
       "instructions" TEXT,
-      "source" TEXT NOT NULL DEFAULT 'local',
+      "imageUrl" TEXT,
+      "source" TEXT NOT NULL DEFAULT 'catalog',
       "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "updatedAt" DATETIME NOT NULL
     )`,
@@ -285,6 +294,11 @@ export async function ensureDatabaseSchema(prismaClient = prisma) {
   );
   await prismaClient.$executeRawUnsafe(
     'CREATE INDEX IF NOT EXISTS "Dish_source_title_idx" ON "Dish"("source", "title")',
+  );
+  await ensureColumn(prismaClient, 'Dish', 'householdId', 'TEXT');
+  await ensureColumn(prismaClient, 'Dish', 'imageUrl', 'TEXT');
+  await prismaClient.$executeRawUnsafe(
+    'CREATE INDEX IF NOT EXISTS "Dish_householdId_updatedAt_idx" ON "Dish"("householdId", "updatedAt")',
   );
   await prismaClient.$executeRawUnsafe(
     'CREATE UNIQUE INDEX IF NOT EXISTS "DishIngredient_dishId_productId_key" ON "DishIngredient"("dishId", "productId")',

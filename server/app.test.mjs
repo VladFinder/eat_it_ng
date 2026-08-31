@@ -187,11 +187,13 @@ before(async () => {
   await prisma.$executeRawUnsafe(`
     CREATE TABLE "Dish" (
       "id" TEXT NOT NULL PRIMARY KEY,
+      "householdId" TEXT,
       "title" TEXT NOT NULL,
       "subtitle" TEXT,
       "description" TEXT,
       "instructions" TEXT,
-      "source" TEXT NOT NULL DEFAULT 'local',
+      "imageUrl" TEXT,
+      "source" TEXT NOT NULL DEFAULT 'catalog',
       "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "updatedAt" DATETIME NOT NULL
     )
@@ -570,6 +572,44 @@ test('recipe suggestions include local dishes when fridge is empty', async () =>
   assert.equal(response.status, 200);
   const result = await response.json();
   assert.equal(result.recipes.some((recipe) => recipe.title === 'Рисовая каша'), true);
+});
+
+test('household dishes can be created and matched against fridge products', async () => {
+  await prisma.dishIngredient.deleteMany();
+  await prisma.dish.deleteMany();
+  await prisma.product.deleteMany();
+  await request('/api/fridge', {
+    method: 'POST',
+    body: JSON.stringify({
+      name: 'Картофель',
+      quantity: 5,
+      unit: 'шт.',
+      expiresAt: null,
+      reminderDays: 0,
+      category: 'products',
+    }),
+  });
+
+  const createResponse = await request('/api/dishes', {
+    method: 'POST',
+    body: JSON.stringify({
+      title: 'Картофельное пюре',
+      description: 'Домашнее блюдо.',
+      imageUrl: 'https://example.com/puree.jpg',
+      ingredients: ['Картофель', 'Молоко'],
+    }),
+  });
+  assert.equal(createResponse.status, 201);
+  const created = await createResponse.json();
+  assert.equal(created.recipes[0].title, 'Картофельное пюре');
+  assert.equal(created.recipes[0].matchPercent, 50);
+  assert.deepEqual(created.recipes[0].usedIngredients, ['Картофель']);
+  assert.deepEqual(created.recipes[0].missedIngredients, ['Молоко']);
+
+  const listResponse = await request('/api/dishes');
+  assert.equal(listResponse.status, 200);
+  const listed = await listResponse.json();
+  assert.equal(listed.recipes.some((recipe) => recipe.title === 'Картофельное пюре'), true);
 });
 
 test('recipe suggestions fall back to Spoonacular when local catalog has no matches', async () => {

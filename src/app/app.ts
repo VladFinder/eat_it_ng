@@ -52,6 +52,11 @@ interface Recipe {
   tags: string[];
   liked: boolean;
   mine: boolean;
+  image?: string | null;
+  description?: string | null;
+  instructions?: string[];
+  usedIngredients?: string[];
+  missedIngredients?: string[];
 }
 
 interface DishIdea {
@@ -168,6 +173,8 @@ export class App implements OnDestroy, OnInit {
   protected readonly activeRecipe = signal<Recipe | null>(null);
   protected readonly recipeSuggestionsLoading = signal(false);
   protected readonly recipeSuggestionsError = signal('');
+  protected readonly dishesLoading = signal(false);
+  protected readonly dishesError = signal('');
   protected readonly cookingDish = signal<DishIdea | null>(null);
   protected readonly cookingStepIndex = signal(0);
   protected readonly toastMessage = signal('');
@@ -295,6 +302,7 @@ export class App implements OnDestroy, OnInit {
     ),
   );
   protected readonly recipeDishIdeas = signal<DishIdea[]>([]);
+  protected readonly userDishIdeas = signal<DishIdea[]>([]);
   protected readonly cookingSteps = [
     'Подготовьте ингредиенты и рабочую поверхность.',
     'Нарежьте овощи и разогрейте сковороду.',
@@ -392,7 +400,7 @@ export class App implements OnDestroy, OnInit {
   });
   protected readonly filteredRecipeDishIdeas = computed(() => {
     const filter = this.activeDishFilter();
-    return this.recipeDishIdeas().filter((dish) => {
+    return this.userDishIdeas().filter((dish) => {
       const missingCount = dish.missedIngredients?.length ?? 0;
       if (filter === 'available') {
         return missingCount === 0;
@@ -512,7 +520,10 @@ export class App implements OnDestroy, OnInit {
     if (tab !== 'profile') {
       this.profileSection.set('menu');
     }
-    if (tab === 'dishes' || tab === 'recipes') {
+    if (tab === 'dishes') {
+      void this.loadUserDishes();
+    }
+    if (tab === 'recipes') {
       void this.loadRecipeSuggestions();
     }
   }
@@ -819,24 +830,26 @@ export class App implements OnDestroy, OnInit {
     this.fridgeAddOpen.set(false);
   }
 
-  protected createRecipe(): void {
-    const title = window.prompt('Название рецепта')?.trim();
+  protected createDish(): void {
+    const title = window.prompt('Название блюда')?.trim();
     if (!title) {
       return;
     }
+    const ingredients = window
+      .prompt('Ингредиенты через запятую', '')
+      ?.split(',')
+      .map((ingredient) => ingredient.trim())
+      .filter(Boolean);
+    if (!ingredients?.length) {
+      return;
+    }
+    const imageUrl = window.prompt('Ссылка на картинку блюда', '')?.trim() || undefined;
 
-    const recipe: Recipe = {
-      id: this.createId(),
-      title,
-      time: '30 мин',
-      tags: ['свой рецепт'],
-      liked: false,
-      mine: true,
-    };
-    this.recipes.update((recipes) => [recipe, ...recipes]);
-    this.activeRecipeTab.set('mine');
-    this.persistRecipes();
-    this.openRecipe(recipe);
+    void this.createUserDish({ title, imageUrl, ingredients });
+  }
+
+  protected defaultRecipeImage(): string {
+    return 'https://images.unsplash.com/photo-1495521821757-a1efb6729352?auto=format&fit=crop&w=800&q=80';
   }
 
   protected async loadRecipeSuggestions(): Promise<void> {
@@ -848,6 +861,7 @@ export class App implements OnDestroy, OnInit {
     this.recipeSuggestionsError.set('');
     try {
       const result = await firstValueFrom(this.api.getRecipeSuggestions());
+      const savedById = new Map(this.recipes().map((recipe) => [recipe.id, recipe]));
       this.recipeDishIdeas.set(
         result.recipes.length
           ? result.recipes.map((recipe) => this.toDishIdea(recipe))
@@ -855,7 +869,7 @@ export class App implements OnDestroy, OnInit {
       );
       this.recipes.update((recipes) => [
         ...recipes.filter((recipe) => recipe.mine),
-        ...result.recipes.map((recipe) => this.toRecipe(recipe)),
+        ...result.recipes.map((recipe) => this.toRecipe(recipe, savedById.get(recipe.id))),
       ]);
     } catch (error) {
       this.recipeSuggestionsError.set(this.errorMessage(error, 'Не удалось загрузить блюда.'));
@@ -863,6 +877,41 @@ export class App implements OnDestroy, OnInit {
     } finally {
       this.recipeSuggestionsLoading.set(false);
     }
+  }
+
+  protected async loadUserDishes(): Promise<void> {
+    if (this.dishesLoading()) {
+      return;
+    }
+
+    this.dishesLoading.set(true);
+    this.dishesError.set('');
+    try {
+      const result = await firstValueFrom(this.api.getDishes());
+      this.userDishIdeas.set(result.recipes.map((recipe) => this.toDishIdea(recipe)));
+    } catch (error) {
+      this.dishesError.set(this.errorMessage(error, 'Не удалось загрузить блюда.'));
+      this.userDishIdeas.set([]);
+    } finally {
+      this.dishesLoading.set(false);
+    }
+  }
+
+  private async createUserDish(input: {
+    title: string;
+    description?: string;
+    imageUrl?: string;
+    ingredients: string[];
+  }): Promise<void> {
+    if (this.saving()) {
+      return;
+    }
+
+    await this.runMutation(async () => {
+      const result = await firstValueFrom(this.api.createDish(input));
+      this.userDishIdeas.set(result.recipes.map((recipe) => this.toDishIdea(recipe)));
+      this.showToast('Блюдо добавлено');
+    });
   }
 
   private toDishIdea(recipe: RecipeSuggestion): DishIdea {
@@ -886,7 +935,7 @@ export class App implements OnDestroy, OnInit {
     };
   }
 
-  private toRecipe(recipe: RecipeSuggestion): Recipe {
+  private toRecipe(recipe: RecipeSuggestion, saved?: Recipe): Recipe {
     return {
       id: recipe.id,
       title: recipe.title,
@@ -895,8 +944,13 @@ export class App implements OnDestroy, OnInit {
         recipe.missedIngredientCount > 0
           ? [`докупить ${recipe.missedIngredientCount}`, `${recipe.matchPercent}%`]
           : ['все есть', `${recipe.matchPercent}%`],
-      liked: false,
+      liked: saved?.liked ?? false,
       mine: false,
+      image: recipe.image,
+      description: recipe.description,
+      instructions: recipe.instructions,
+      usedIngredients: recipe.usedIngredients,
+      missedIngredients: recipe.missedIngredients,
     };
   }
 

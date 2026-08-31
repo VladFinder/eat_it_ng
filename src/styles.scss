@@ -817,6 +817,15 @@ textarea {
     var(--surface);
 }
 
+.dish-image,
+.detail-image {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+}
+
 .dish-card.action-card {
   border-color: var(--border);
 }
@@ -843,9 +852,8 @@ textarea {
   width: 76px;
   height: 76px;
   border-radius: 14px;
-  background:
-    linear-gradient(135deg, rgba(245, 173, 46, 0.42), transparent),
-    var(--primary-soft);
+  object-fit: cover;
+  background: var(--primary-soft);
 }
 
 .like-button {
