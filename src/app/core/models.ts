@@ -47,6 +47,8 @@ export interface RecipeSuggestion {
   id: string;
   title: string;
   image: string | null;
+  source?: 'catalog' | 'spoonacular' | 'user' | string;
+  externalId?: string | null;
   subtitle?: string | null;
   description?: string | null;
   instructions?: string[];
@@ -204,4 +206,15 @@ export interface DevSummary {
     body: string;
     createdAt: string;
   }>;
+}
+
+export interface DevRecipe {
+  id: string;
+  externalId: string | null;
+  title: string;
+  source: string;
+  image: string | null;
+  createdAt: string;
+  updatedAt: string;
+  ingredients: string[];
 }

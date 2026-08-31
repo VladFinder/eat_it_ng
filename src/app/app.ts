@@ -9,6 +9,7 @@ import {
   AuthProviders,
   AuthUser,
   DevSummary,
+  DevRecipe,
   FeedbackItem,
   FridgeItem,
   Household,
@@ -35,6 +36,7 @@ type DevSection =
   | 'feedback'
   | 'events'
   | 'infra'
+  | 'recipes'
   | 'experiments';
 
 interface OnboardingStep {
@@ -53,6 +55,8 @@ interface Recipe {
   liked: boolean;
   mine: boolean;
   image?: string | null;
+  source?: string;
+  externalId?: string | null;
   description?: string | null;
   instructions?: string[];
   usedIngredients?: string[];
@@ -66,6 +70,8 @@ interface DishIdea {
   badge: string;
   description: string;
   image?: string | null;
+  source?: string;
+  externalId?: string | null;
   usedIngredients?: string[];
   missedIngredients?: string[];
   instructions?: string[];
@@ -158,6 +164,7 @@ export class App implements OnDestroy, OnInit {
     { id: 'feedback', label: 'Фидбек', icon: '✦' },
     { id: 'events', label: 'Ошибки и события', icon: '!' },
     { id: 'infra', label: 'Инфраструктура', icon: '⌁' },
+    { id: 'recipes', label: 'API рецепты', icon: 'SP' },
     { id: 'experiments', label: 'Эксперименты', icon: 'A/B' },
   ];
 
@@ -247,6 +254,7 @@ export class App implements OnDestroy, OnInit {
   protected readonly devSummary = signal<DevSummary | null>(null);
   protected readonly devTickets = signal<SupportTicket[]>([]);
   protected readonly devFeedback = signal<FeedbackItem[]>([]);
+  protected readonly devRecipes = signal<DevRecipe[]>([]);
   protected readonly activeDevTicket = signal<SupportTicket | null>(null);
   protected readonly devMessages = signal<SupportMessage[]>([]);
   protected readonly devReply = signal('');
@@ -550,6 +558,9 @@ export class App implements OnDestroy, OnInit {
 
   protected setDevSection(section: DevSection): void {
     this.activeDevSection.set(section);
+    if (section === 'recipes') {
+      void this.loadDevRecipes();
+    }
   }
 
   protected async addFridgeItem(): Promise<void> {
@@ -929,6 +940,8 @@ export class App implements OnDestroy, OnInit {
           ? `Можно приготовить, если докупить: ${recipe.missedIngredients.join(', ')}.`
           : `Подходит под ваши продукты: ${recipe.usedIngredients.join(', ')}.`),
       image: recipe.image,
+      source: recipe.source,
+      externalId: recipe.externalId,
       usedIngredients: recipe.usedIngredients,
       missedIngredients: recipe.missedIngredients,
       instructions: recipe.instructions,
@@ -947,6 +960,8 @@ export class App implements OnDestroy, OnInit {
       liked: saved?.liked ?? false,
       mine: false,
       image: recipe.image,
+      source: recipe.source,
+      externalId: recipe.externalId,
       description: recipe.description,
       instructions: recipe.instructions,
       usedIngredients: recipe.usedIngredients,
@@ -1420,7 +1435,23 @@ export class App implements OnDestroy, OnInit {
     this.devSummary.set(summary);
     this.devTickets.set(tickets.tickets);
     this.devFeedback.set(feedback.feedback);
+    if (this.activeDevSection() === 'recipes') {
+      await this.loadDevRecipes();
+    }
     this.devLastUpdated.set(new Date().toLocaleTimeString('ru-RU'));
+  }
+
+  private async loadDevRecipes(): Promise<void> {
+    const result = await firstValueFrom(this.api.getDevRecipes());
+    this.devRecipes.set(result.recipes);
+  }
+
+  protected recipeSourceLabel(source?: string): string {
+    return source === 'spoonacular' ? 'SP' : 'DB';
+  }
+
+  protected recipeSourceClass(source?: string): string {
+    return source === 'spoonacular' ? 'spoonacular' : 'local';
   }
 
   protected async deleteFridgeItem(id: string): Promise<void> {

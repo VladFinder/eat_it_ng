@@ -9,6 +9,7 @@ import {
   AuthResponse,
   AuthUser,
   DevSummary,
+  DevRecipe,
   FeedbackItem,
   FridgeInput,
   FridgeItem,
@@ -132,6 +133,10 @@ export class ApiService {
       `${this.baseUrl}/dev/feedback`,
       this.options(),
     );
+  }
+
+  getDevRecipes(): Observable<{ recipes: DevRecipe[] }> {
+    return this.http.get<{ recipes: DevRecipe[] }>(`${this.baseUrl}/dev/recipes`, this.options());
   }
 
   closeDevFeedback(id: string): Observable<FeedbackItem> {

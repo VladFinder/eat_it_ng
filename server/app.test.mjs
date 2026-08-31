@@ -188,6 +188,7 @@ before(async () => {
     CREATE TABLE "Dish" (
       "id" TEXT NOT NULL PRIMARY KEY,
       "householdId" TEXT,
+      "externalId" TEXT,
       "title" TEXT NOT NULL,
       "subtitle" TEXT,
       "description" TEXT,
@@ -197,6 +198,10 @@ before(async () => {
       "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "updatedAt" DATETIME NOT NULL
     )
+  `);
+  await prisma.$executeRawUnsafe(`
+    CREATE UNIQUE INDEX "Dish_source_externalId_key"
+    ON "Dish"("source", "externalId")
   `);
   await prisma.$executeRawUnsafe(`
     CREATE TABLE "DishIngredient" (
@@ -673,15 +678,27 @@ test('recipe suggestions fall back to Spoonacular when local catalog has no matc
     const result = await response.json();
     assert.equal(result.ingredients.includes('apple'), true);
     assert.deepEqual(result.recipes[0], {
-      id: '715538',
+      id: 'spoonacular-715538',
       title: 'Apple Pancakes',
       image: 'https://example.com/apple-pancakes.jpg',
+      source: 'spoonacular',
+      externalId: '715538',
+      subtitle: 'Spoonacular',
+      description: 'Можно приготовить, если докупить: egg.',
+      instructions: [],
       usedIngredientCount: 2,
       missedIngredientCount: 1,
       matchPercent: 67,
       usedIngredients: ['apple', 'flour'],
       missedIngredients: ['egg'],
     });
+    const previousAdmins = process.env.ADMIN_EMAILS;
+    process.env.ADMIN_EMAILS = 'test@example.com';
+    const savedResponse = await request('/api/dev/recipes');
+    restoreEnv('ADMIN_EMAILS', previousAdmins);
+    assert.equal(savedResponse.status, 200);
+    const saved = await savedResponse.json();
+    assert.equal(saved.recipes.some((recipe) => recipe.externalId === '715538'), true);
   } finally {
     globalThis.fetch = previousFetch;
     restoreEnv('SPOONACULAR_API_KEY', previousKey);

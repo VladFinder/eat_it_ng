@@ -214,6 +214,8 @@ function serializeRecipeSuggestion(recipe) {
     id: String(recipe.id),
     title: recipeTitle(recipe.title),
     image: typeof recipe.image === 'string' ? recipe.image : null,
+    source: 'spoonacular',
+    externalId: String(recipe.id),
     usedIngredientCount: used,
     missedIngredientCount: missed,
     matchPercent: match,
@@ -304,6 +306,8 @@ function serializeLocalDishSuggestion(dish, ingredients) {
     id: dish.id,
     title: dish.title,
     image: dish.imageUrl ?? null,
+    source: dish.source ?? 'catalog',
+    externalId: dish.externalId ?? null,
     subtitle: dish.subtitle,
     description: dish.description,
     instructions: parseJsonArray(dish.instructions),
@@ -317,6 +321,72 @@ function serializeLocalDishSuggestion(dish, ingredients) {
       formatIngredient(ingredient.product, ingredient),
     ),
   };
+}
+
+function serializeDevRecipe(dish) {
+  return {
+    id: dish.id,
+    externalId: dish.externalId,
+    title: dish.title,
+    source: dish.source,
+    image: dish.imageUrl,
+    createdAt: dish.createdAt.toISOString(),
+    updatedAt: dish.updatedAt.toISOString(),
+    ingredients: dish.ingredients.map((ingredient) => ingredient.product.name),
+  };
+}
+
+async function saveSpoonacularSuggestions(prisma, recipes) {
+  for (const recipe of recipes) {
+    const externalId = String(recipe.externalId ?? recipe.id);
+    const dishId = `spoonacular-${externalId}`;
+    await prisma.dish.upsert({
+      where: { id: dishId },
+      update: {
+        title: recipe.title,
+        imageUrl: recipe.image,
+        source: 'spoonacular',
+        externalId,
+      },
+      create: {
+        id: dishId,
+        title: recipe.title,
+        subtitle: 'Spoonacular',
+        description:
+          recipe.missedIngredients.length > 0
+            ? `Можно приготовить, если докупить: ${recipe.missedIngredients.join(', ')}.`
+            : `Подходит под ваши продукты: ${recipe.usedIngredients.join(', ')}.`,
+        imageUrl: recipe.image,
+        source: 'spoonacular',
+        externalId,
+      },
+    });
+
+    const ingredientNames = [...recipe.usedIngredients, ...recipe.missedIngredients]
+      .map((ingredient) => ingredient.trim())
+      .filter(Boolean);
+    for (const ingredientName of ingredientNames) {
+      const normalizedName = normalizeProductName(ingredientName);
+      const product = await prisma.product.upsert({
+        where: { normalizedName },
+        update: { name: ingredientName },
+        create: {
+          name: ingredientName,
+          normalizedName,
+          aliases: JSON.stringify([]),
+        },
+      });
+      await prisma.dishIngredient.upsert({
+        where: { dishId_productId: { dishId, productId: product.id } },
+        update: {},
+        create: {
+          id: `${dishId}-${product.id}`,
+          dishId,
+          productId: product.id,
+        },
+      });
+    }
+  }
 }
 
 async function matchedDishSuggestions(prisma, householdId, scope = 'catalog') {
@@ -337,6 +407,8 @@ async function matchedDishSuggestions(prisma, householdId, scope = 'catalog') {
       `
       SELECT
         d.id AS dishId,
+        d.source AS dishSource,
+        d."externalId" AS dishExternalId,
         d.title AS dishTitle,
         d.subtitle AS dishSubtitle,
         d.description AS dishDescription,
@@ -364,6 +436,8 @@ async function matchedDishSuggestions(prisma, householdId, scope = 'catalog') {
     const dish = dishes.get(row.dishId) ?? {
       dish: {
         id: row.dishId,
+        source: row.dishSource,
+        externalId: row.dishExternalId,
         title: row.dishTitle,
         subtitle: row.dishSubtitle,
         description: row.dishDescription,
@@ -885,12 +959,6 @@ export function createApiServer(prisma, logger = console) {
       }
 
       if (method === 'GET' && url.pathname === '/api/recipes/suggestions') {
-        const local = await matchedDishSuggestions(prisma, user.householdId, 'catalog');
-        if (local.hasLocalCatalog || !spoonacularApiKey()) {
-          delete local.hasLocalCatalog;
-          json(response, 200, local);
-          return;
-        }
         const fridgeItems = await prisma.fridgeItem.findMany({
           where: { householdId: user.householdId, category: 'products' },
           orderBy: [{ expiresAt: 'asc' }, { createdAt: 'desc' }],
@@ -900,12 +968,24 @@ export function createApiServer(prisma, logger = console) {
           new Set(fridgeItems.map((item) => item.name.trim()).filter(Boolean)),
         ).slice(0, 10);
         if (!ingredients.length) {
-          json(response, 200, { recipes: [], ingredients: [] });
+          const local = await matchedDishSuggestions(prisma, user.householdId, 'catalog');
+          delete local.hasLocalCatalog;
+          json(response, 200, local);
           return;
         }
 
-        const recipes = await fetchRecipeSuggestions(ingredients);
-        json(response, 200, { recipes, ingredients });
+        if (spoonacularApiKey()) {
+          try {
+            const recipes = await fetchRecipeSuggestions(ingredients);
+            await saveSpoonacularSuggestions(prisma, recipes);
+          } catch (error) {
+            logger.error(`${method} ${url.pathname}`, error);
+          }
+        }
+
+        const local = await matchedDishSuggestions(prisma, user.householdId, 'catalog');
+        delete local.hasLocalCatalog;
+        json(response, 200, local);
         return;
       }
 
@@ -1286,6 +1366,18 @@ export function createApiServer(prisma, logger = console) {
           take: 100,
         });
         json(response, 200, { feedback: items.map(serializeFeedbackItem) });
+        return;
+      }
+
+      if (method === 'GET' && url.pathname === '/api/dev/recipes') {
+        requireAdmin(user);
+        const recipes = await prisma.dish.findMany({
+          where: { source: 'spoonacular' },
+          orderBy: { updatedAt: 'desc' },
+          include: { ingredients: { include: { product: true } } },
+          take: 100,
+        });
+        json(response, 200, { recipes: recipes.map(serializeDevRecipe) });
         return;
       }
 

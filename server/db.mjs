@@ -77,11 +77,6 @@ async function upsertProduct(prismaClient, product) {
 }
 
 async function seedLocalRecipeCatalog(prismaClient) {
-  const existing = await prismaClient.$queryRawUnsafe(`SELECT COUNT(*) AS count FROM "Dish"`);
-  if (Number(existing[0]?.count ?? 0) > 0) {
-    return;
-  }
-
   const dishes = [
     {
       id: 'catalog-dish-omelet-cheese',
@@ -250,6 +245,7 @@ export async function ensureDatabaseSchema(prismaClient = prisma) {
     `CREATE TABLE "Dish" (
       "id" TEXT NOT NULL PRIMARY KEY,
       "householdId" TEXT,
+      "externalId" TEXT,
       "title" TEXT NOT NULL,
       "subtitle" TEXT,
       "description" TEXT,
@@ -296,9 +292,13 @@ export async function ensureDatabaseSchema(prismaClient = prisma) {
     'CREATE INDEX IF NOT EXISTS "Dish_source_title_idx" ON "Dish"("source", "title")',
   );
   await ensureColumn(prismaClient, 'Dish', 'householdId', 'TEXT');
+  await ensureColumn(prismaClient, 'Dish', 'externalId', 'TEXT');
   await ensureColumn(prismaClient, 'Dish', 'imageUrl', 'TEXT');
   await prismaClient.$executeRawUnsafe(
     'CREATE INDEX IF NOT EXISTS "Dish_householdId_updatedAt_idx" ON "Dish"("householdId", "updatedAt")',
+  );
+  await prismaClient.$executeRawUnsafe(
+    'CREATE UNIQUE INDEX IF NOT EXISTS "Dish_source_externalId_key" ON "Dish"("source", "externalId")',
   );
   await prismaClient.$executeRawUnsafe(
     'CREATE UNIQUE INDEX IF NOT EXISTS "DishIngredient_dishId_productId_key" ON "DishIngredient"("dishId", "productId")',

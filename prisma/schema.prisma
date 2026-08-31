@@ -51,6 +51,7 @@ model Product {
 model Dish {
   id           String           @id @default(cuid())
   householdId  String?
+  externalId   String?
   title        String
   subtitle     String?
   description  String?
@@ -62,6 +63,7 @@ model Dish {
   household    Household?       @relation(fields: [householdId], references: [id], onDelete: Cascade)
   ingredients  DishIngredient[]
 
+  @@unique([source, externalId])
   @@index([householdId, updatedAt])
   @@index([source, title])
 }

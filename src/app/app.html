@@ -317,6 +317,20 @@
             <span>{{ tag }}</span>
           }
         </div>
+        @if (activeRecipe()?.usedIngredients?.length) {
+          <div class="tag-row">
+            @for (ingredient of activeRecipe()?.usedIngredients ?? []; track ingredient) {
+              <span>{{ ingredient }}</span>
+            }
+          </div>
+        }
+        @if (activeRecipe()?.missedIngredients?.length) {
+          <div class="tag-row">
+            @for (ingredient of activeRecipe()?.missedIngredients ?? []; track ingredient) {
+              <span>{{ ingredient }}</span>
+            }
+          </div>
+        }
         <div class="recipe-longread">
           @for (step of activeRecipe()?.instructions?.length ? activeRecipe()?.instructions : cookingSteps; track step; let index = $index) {
             <article>
@@ -743,6 +757,36 @@
                     <div class="dev-health warn"><span></span><p>Непрочитанные уведомления</p><b>{{ devSummary()?.notifications?.unread || 0 }}</b></div>
                     <div class="dev-health warn"><span></span><p>Открытый фидбек</p><b>{{ devSummary()?.support?.openFeedback || 0 }}</b></div>
                     <div class="dev-health"><span></span><p>Закрытый фидбек</p><b>{{ devSummary()?.support?.closedFeedback || 0 }}</b></div>
+                  </article>
+                </section>
+              }
+              @case ('recipes') {
+                <section class="dev-grid operations single">
+                  <article class="dev-card">
+                    <div class="dev-card-head">
+                      <div>
+                        <h2>Сохраненные Spoonacular рецепты</h2>
+                        <p>Рецепты, которые пришли из API и были сохранены в нашу базу</p>
+                      </div>
+                    </div>
+                    <div class="dev-ticket-list">
+                      @for (recipe of devRecipes(); track recipe.id) {
+                        <article>
+                          <img class="dev-recipe-thumb" [src]="recipe.image || defaultRecipeImage()" alt="" />
+                          <span>
+                            <b>{{ recipe.title }}</b>
+                            <small>
+                              Spoonacular ID {{ recipe.externalId || 'нет' }} ·
+                              {{ recipe.ingredients.length }} ингредиентов ·
+                              {{ notificationTime(recipe.updatedAt) }}
+                            </small>
+                            <small>{{ recipe.ingredients.join(', ') }}</small>
+                          </span>
+                        </article>
+                      } @empty {
+                        <div class="dev-empty">API рецепты еще не сохранялись. Откройте вкладку рецептов с продуктами в холодильнике.</div>
+                      }
+                    </div>
                   </article>
                 </section>
               }
@@ -1278,7 +1322,24 @@
               <div class="item-content">
                 <h3>{{ recipe.title }}</h3>
                 <p>{{ recipe.time }}</p>
+                <p>
+                  {{
+                    recipe.missedIngredients?.length
+                      ? 'Докупить: ' + (recipe.missedIngredients ?? []).join(', ')
+                      : 'Все нужное есть дома'
+                  }}
+                </p>
               </div>
+              @if (hasDevAccess()) {
+                <span
+                  class="source-dot"
+                  [class.spoonacular]="recipeSourceClass(recipe.source) === 'spoonacular'"
+                  [class.local]="recipeSourceClass(recipe.source) === 'local'"
+                >
+                  {{ recipeSourceLabel(recipe.source) }}
+                </span>
+              }
+              <span class="status fresh">{{ recipe.tags[recipe.tags.length - 1] }}</span>
               <button
                 class="like-button"
                 type="button"
