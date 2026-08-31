@@ -989,6 +989,13 @@ export function createApiServer(prisma, logger = console) {
         return;
       }
 
+      if (method === 'GET' && url.pathname === '/api/recipes') {
+        const local = await matchedDishSuggestions(prisma, user.householdId, 'catalog');
+        delete local.hasLocalCatalog;
+        json(response, 200, local);
+        return;
+      }
+
       if (method === 'GET' && url.pathname === '/api/dishes') {
         const local = await matchedDishSuggestions(prisma, user.householdId, 'user');
         delete local.hasLocalCatalog;

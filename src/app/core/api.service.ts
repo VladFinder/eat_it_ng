@@ -176,6 +176,13 @@ export class ApiService {
     );
   }
 
+  getRecipes(): Observable<{ recipes: RecipeSuggestion[]; ingredients: string[] }> {
+    return this.http.get<{ recipes: RecipeSuggestion[]; ingredients: string[] }>(
+      `${this.baseUrl}/recipes`,
+      this.options(),
+    );
+  }
+
   getDishes(): Observable<{ recipes: RecipeSuggestion[]; ingredients: string[] }> {
     return this.http.get<{ recipes: RecipeSuggestion[]; ingredients: string[] }>(
       `${this.baseUrl}/dishes`,

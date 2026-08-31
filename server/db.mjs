@@ -83,7 +83,7 @@ async function seedLocalRecipeCatalog(prismaClient) {
       title: 'Омлет с сыром',
       subtitle: '15 минут',
       description: 'Быстрый завтрак из базовых продуктов.',
-      imageUrl: 'https://img.spoonacular.com/recipes/638035-556x370.jpg',
+      imageUrl: null,
       instructions: JSON.stringify([
         'Взбейте яйца с молоком и щепоткой соли.',
         'Вылейте смесь на разогретую сковороду.',
@@ -100,7 +100,7 @@ async function seedLocalRecipeCatalog(prismaClient) {
       title: 'Рис с курицей',
       subtitle: '40 минут',
       description: 'Сытный ужин, который легко собрать из запасов и пары покупок.',
-      imageUrl: 'https://img.spoonacular.com/recipes/641166-556x370.jpg',
+      imageUrl: null,
       instructions: JSON.stringify([
         'Отварите рис до полуготовности.',
         'Обжарьте курицу с луком и морковью.',
@@ -118,7 +118,7 @@ async function seedLocalRecipeCatalog(prismaClient) {
       title: 'Паста с овощами',
       subtitle: '25 минут',
       description: 'Простой ужин, где овощи можно заменить тем, что уже есть дома.',
-      imageUrl: 'https://img.spoonacular.com/recipes/654959-556x370.jpg',
+      imageUrl: null,
       instructions: JSON.stringify([
         'Отварите пасту до состояния аль денте.',
         'Обжарьте овощи на сковороде.',
@@ -136,7 +136,7 @@ async function seedLocalRecipeCatalog(prismaClient) {
       title: 'Сырники',
       subtitle: '25 минут',
       description: 'Завтрак или быстрый десерт из творога.',
-      imageUrl: 'https://img.spoonacular.com/recipes/655573-556x370.jpg',
+      imageUrl: null,
       instructions: JSON.stringify([
         'Смешайте творог, яйцо, муку и сахар.',
         'Сформируйте небольшие сырники.',

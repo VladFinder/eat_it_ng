@@ -265,7 +265,7 @@
           <button class="icon-button close-button" type="button" (click)="closeDish()">×</button>
         </div>
         <p>{{ activeDish()?.description }}</p>
-        <img class="detail-image" [src]="activeDish()?.image || defaultRecipeImage()" alt="" />
+        <img class="detail-image" [src]="recipeImage(activeDish()?.title, activeDish()?.image)" alt="" />
         <div class="detail-stats">
           <span>{{ activeDish()?.badge }} совпадение</span>
           <span>{{ activeDish()?.missedIngredients?.length ? 'Нужно докупить' : 'Ингредиенты дома' }}</span>
@@ -311,7 +311,7 @@
           <button class="icon-button close-button" type="button" (click)="closeRecipe()">×</button>
         </div>
         <p>{{ activeRecipe()?.time }} · {{ activeRecipe()?.mine ? 'ваш рецепт' : 'из каталога' }}</p>
-        <img class="detail-image" [src]="activeRecipe()?.image || defaultRecipeImage()" alt="" />
+        <img class="detail-image" [src]="recipeImage(activeRecipe()?.title, activeRecipe()?.image)" alt="" />
         <div class="tag-row">
           @for (tag of activeRecipe()?.tags ?? []; track tag) {
             <span>{{ tag }}</span>
@@ -772,7 +772,7 @@
                     <div class="dev-ticket-list">
                       @for (recipe of devRecipes(); track recipe.id) {
                         <article>
-                          <img class="dev-recipe-thumb" [src]="recipe.image || defaultRecipeImage()" alt="" />
+                          <img class="dev-recipe-thumb" [src]="recipeImage(recipe.title, recipe.image)" alt="" />
                           <span>
                             <b>{{ recipe.title }}</b>
                             <small>
@@ -1242,7 +1242,7 @@
           </div>
         } @else if (mainDish) {
           <button class="dish-card action-card" type="button" (click)="openDish(mainDish)">
-            <img class="dish-image" [src]="mainDish.image || defaultRecipeImage()" alt="" />
+            <img class="dish-image" [src]="recipeImage(mainDish.title, mainDish.image)" alt="" />
             <p class="section-label">{{ mainDish.subtitle }}</p>
             <h2>{{ mainDish.title }}</h2>
             <p>{{ mainDish.description }}</p>
@@ -1263,7 +1263,7 @@
         <div class="list">
           @for (dish of filteredRecipeDishIdeas().slice(1); track dish.id ?? dish.title) {
             <button class="fridge-row action-card" type="button" (click)="openDish(dish)">
-              <img class="item-thumb" [src]="dish.image || defaultRecipeImage()" alt="" />
+              <img class="item-thumb" [src]="recipeImage(dish.title, dish.image)" alt="" />
               <div class="item-content">
                 <h3>{{ dish.title }}</h3>
                 <p>{{ dish.subtitle }}</p>
@@ -1318,7 +1318,7 @@
               (click)="openRecipe(recipe)"
               (keydown.enter)="openRecipe(recipe)"
             >
-              <img class="recipe-thumb" [src]="recipe.image || defaultRecipeImage()" alt="" />
+              <img class="recipe-thumb" [src]="recipeImage(recipe.title, recipe.image)" alt="" />
               <div class="item-content">
                 <h3>{{ recipe.title }}</h3>
                 <p>{{ recipe.time }}</p>

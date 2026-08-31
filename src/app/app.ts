@@ -532,7 +532,7 @@ export class App implements OnDestroy, OnInit {
       void this.loadUserDishes();
     }
     if (tab === 'recipes') {
-      void this.loadRecipeSuggestions();
+      void this.loadRecipeCatalog();
     }
   }
 
@@ -861,6 +861,43 @@ export class App implements OnDestroy, OnInit {
 
   protected defaultRecipeImage(): string {
     return 'https://images.unsplash.com/photo-1495521821757-a1efb6729352?auto=format&fit=crop&w=800&q=80';
+  }
+
+  protected recipeImage(title?: string | null, image?: string | null): string {
+    if (image) {
+      return image;
+    }
+    const queries: Record<string, string> = {
+      'Омлет с сыром': 'omelette,cheese,breakfast',
+      'Паста с овощами': 'vegetable,pasta',
+      'Сырники': 'cheese,pancakes',
+      'Рис с курицей': 'chicken,rice,dinner',
+    };
+    const query = encodeURIComponent(queries[title ?? ''] ?? 'recipe,food');
+    return `https://source.unsplash.com/800x600/?${query}`;
+  }
+
+  protected async loadRecipeCatalog(): Promise<void> {
+    if (this.recipeSuggestionsLoading()) {
+      return;
+    }
+
+    this.recipeSuggestionsLoading.set(true);
+    this.recipeSuggestionsError.set('');
+    try {
+      const result = await firstValueFrom(this.api.getRecipes());
+      const savedById = new Map(this.recipes().map((recipe) => [recipe.id, recipe]));
+      this.recipeDishIdeas.set(result.recipes.map((recipe) => this.toDishIdea(recipe)));
+      this.recipes.update((recipes) => [
+        ...recipes.filter((recipe) => recipe.mine),
+        ...result.recipes.map((recipe) => this.toRecipe(recipe, savedById.get(recipe.id))),
+      ]);
+    } catch (error) {
+      this.recipeSuggestionsError.set(this.errorMessage(error, 'Не удалось загрузить рецепты.'));
+      this.recipeDishIdeas.set([]);
+    } finally {
+      this.recipeSuggestionsLoading.set(false);
+    }
   }
 
   protected async loadRecipeSuggestions(): Promise<void> {
