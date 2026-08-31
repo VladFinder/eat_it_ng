@@ -376,7 +376,6 @@ async function localRecipeSuggestions(prisma, householdId) {
   }
   const recipes = Array.from(dishes.values())
     .map(({ dish, ingredients }) => serializeLocalDishSuggestion(dish, ingredients))
-    .filter((recipe) => recipe.usedIngredientCount > 0)
     .sort(
       (left, right) =>
         right.matchPercent - left.matchPercent ||

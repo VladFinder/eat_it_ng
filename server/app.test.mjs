@@ -537,6 +537,41 @@ test('recipe suggestions calculate available and missing ingredients from local 
   assert.deepEqual(result.recipes[0].missedIngredients, ['Молоко 50 мл', 'Сыр 40 г']);
 });
 
+test('recipe suggestions include local dishes when fridge is empty', async () => {
+  await prisma.dishIngredient.deleteMany();
+  await prisma.dish.deleteMany();
+  await prisma.product.deleteMany();
+  await prisma.product.create({
+    data: {
+      id: 'product-rice-empty',
+      name: 'Рис',
+      normalizedName: 'рис',
+      aliases: JSON.stringify([]),
+      dishIngredients: {
+        create: {
+          id: 'dish-rice-empty-rice',
+          quantity: 200,
+          unit: 'г',
+          dish: {
+            create: {
+              id: 'dish-rice-empty',
+              title: 'Рисовая каша',
+              subtitle: '30 минут',
+              description: 'Простое блюдо из крупы.',
+              instructions: JSON.stringify(['Промойте рис.', 'Отварите до готовности.']),
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const response = await request('/api/recipes/suggestions');
+  assert.equal(response.status, 200);
+  const result = await response.json();
+  assert.equal(result.recipes.some((recipe) => recipe.title === 'Рисовая каша'), true);
+});
+
 test('recipe suggestions fall back to Spoonacular when local catalog has no matches', async () => {
   const previousKey = process.env.SPOONACULAR_API_KEY;
   const previousFetch = globalThis.fetch;

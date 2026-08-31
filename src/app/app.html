@@ -1188,7 +1188,7 @@
             Запланировано
           </button>
         </div>
-        @let mainDish = recipeDishIdeas()[0];
+        @let mainDish = filteredRecipeDishIdeas()[0];
         @if (recipeSuggestionsLoading()) {
           <div class="empty-state">
             <h3>Подбираем блюда</h3>
@@ -1214,7 +1214,7 @@
           <h2>Еще можно приготовить</h2>
         </div>
         <div class="list">
-          @for (dish of recipeDishIdeas().slice(1); track dish.id ?? dish.title) {
+          @for (dish of filteredRecipeDishIdeas().slice(1); track dish.id ?? dish.title) {
             <button class="fridge-row action-card" type="button" (click)="openDish(dish)">
               <div class="item-thumb"></div>
               <div class="item-content">

@@ -161,7 +161,7 @@ export class App implements OnDestroy, OnInit {
   protected readonly activeCategory = signal<ItemCategory>('products');
   protected readonly activeShoppingFilter = signal<ShoppingFilter>('all');
   protected readonly activeDishFilter = signal<DishFilter>('available');
-  protected readonly activeRecipeTab = signal<RecipeTab>('mine');
+  protected readonly activeRecipeTab = signal<RecipeTab>('all');
   protected readonly profileSection = signal<ProfileSection>('menu');
   protected readonly fridgeAddOpen = signal(false);
   protected readonly activeDish = signal<DishIdea | null>(null);
@@ -388,6 +388,19 @@ export class App implements OnDestroy, OnInit {
         return recipe.liked;
       }
       return true;
+    });
+  });
+  protected readonly filteredRecipeDishIdeas = computed(() => {
+    const filter = this.activeDishFilter();
+    return this.recipeDishIdeas().filter((dish) => {
+      const missingCount = dish.missedIngredients?.length ?? 0;
+      if (filter === 'available') {
+        return missingCount === 0;
+      }
+      if (filter === 'almost') {
+        return missingCount > 0;
+      }
+      return false;
     });
   });
 
