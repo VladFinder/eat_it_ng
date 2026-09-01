@@ -39,6 +39,21 @@ import {
 const BODY_LIMIT = 64 * 1024;
 const RECIPE_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const recipeSuggestionsCache = new Map();
+const CAPACITOR_ORIGINS = new Set(['http://localhost', 'capacitor://localhost']);
+
+function applyCapacitorCors(request, response) {
+  const origin = request.headers.origin;
+  if (!CAPACITOR_ORIGINS.has(origin)) {
+    return false;
+  }
+
+  response.setHeader('Access-Control-Allow-Origin', origin);
+  response.setHeader('Access-Control-Allow-Credentials', 'true');
+  response.setHeader('Access-Control-Allow-Headers', 'Authorization, Content-Type');
+  response.setHeader('Access-Control-Allow-Methods', 'GET, POST, PATCH, PUT, DELETE, OPTIONS');
+  response.setHeader('Vary', 'Origin');
+  return true;
+}
 
 function json(response, status, body, headers = {}) {
   response.writeHead(status, {
@@ -793,6 +808,13 @@ export function createApiServer(prisma, logger = console) {
     const url = new URL(request.url ?? '/', 'http://localhost');
 
     try {
+      const isCapacitorRequest = applyCapacitorCors(request, response);
+      if (method === 'OPTIONS' && url.pathname.startsWith('/api/') && isCapacitorRequest) {
+        response.writeHead(204);
+        response.end();
+        return;
+      }
+
       if (method === 'GET' && url.pathname === '/api/health') {
         json(response, 200, { status: 'ok' });
         return;

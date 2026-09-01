@@ -273,6 +273,28 @@ test('health endpoint responds', async () => {
   assert.deepEqual(await response.json(), { status: 'ok' });
 });
 
+test('allows Capacitor Android requests through CORS', async () => {
+  const response = await request('/api/auth/login', {
+    method: 'OPTIONS',
+    skipAuth: true,
+    headers: {
+      Origin: 'http://localhost',
+      'Access-Control-Request-Method': 'POST',
+      'Access-Control-Request-Headers': 'content-type',
+    },
+  });
+  assert.equal(response.status, 204);
+  assert.equal(response.headers.get('access-control-allow-origin'), 'http://localhost');
+  assert.equal(response.headers.get('access-control-allow-credentials'), 'true');
+
+  const rejected = await request('/api/auth/login', {
+    method: 'OPTIONS',
+    skipAuth: true,
+    headers: { Origin: 'https://untrusted.example' },
+  });
+  assert.equal(rejected.headers.get('access-control-allow-origin'), null);
+});
+
 test('auth providers reflect configured OAuth credentials', async () => {
   const previous = {
     googleClientId: process.env.GOOGLE_CLIENT_ID,
