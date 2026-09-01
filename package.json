@@ -12,6 +12,7 @@
     "test:server": "node --test server/app.test.mjs",
     "android:sync": "npm run build -- --configuration production && cap sync android",
     "android:apk": "npm run android:sync && cd android && gradlew.bat assembleDebug",
+    "android:aab": "npm run android:sync && cd android && gradlew.bat bundleRelease",
     "watch": "ng build --watch --configuration development",
     "test": "ng test"
   },

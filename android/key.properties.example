@@ -1,0 +1,6 @@
+# Copy this file to android/key.properties and replace every value.
+# The file and the keystore are intentionally excluded from Git.
+storeFile=upload-keystore.jks
+storePassword=replace-with-keystore-password
+keyAlias=upload
+keyPassword=replace-with-key-password

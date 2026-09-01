@@ -15,6 +15,11 @@ yarn-error.log
 /prisma/*.db
 /prisma/*.db-journal
 
+# Android release signing credentials must remain local or in CI secrets.
+/android/key.properties
+/android/*.jks
+/android/*.keystore
+
 # IDEs and editors
 .idea/
 .project
