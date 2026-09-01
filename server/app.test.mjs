@@ -278,13 +278,13 @@ test('allows Capacitor Android requests through CORS', async () => {
     method: 'OPTIONS',
     skipAuth: true,
     headers: {
-      Origin: 'http://localhost',
+      Origin: 'https://localhost',
       'Access-Control-Request-Method': 'POST',
       'Access-Control-Request-Headers': 'content-type',
     },
   });
   assert.equal(response.status, 204);
-  assert.equal(response.headers.get('access-control-allow-origin'), 'http://localhost');
+  assert.equal(response.headers.get('access-control-allow-origin'), 'https://localhost');
   assert.equal(response.headers.get('access-control-allow-credentials'), 'true');
 
   const rejected = await request('/api/auth/login', {

@@ -39,7 +39,11 @@ import {
 const BODY_LIMIT = 64 * 1024;
 const RECIPE_CACHE_TTL_MS = 6 * 60 * 60 * 1000;
 const recipeSuggestionsCache = new Map();
-const CAPACITOR_ORIGINS = new Set(['http://localhost', 'capacitor://localhost']);
+const CAPACITOR_ORIGINS = new Set([
+  'http://localhost',
+  'https://localhost',
+  'capacitor://localhost',
+]);
 
 function applyCapacitorCors(request, response) {
   const origin = request.headers.origin;
