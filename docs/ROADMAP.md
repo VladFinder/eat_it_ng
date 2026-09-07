@@ -1,4 +1,4 @@
-# Eat it roadmap
+# Homie roadmap
 
 ## Stage 1: Persistent core data
 

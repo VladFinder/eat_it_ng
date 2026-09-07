@@ -379,7 +379,7 @@ export class App implements OnDestroy, OnInit {
     if (this.activeTab() === 'fridge') {
       return this.activeCategory() === 'products' ? 'Продукты' : 'Бытовая химия';
     }
-    return this.tabs.find((tab) => tab.id === this.activeTab())?.label ?? 'Eat it';
+    return this.tabs.find((tab) => tab.id === this.activeTab())?.label ?? 'Homie';
   });
   protected readonly activeTabSubtitle = computed(() => {
     if (this.activeTab() === 'fridge') {
