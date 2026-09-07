@@ -17,6 +17,7 @@ yarn-error.log
 
 # Android release signing credentials must remain local or in CI secrets.
 /android/key.properties
+/android/local.properties
 /android/*.jks
 /android/*.keystore
 

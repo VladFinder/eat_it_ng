@@ -95,7 +95,10 @@ jobs:
       - name: Build signed Android App Bundle
         run: |
           npm ci
-          npm run android:aab
+          npm run android:sync
+          cd android
+          chmod +x gradlew
+          ./gradlew bundleRelease
       - name: Upload signed Android App Bundle
         uses: actions/upload-artifact@v5
         with:
