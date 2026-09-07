@@ -147,6 +147,9 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
 export class App implements OnDestroy, OnInit {
   private readonly api = inject(ApiService);
   private refreshTimer: ReturnType<typeof window.setInterval> | null = null;
+  protected readonly accountDeletionPage = new URLSearchParams(window.location.search).has(
+    'delete-account',
+  );
 
   protected readonly tabs: { id: TabId; label: string; icon: string }[] = [
     { id: 'fridge', label: 'Продукты', icon: 'fridge' },
@@ -207,6 +210,7 @@ export class App implements OnDestroy, OnInit {
   protected readonly apiError = signal('');
   protected readonly authMode = signal<AuthMode>('login');
   protected readonly authError = signal('');
+  protected readonly accountDeletionComplete = signal(false);
   protected readonly currentUser = signal<AuthUser | null>(null);
   protected readonly authProviders = signal<AuthProviders>({
     password: true,
@@ -425,6 +429,11 @@ export class App implements OnDestroy, OnInit {
   protected readonly openedSwipeAction = signal<{ id: string; action: SwipeAction } | null>(null);
 
   ngOnInit(): void {
+    if (sessionStorage.getItem('eat-it.delete-account.after-oauth') === 'true') {
+      sessionStorage.removeItem('eat-it.delete-account.after-oauth');
+      window.location.replace('/?delete-account=1');
+      return;
+    }
     void this.initializeSession();
   }
 
@@ -457,6 +466,9 @@ export class App implements OnDestroy, OnInit {
       this.api.setSessionToken(response.token);
       this.currentUser.set(response.user);
       this.authForm.password = '';
+      if (this.accountDeletionPage) {
+        return;
+      }
       await this.loadState();
       this.openOnboardingIfNeeded(response.user);
       this.startRealtimeRefresh();
@@ -473,6 +485,9 @@ export class App implements OnDestroy, OnInit {
   }
 
   protected startOAuth(provider: 'google' | 'apple'): void {
+    if (this.accountDeletionPage) {
+      sessionStorage.setItem('eat-it.delete-account.after-oauth', 'true');
+    }
     window.location.assign(this.api.oauthUrl(provider));
   }
 
@@ -512,12 +527,16 @@ export class App implements OnDestroy, OnInit {
   }
 
   protected async deleteAccount(): Promise<void> {
-    if (!window.confirm('Удалить аккаунт и завершить текущую сессию?')) {
+    const message = this.accountDeletionPage
+      ? 'Удалить аккаунт и связанные с ним данные без возможности восстановления?'
+      : 'Удалить аккаунт и завершить текущую сессию?';
+    if (!window.confirm(message)) {
       return;
     }
     try {
       await firstValueFrom(this.api.deleteAccount());
       this.resetSession();
+      this.accountDeletionComplete.set(true);
     } catch (error) {
       this.apiError.set(this.errorMessage(error, 'Не удалось удалить аккаунт.'));
     }
@@ -1547,6 +1566,9 @@ export class App implements OnDestroy, OnInit {
       }
       if (session.status === 'fulfilled') {
         this.currentUser.set(session.value.user);
+        if (this.accountDeletionPage) {
+          return;
+        }
         if (this.devMode()) {
           if (this.hasDevAccess()) {
             await this.loadDevData();

@@ -45,9 +45,9 @@ PowerShell can copy the value for the first secret with:
 
 - Create the Google Play Console application using package name `space.eatit.app`.
 - Complete the store listing: name, short and full descriptions, 512x512 icon, feature graphic, and at least two current-phone screenshots.
-- Publish a publicly accessible privacy-policy URL. The app collects an email address, account profile, household and food-list data, support messages, and auth tokens.
+- Publish the privacy-policy URL `https://eat-it.space/privacy.html` in Play Console. The app collects an email address, account profile, household and food-list data, support messages, and auth tokens.
 - Complete the Data safety form from the actual server-side retention, sharing, and deletion policy. Do not guess the answers.
-- Provide an account-deletion path in the application or on a public web page. Play requires this for apps that let users create accounts.
+- Enter `https://eat-it.space/delete-account.html` as the external account-deletion URL in Play Console. The same deletion path is available in the application profile.
 - Test the signed AAB through an internal testing track on a physical Android device, including registration, login, logout, data changes, support, and an upgrade over the previous build.
 - Confirm that `https://eat-it.space/api/health` and authentication are monitored and that database backups can be restored.
 
@@ -57,3 +57,11 @@ PowerShell can copy the value for the first secret with:
 2. Run `npm run build`, `npm run test:server`, and `npm run android:aab`.
 3. Upload the signed `app-release.aab` to the internal testing track and complete Play's pre-launch report.
 4. Promote the tested artifact to production in a staged rollout.
+
+## Final release gate
+
+- Confirm that `versionCode` has never been uploaded for this application ID. `1` is valid only for the first Play upload.
+- Confirm the signing key is backed up outside the repository and that the four Android signing secrets are configured in GitHub Actions.
+- Open both public URLs from a logged-out browser and complete account deletion using a test account.
+- Confirm that production backup retention is no longer than the 30 days stated in the privacy policy.
+- Complete store listing, App content, Data safety, Data deletion, content rating, and target audience in Play Console.

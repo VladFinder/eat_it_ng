@@ -3,15 +3,34 @@
     <section class="auth-card">
       <div>
         <p class="eyebrow">Eat it</p>
-        <h1>{{ authMode() === 'login' ? 'С возвращением' : 'Создать аккаунт' }}</h1>
+        <h1>
+          {{
+            accountDeletionComplete()
+              ? 'Аккаунт удалён'
+              : accountDeletionPage
+                ? 'Удаление аккаунта'
+                : authMode() === 'login'
+                  ? 'С возвращением'
+                  : 'Создать аккаунт'
+          }}
+        </h1>
         <p class="auth-description">
-          Продукты, бытовая химия и покупки будут храниться в вашем личном пространстве.
+          @if (accountDeletionComplete()) {
+            Аккаунт и связанные с ним активные данные удалены.
+          } @else if (accountDeletionPage) {
+            Войдите в аккаунт, который нужно удалить. Затем подтвердите действие на этой странице.
+          } @else {
+            Продукты, бытовая химия и покупки будут храниться в вашем личном пространстве.
+          }
         </p>
       </div>
 
-      @if (loading()) {
+      @if (accountDeletionComplete()) {
+        <a class="primary-action" href="/">На главную</a>
+      } @else if (loading()) {
         <p>Проверяем сессию...</p>
       } @else {
+        @if (!accountDeletionPage) {
         <div class="auth-tabs">
           <button
             type="button"
@@ -28,9 +47,10 @@
             Регистрация
           </button>
         </div>
+        }
 
         <form class="auth-form" (ngSubmit)="submitAuth()">
-          @if (authMode() === 'register') {
+          @if (authMode() === 'register' && !accountDeletionPage) {
             <label>
               Имя
               <input
@@ -56,7 +76,7 @@
             <input
               name="password"
               [(ngModel)]="authForm.password"
-              [autocomplete]="authMode() === 'login' ? 'current-password' : 'new-password'"
+            [autocomplete]="authMode() === 'login' || accountDeletionPage ? 'current-password' : 'new-password'"
               minlength="8"
               type="password"
               required
@@ -66,7 +86,7 @@
             <p class="auth-error" role="alert">{{ authError() }}</p>
           }
           <button class="primary-action" type="submit" [disabled]="saving()">
-            {{ authMode() === 'login' ? 'Войти' : 'Создать аккаунт' }}
+            {{ accountDeletionPage || authMode() === 'login' ? 'Войти' : 'Создать аккаунт' }}
           </button>
         </form>
 
@@ -82,6 +102,23 @@
           </div>
         }
       }
+    </section>
+  </main>
+} @else if (accountDeletionPage) {
+  <main class="auth-shell">
+    <section class="auth-card">
+      <div>
+        <p class="eyebrow">Eat it</p>
+        <h1>Подтвердите удаление</h1>
+        <p class="auth-description">Будут удалены аккаунт и связанные с ним активные данные. Это действие нельзя отменить.</p>
+      </div>
+      @if (apiError()) {
+        <p class="auth-error" role="alert">{{ apiError() }}</p>
+      }
+      <button class="danger-action" type="button" [disabled]="saving()" (click)="deleteAccount()">
+        Удалить аккаунт навсегда
+      </button>
+      <a class="secondary-action" href="/">Отмена</a>
     </section>
   </main>
 } @else {

@@ -467,6 +467,11 @@ textarea {
   text-align: center;
 }
 
+a.primary-action,
+a.secondary-action {
+  text-decoration: none;
+}
+
 .primary-action {
   background: var(--primary);
   color: #fff;
