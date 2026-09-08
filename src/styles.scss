@@ -590,7 +590,9 @@ a.secondary-action {
   gap: 14px;
   min-height: 78px;
   padding: 14px;
-  touch-action: pan-y;
+  // iOS Web Apps otherwise hand horizontal gestures to the browser before JS sees them.
+  // Vertical movement is forwarded to window scrolling from the touch handler.
+  touch-action: none;
   -webkit-touch-callout: none;
   -webkit-user-select: none;
   user-select: none;

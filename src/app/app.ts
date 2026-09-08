@@ -81,6 +81,7 @@ interface SwipeState {
   id: string;
   startX: number;
   startY: number;
+  lastY: number;
   deltaX: number;
   axis: 'horizontal' | 'vertical' | null;
 }
@@ -1358,7 +1359,7 @@ export class App implements OnDestroy, OnInit {
     if (event.pointerType === 'touch') return;
     if (event.pointerType === 'mouse' && event.button !== 0) return;
     (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
-    this.swipe.set({ id, startX: event.clientX, startY: event.clientY, deltaX: 0, axis: null });
+    this.swipe.set({ id, startX: event.clientX, startY: event.clientY, lastY: event.clientY, deltaX: 0, axis: null });
     if (this.openedSwipeItemId() !== id) {
       this.openedSwipeItemId.set(null);
       this.openedSwipeAction.set(null);
@@ -1368,7 +1369,7 @@ export class App implements OnDestroy, OnInit {
   protected beginTouchSwipe(event: TouchEvent, id: string): void {
     const touch = event.touches.item(0);
     if (!touch) return;
-    this.swipe.set({ id, startX: touch.clientX, startY: touch.clientY, deltaX: 0, axis: null });
+    this.swipe.set({ id, startX: touch.clientX, startY: touch.clientY, lastY: touch.clientY, deltaX: 0, axis: null });
     this.closeSwipeActions();
   }
 
@@ -1380,6 +1381,11 @@ export class App implements OnDestroy, OnInit {
     const deltaX = touch.clientX - swipe.startX;
     const deltaY = touch.clientY - swipe.startY;
     const axis = swipe.axis ?? (Math.hypot(deltaX, deltaY) > 6 ? (Math.abs(deltaX) > Math.abs(deltaY) ? 'horizontal' : 'vertical') : null);
+    if (axis === 'vertical') {
+      window.scrollBy({ top: swipe.lastY - touch.clientY, behavior: 'instant' });
+      this.swipe.set({ ...swipe, axis, lastY: touch.clientY });
+      return;
+    }
     if (axis !== 'horizontal') return;
     if (event.cancelable) event.preventDefault();
     this.swipe.set({ ...swipe, axis, deltaX: Math.max(-148, Math.min(148, deltaX)) });
