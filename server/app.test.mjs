@@ -154,6 +154,7 @@ before(async () => {
       "unit" TEXT NOT NULL,
       "expiresAt" DATETIME,
       "reminderDays" INTEGER NOT NULL DEFAULT 1,
+      "autoAddToShopping" BOOLEAN NOT NULL DEFAULT false,
       "category" TEXT NOT NULL DEFAULT 'products',
       "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "updatedAt" DATETIME NOT NULL,

@@ -1,0 +1,1 @@
+ALTER TABLE "FridgeItem" ADD COLUMN "autoAddToShopping" BOOLEAN NOT NULL DEFAULT false;

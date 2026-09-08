@@ -49,12 +49,14 @@ const fridgeFields = {
   unit,
   expiresAt: date.nullable(),
   reminderDays,
+  autoAddToShopping: z.boolean(),
   category,
 };
 
 export const fridgeCreateSchema = z.object({
   ...fridgeFields,
   reminderDays: reminderDays.default(1),
+  autoAddToShopping: z.boolean().default(false),
   category: category.default('products'),
 });
 

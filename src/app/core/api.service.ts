@@ -279,7 +279,7 @@ export class ApiService {
 
   updateShoppingItem(
     id: string,
-    input: Partial<Pick<ShoppingItem, 'name' | 'quantity' | 'unit' | 'checked'>>,
+    input: Partial<Pick<ShoppingItem, 'name' | 'quantity' | 'unit' | 'category' | 'checked'>>,
   ): Observable<ShoppingItem> {
     return this.http.patch<ShoppingItem>(`${this.baseUrl}/shopping/${id}`, input, this.options());
   }

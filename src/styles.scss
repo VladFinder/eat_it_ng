@@ -634,7 +634,7 @@ a.secondary-action {
   z-index: 0;
 }
 
-.fridge-swipe-shell.swipe-shopping .swipe-reveal {
+.fridge-swipe-shell.swipe-quantity .swipe-reveal {
   opacity: var(--swipe-progress, 0);
   pointer-events: auto;
   transform: scale(calc(0.82 + var(--swipe-progress, 0) * 0.18));
@@ -1607,6 +1607,20 @@ a.secondary-action {
   gap: 10px;
   min-height: 42px;
 }
+
+.preview-swipe {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  min-height: 48px;
+  border-radius: 14px;
+  background: linear-gradient(90deg, var(--danger-soft), var(--surface) 32%, var(--primary-soft));
+  padding: 0 12px;
+  color: var(--primary);
+}
+
+.preview-swipe span:first-child { color: var(--danger); }
 
 .preview-choice,
 .onboarding-actions {

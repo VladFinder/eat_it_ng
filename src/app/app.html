@@ -500,6 +500,42 @@
       </section>
     }
 
+    @if (fridgeMenuItem(); as item) {
+      <button class="notification-backdrop" type="button" aria-label="Закрыть меню товара" (click)="closeFridgeMenu()"></button>
+      <section class="panel ticket-dialog add-dialog item-menu" role="dialog" aria-modal="true">
+        <div class="notifications-head"><div><p class="section-label">Запасы</p><h2>{{ item.name }}</h2></div><button class="icon-button close-button" type="button" (click)="closeFridgeMenu()">×</button></div>
+        <form class="add-form" (ngSubmit)="saveFridgeMenu()">
+          <label>Название<input name="menu-fridge-name" [(ngModel)]="fridgeMenuForm.name" /></label>
+          <div class="add-form-row"><label>Количество<input name="menu-fridge-quantity" [(ngModel)]="fridgeMenuForm.quantity" min="0.1" step="0.1" type="number" /></label><label>Ед.<select name="menu-fridge-unit" [(ngModel)]="fridgeMenuForm.unit">@for (unit of units; track unit) {<option [value]="unit">{{ unit }}</option>}</select></label></div>
+          @if (item.category !== 'household') {
+            <label class="checkbox-row"><input name="menu-no-expiry" [(ngModel)]="fridgeMenuForm.noExpiry" type="checkbox" /><span>Без срока годности</span></label>
+            @if (!fridgeMenuForm.noExpiry) {
+              <label>Годен до<input name="menu-fridge-expires" [(ngModel)]="fridgeMenuForm.expiresAt" type="date" /></label>
+              <label>Напомнить<select name="menu-fridge-reminder" [(ngModel)]="fridgeMenuForm.reminderDays"><option [ngValue]="0">в день окончания</option><option [ngValue]="1">за 1 день</option><option [ngValue]="3">за 3 дня</option><option [ngValue]="7">за 7 дней</option></select></label>
+            }
+          }
+          <label class="checkbox-row"><input name="menu-auto-shopping" [(ngModel)]="fridgeMenuForm.autoAddToShopping" type="checkbox" /><span>Автоматически добавлять в покупки, когда закончится</span></label>
+          <button class="secondary-action" type="button" (click)="consumeFridgeItem(item)">Израсходовать</button>
+          <button class="primary-action" type="submit" [disabled]="saving()">Сохранить</button>
+          <button class="danger-action" type="button" (click)="deleteFridgeItem(item.id); closeFridgeMenu()">Удалить</button>
+        </form>
+      </section>
+    }
+
+    @if (shoppingMenuItem(); as item) {
+      <button class="notification-backdrop" type="button" aria-label="Закрыть меню покупки" (click)="closeShoppingMenu()"></button>
+      <section class="panel ticket-dialog add-dialog item-menu" role="dialog" aria-modal="true">
+        <div class="notifications-head"><div><p class="section-label">Покупки</p><h2>{{ item.name }}</h2></div><button class="icon-button close-button" type="button" (click)="closeShoppingMenu()">×</button></div>
+        <form class="add-form" (ngSubmit)="saveShoppingMenu()">
+          <label>Название<input name="menu-shopping-name" [(ngModel)]="shoppingMenuForm.name" /></label>
+          <div class="add-form-row"><label>Количество<input name="menu-shopping-quantity" [(ngModel)]="shoppingMenuForm.quantity" min="0.1" step="0.1" type="number" /></label><label>Ед.<select name="menu-shopping-unit" [(ngModel)]="shoppingMenuForm.unit">@for (unit of units; track unit) {<option [value]="unit">{{ unit }}</option>}</select></label></div>
+          <label>Раздел<select name="menu-shopping-category" [(ngModel)]="shoppingMenuForm.category"><option value="products">Продукты</option><option value="household">Бытовая химия</option><option value="medicine">Аптечка</option></select></label>
+          <button class="primary-action" type="submit" [disabled]="saving()">Сохранить</button>
+          <button class="danger-action" type="button" (click)="deleteShoppingFromMenu()">Удалить</button>
+        </form>
+      </section>
+    }
+
     @if (activeDevTicket()) {
       <button
         class="notification-backdrop"
@@ -1035,28 +1071,18 @@
             </div>
             <div class="list fridge-list">
               @for (item of expiringSoonItems(); track item.id) {
-                <div class="fridge-swipe-shell" [class.swipe-shopping]="swipeAction(item.id) === 'shopping'" [class.swipe-delete]="swipeAction(item.id) === 'delete'" [style.--swipe-progress]="swipeProgress(item.id)">
-                  <button class="swipe-reveal" type="button" (click)="runSwipeAction(item)" [attr.aria-label]="swipeAction(item.id) === 'shopping' ? 'Добавить в список покупок' : 'Удалить'">
-                    {{ swipeAction(item.id) === 'shopping' ? '🛒' : '🗑' }}
+                <div class="fridge-swipe-shell" [class.swipe-quantity]="swipeAction(item.id) === 'quantity'" [class.swipe-delete]="swipeAction(item.id) === 'delete'" [style.--swipe-progress]="swipeProgress(item.id)">
+                  <button class="swipe-reveal" type="button" (click)="runSwipeAction(item)" [attr.aria-label]="swipeAction(item.id) === 'quantity' ? 'Изменить остаток' : 'Удалить'">
+                    {{ swipeAction(item.id) === 'quantity' ? '✎' : '🗑' }}
                   </button>
-                  <article class="fridge-row" [style.transform]="'translateX(' + swipeOffset(item.id) + 'px)'" (pointerdown)="beginSwipe($event, item.id)" (pointermove)="moveSwipe($event, item.id)" (pointerup)="endSwipe(item.id)" (pointercancel)="endSwipe(item.id)">
+                  <article class="fridge-row" [style.transform]="swipeTransform(item.id)" (pointerdown)="beginSwipe($event, item.id)" (pointermove)="moveSwipe($event, item.id)" (pointerup)="endSwipe(item.id)" (pointercancel)="endSwipe(item.id)">
                   <div class="item-thumb"></div>
                   <div class="item-content">
                     <h3>{{ item.name }}</h3>
                     <p>{{ item.quantity }} {{ displayUnit(item.unit) }} · {{ expiryLabel(item.expiresAt) }}</p>
-                    <div class="row-actions">
-                      <button type="button" (pointerdown)="$event.stopPropagation()" (click)="editFridgeItem(item)">
-                        Изменить
-                      </button>
-                      <button type="button" (pointerdown)="$event.stopPropagation()" (click)="consumeFridgeItem(item)">
-                        Израсходовать
-                      </button>
-                      <button type="button" (pointerdown)="$event.stopPropagation()" (click)="deleteFridgeItem(item.id)">
-                        Удалить
-                      </button>
-                    </div>
                   </div>
                     <span class="status" [ngClass]="expiryClass(item.expiresAt)">{{ expiryBadgeLabel(item.expiresAt) }}</span>
+                    <button class="menu-button" type="button" (pointerdown)="$event.stopPropagation()" (click)="openFridgeMenu(item)" aria-label="Меню товара">⋮</button>
                   </article>
                 </div>
               }
@@ -1068,39 +1094,17 @@
           </div>
           <div class="list fridge-list">
             @for (item of stableFridgeItems(); track item.id) {
-              <div class="fridge-swipe-shell" [class.swipe-shopping]="swipeAction(item.id) === 'shopping'" [class.swipe-delete]="swipeAction(item.id) === 'delete'" [style.--swipe-progress]="swipeProgress(item.id)">
-                <button class="swipe-reveal" type="button" (click)="runSwipeAction(item)" [attr.aria-label]="swipeAction(item.id) === 'shopping' ? 'Добавить в список покупок' : 'Удалить'">
-                  {{ swipeAction(item.id) === 'shopping' ? '🛒' : '🗑' }}
+              <div class="fridge-swipe-shell" [class.swipe-quantity]="swipeAction(item.id) === 'quantity'" [class.swipe-delete]="swipeAction(item.id) === 'delete'" [style.--swipe-progress]="swipeProgress(item.id)">
+                <button class="swipe-reveal" type="button" (click)="runSwipeAction(item)" [attr.aria-label]="swipeAction(item.id) === 'quantity' ? 'Изменить остаток' : 'Удалить'">
+                  {{ swipeAction(item.id) === 'quantity' ? '✎' : '🗑' }}
                 </button>
-                <article class="fridge-row" [style.transform]="'translateX(' + swipeOffset(item.id) + 'px)'" (pointerdown)="beginSwipe($event, item.id)" (pointermove)="moveSwipe($event, item.id)" (pointerup)="endSwipe(item.id)" (pointercancel)="endSwipe(item.id)">
+                <article class="fridge-row" [style.transform]="swipeTransform(item.id)" (pointerdown)="beginSwipe($event, item.id)" (pointermove)="moveSwipe($event, item.id)" (pointerup)="endSwipe(item.id)" (pointercancel)="endSwipe(item.id)">
                 <div class="item-thumb"></div>
                 <div class="item-content">
                   <h3>{{ item.name }}</h3>
                   <p>{{ item.quantity }} {{ displayUnit(item.unit) }} · {{ expiryLabel(item.expiresAt) }}</p>
-                  <div class="row-actions">
-                    <button
-                      type="button"
-                      (pointerdown)="$event.stopPropagation()"
-                      (click)="editFridgeItem(item)"
-                    >
-                      Изменить
-                    </button>
-                    <button
-                      type="button"
-                      (pointerdown)="$event.stopPropagation()"
-                      (click)="consumeFridgeItem(item)"
-                    >
-                      Израсходовать
-                    </button>
-                    <button
-                      type="button"
-                      (pointerdown)="$event.stopPropagation()"
-                      (click)="deleteFridgeItem(item.id)"
-                    >
-                      Удалить
-                    </button>
-                  </div>
                 </div>
+                <button class="menu-button" type="button" (pointerdown)="$event.stopPropagation()" (click)="openFridgeMenu(item)" aria-label="Меню товара">⋮</button>
                 </article>
               </div>
             } @empty {
@@ -1212,7 +1216,7 @@
                     </button>
                   }
                 </div>
-                <button class="menu-button" type="button" (click)="editShoppingItem(item)" aria-label="Изменить">
+                <button class="menu-button" type="button" (click)="openShoppingMenu(item)" aria-label="Меню покупки">
                   ⋮
                 </button>
               </article>
@@ -1656,6 +1660,7 @@
               <span class="status fresh">12.08.2026</span>
             </div>
           } @else if (onboardingStep().tab === 'shopping') {
+            <div class="preview-swipe" aria-hidden="true"><span>←</span><strong>Йогурт</strong><span>🛒 →</span></div>
             <div class="preview-row">
               <span class="check-button" aria-hidden="true">✓</span>
               <strong>Молоко · 1 л</strong>

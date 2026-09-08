@@ -21,6 +21,7 @@ export interface FridgeItem {
   unit: Unit;
   expiresAt: string | null;
   reminderDays: number;
+  autoAddToShopping: boolean;
   category: ItemCategory;
   createdAt: string;
   updatedAt: string;
@@ -103,7 +104,7 @@ export interface AppNotification {
 
 export type FridgeInput = Pick<
   FridgeItem,
-  'name' | 'quantity' | 'unit' | 'expiresAt' | 'reminderDays' | 'category'
+  'name' | 'quantity' | 'unit' | 'expiresAt' | 'reminderDays' | 'autoAddToShopping' | 'category'
 >;
 
 export type ShoppingInput = {

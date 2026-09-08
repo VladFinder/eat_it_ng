@@ -15,6 +15,7 @@ model FridgeItem {
   unit         String
   expiresAt    DateTime?
   reminderDays Int       @default(1)
+  autoAddToShopping Boolean @default(false)
   category     String    @default("products")
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt

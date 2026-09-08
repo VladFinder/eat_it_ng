@@ -83,7 +83,7 @@ interface SwipeState {
   deltaX: number;
 }
 
-type SwipeAction = 'shopping' | 'delete';
+type SwipeAction = 'quantity' | 'delete';
 
 const STORAGE_KEYS = {
   recipes: 'eat-it.recipes',
@@ -152,7 +152,7 @@ export class App implements OnDestroy, OnInit {
   );
 
   protected readonly tabs: { id: TabId; label: string; icon: string }[] = [
-    { id: 'fridge', label: 'Хранилище', icon: 'fridge' },
+    { id: 'fridge', label: 'Запасы', icon: 'fridge' },
     { id: 'shopping', label: 'Покупки', icon: 'cart' },
     { id: 'dishes', label: 'Блюда', icon: 'spark' },
     { id: 'recipes', label: 'Рецепты', icon: 'book' },
@@ -179,6 +179,8 @@ export class App implements OnDestroy, OnInit {
   protected readonly activeRecipeTab = signal<RecipeTab>('all');
   protected readonly profileSection = signal<ProfileSection>('menu');
   protected readonly fridgeAddOpen = signal(false);
+  protected readonly fridgeMenuItem = signal<FridgeItem | null>(null);
+  protected readonly shoppingMenuItem = signal<ShoppingItem | null>(null);
   protected readonly activeDish = signal<DishIdea | null>(null);
   protected readonly activeRecipe = signal<Recipe | null>(null);
   protected readonly recipeSuggestionsLoading = signal(false);
@@ -197,6 +199,15 @@ export class App implements OnDestroy, OnInit {
     expiresAt: this.addDays(5),
     noExpiry: false,
     reminderDays: 1,
+    autoAddToShopping: false,
+  };
+
+  protected readonly fridgeMenuForm = {
+    name: '', quantity: 1, unit: 'шт.' as Unit, expiresAt: '', noExpiry: false,
+    reminderDays: 1, autoAddToShopping: false,
+  };
+  protected readonly shoppingMenuForm = {
+    name: '', quantity: 1, unit: 'шт.' as Unit, category: 'products' as ItemCategory,
   };
 
   protected readonly newShoppingItem = {
@@ -605,6 +616,7 @@ export class App implements OnDestroy, OnInit {
           unit: this.newFridgeItem.unit,
           expiresAt,
           reminderDays: expiresAt ? Number(this.newFridgeItem.reminderDays) || 0 : 0,
+          autoAddToShopping: this.newFridgeItem.autoAddToShopping,
           category: this.activeCategory(),
         }),
       );
@@ -616,7 +628,36 @@ export class App implements OnDestroy, OnInit {
       this.newFridgeItem.expiresAt = this.addDays(5);
       this.newFridgeItem.noExpiry = this.activeCategory() === 'household';
       this.newFridgeItem.reminderDays = this.activeCategory() === 'household' ? 0 : 1;
+      this.newFridgeItem.autoAddToShopping = false;
       this.fridgeAddOpen.set(false);
+    });
+  }
+
+  protected openFridgeMenu(item: FridgeItem): void {
+    this.fridgeMenuItem.set(item);
+    Object.assign(this.fridgeMenuForm, {
+      name: item.name, quantity: item.quantity, unit: item.unit,
+      expiresAt: item.expiresAt ?? '', noExpiry: !item.expiresAt,
+      reminderDays: item.reminderDays, autoAddToShopping: item.autoAddToShopping,
+    });
+  }
+
+  protected closeFridgeMenu(): void { this.fridgeMenuItem.set(null); }
+
+  protected async saveFridgeMenu(): Promise<void> {
+    const item = this.fridgeMenuItem();
+    const name = this.fridgeMenuForm.name.trim();
+    const quantity = Number(this.fridgeMenuForm.quantity);
+    if (!item || !name || !Number.isFinite(quantity) || quantity <= 0) return;
+    const expiresAt = item.category === 'household' || this.fridgeMenuForm.noExpiry ? null : this.fridgeMenuForm.expiresAt || null;
+    await this.runMutation(async () => {
+      const updated = await firstValueFrom(this.api.updateFridgeItem(item.id, {
+        name, quantity, unit: this.fridgeMenuForm.unit, expiresAt,
+        reminderDays: expiresAt ? Number(this.fridgeMenuForm.reminderDays) || 0 : 0,
+        autoAddToShopping: this.fridgeMenuForm.autoAddToShopping,
+      }));
+      this.replaceFridgeItem(updated);
+      this.closeFridgeMenu();
     });
   }
 
@@ -667,7 +708,8 @@ export class App implements OnDestroy, OnInit {
       const result = await firstValueFrom(this.api.consumeFridgeItem(item.id, quantity));
       if (result.removed || !result.item) {
         this.fridgeItems.update((items) => items.filter((current) => current.id !== item.id));
-        if (window.confirm(`«${item.name}» закончился. Добавить в список покупок?`)) {
+        this.closeFridgeMenu();
+        if (item.autoAddToShopping || window.confirm(`«${item.name}» закончился. Добавить в список покупок?`)) {
           const shoppingItem = await firstValueFrom(
             this.api.createShoppingItem({
               name: item.name,
@@ -723,6 +765,39 @@ export class App implements OnDestroy, OnInit {
       await firstValueFrom(this.api.deleteShoppingItem(id));
       this.shoppingItems.update((items) => items.filter((item) => item.id !== id));
     });
+  }
+
+  protected openShoppingMenu(item: ShoppingItem): void {
+    this.shoppingMenuItem.set(item);
+    Object.assign(this.shoppingMenuForm, {
+      name: item.name,
+      quantity: item.quantity ?? 1,
+      unit: this.displayUnit(item.unit),
+      category: item.category,
+    });
+  }
+
+  protected closeShoppingMenu(): void { this.shoppingMenuItem.set(null); }
+
+  protected async saveShoppingMenu(): Promise<void> {
+    const item = this.shoppingMenuItem();
+    const name = this.shoppingMenuForm.name.trim();
+    const quantity = Number(this.shoppingMenuForm.quantity);
+    if (!item || !name || !Number.isFinite(quantity) || quantity <= 0) return;
+    await this.runMutation(async () => {
+      const updated = await firstValueFrom(this.api.updateShoppingItem(item.id, {
+        name, quantity, unit: this.shoppingMenuForm.unit, category: this.shoppingMenuForm.category,
+      }));
+      this.replaceShoppingItem(updated);
+      this.closeShoppingMenu();
+    });
+  }
+
+  protected async deleteShoppingFromMenu(): Promise<void> {
+    const item = this.shoppingMenuItem();
+    if (!item) return;
+    await this.removeShoppingItem(item.id);
+    this.closeShoppingMenu();
   }
 
   protected async editShoppingItem(item: ShoppingItem): Promise<void> {
@@ -1255,6 +1330,8 @@ export class App implements OnDestroy, OnInit {
   }
 
   protected beginSwipe(event: PointerEvent, id: string): void {
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
     this.swipe = { id, startX: event.clientX, deltaX: 0 };
     if (this.openedSwipeItemId() !== id) {
       this.openedSwipeItemId.set(null);
@@ -1266,7 +1343,7 @@ export class App implements OnDestroy, OnInit {
     if (!this.swipe || this.swipe.id !== id) {
       return;
     }
-
+    if (Math.abs(event.clientX - this.swipe.startX) > 6) event.preventDefault();
     this.swipe.deltaX = Math.max(-148, Math.min(148, event.clientX - this.swipe.startX));
   }
 
@@ -1285,7 +1362,7 @@ export class App implements OnDestroy, OnInit {
 
     if (Math.abs(deltaX) >= 72) {
       this.openedSwipeItemId.set(id);
-      this.openedSwipeAction.set({ id, action: deltaX > 0 ? 'shopping' : 'delete' });
+      this.openedSwipeAction.set({ id, action: deltaX > 0 ? 'quantity' : 'delete' });
       return;
     }
 
@@ -1301,16 +1378,22 @@ export class App implements OnDestroy, OnInit {
     if (openAction?.id !== id) {
       return 0;
     }
-    return openAction.action === 'shopping' ? 118 : -118;
+    return openAction.action === 'quantity' ? 108 : -108;
   }
 
   protected swipeProgress(id: string): number {
     return Math.min(Math.abs(this.swipeOffset(id)) / 118, 1);
   }
 
+  protected swipeTransform(id: string): string {
+    const offset = this.swipeOffset(id);
+    const drop = Math.min(Math.abs(offset) * 0.08, 10);
+    return `translate(${offset}px, ${drop}px) rotate(${offset * 0.025}deg)`;
+  }
+
   protected swipeAction(id: string): SwipeAction | null {
     if (this.swipe?.id === id && Math.abs(this.swipe.deltaX) > 8) {
-      return this.swipe.deltaX > 0 ? 'shopping' : 'delete';
+      return this.swipe.deltaX > 0 ? 'quantity' : 'delete';
     }
     const openAction = this.openedSwipeAction();
     return openAction?.id === id ? openAction.action : null;
@@ -1347,8 +1430,9 @@ export class App implements OnDestroy, OnInit {
     if (action?.id !== item.id) {
       return;
     }
-    if (action.action === 'shopping') {
-      await this.moveSwipedFridgeToShopping(item);
+    if (action.action === 'quantity') {
+      this.closeSwipeActions();
+      this.openFridgeMenu(item);
       return;
     }
     await this.deleteSwipedFridgeItem(item.id);
