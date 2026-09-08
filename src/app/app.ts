@@ -446,7 +446,26 @@ export class App implements OnDestroy, OnInit {
   protected readonly openedSwipeItemId = signal<string | null>(null);
   protected readonly openedSwipeAction = signal<{ id: string; action: SwipeAction } | null>(null);
 
+  private readonly handleNativeTouchStart = (event: TouchEvent): void => {
+    const id = this.swipeItemIdForTarget(event.target);
+    if (id) this.beginTouchSwipe(event, id);
+  };
+  private readonly handleNativeTouchMove = (event: TouchEvent): void => {
+    const id = this.swipe()?.id;
+    if (id) this.moveTouchSwipe(event, id);
+  };
+  private readonly handleNativeTouchEnd = (): void => {
+    const id = this.swipe()?.id;
+    if (id) this.endSwipe(id);
+  };
+
   ngOnInit(): void {
+    // Angular may register touchmove as passive on iOS. A native capture listener
+    // keeps horizontal card swipes cancellable while vertical scrolling stays native.
+    document.addEventListener('touchstart', this.handleNativeTouchStart, { capture: true, passive: true });
+    document.addEventListener('touchmove', this.handleNativeTouchMove, { capture: true, passive: false });
+    document.addEventListener('touchend', this.handleNativeTouchEnd, { capture: true, passive: true });
+    document.addEventListener('touchcancel', this.handleNativeTouchEnd, { capture: true, passive: true });
     if (sessionStorage.getItem('eat-it.delete-account.after-oauth') === 'true') {
       sessionStorage.removeItem('eat-it.delete-account.after-oauth');
       window.location.replace('/?delete-account=1');
@@ -456,6 +475,10 @@ export class App implements OnDestroy, OnInit {
   }
 
   ngOnDestroy(): void {
+    document.removeEventListener('touchstart', this.handleNativeTouchStart, true);
+    document.removeEventListener('touchmove', this.handleNativeTouchMove, true);
+    document.removeEventListener('touchend', this.handleNativeTouchEnd, true);
+    document.removeEventListener('touchcancel', this.handleNativeTouchEnd, true);
     this.stopRealtimeRefresh();
   }
 
@@ -1332,10 +1355,9 @@ export class App implements OnDestroy, OnInit {
   }
 
   protected beginSwipe(event: PointerEvent, id: string): void {
+    if (event.pointerType === 'touch') return;
     if (event.pointerType === 'mouse' && event.button !== 0) return;
-    if (event.pointerType !== 'touch') {
-      (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
-    }
+    (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
     this.swipe.set({ id, startX: event.clientX, startY: event.clientY, deltaX: 0, axis: null });
     if (this.openedSwipeItemId() !== id) {
       this.openedSwipeItemId.set(null);
@@ -1445,6 +1467,11 @@ export class App implements OnDestroy, OnInit {
   protected isSwiping(id: string): boolean {
     const swipe = this.swipe();
     return swipe?.id === id && swipe.axis === 'horizontal';
+  }
+
+  private swipeItemIdForTarget(target: EventTarget | null): string | null {
+    if (!(target instanceof Element)) return null;
+    return target.closest<HTMLElement>('.fridge-row[data-swipe-id]')?.dataset['swipeId'] ?? null;
   }
 
   protected closeSwipeActions(): void {
