@@ -12,7 +12,7 @@ export type Unit =
   | 'банка'
   | 'бут.'
   | 'бут';
-export type ItemCategory = 'products' | 'household';
+export type ItemCategory = 'products' | 'household' | 'medicine';
 
 export interface FridgeItem {
   id: string;

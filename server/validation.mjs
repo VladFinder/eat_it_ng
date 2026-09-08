@@ -1,7 +1,7 @@
 import { z } from 'zod';
 
 export const units = ['шт.', 'г', 'кг', 'мг', 'мл', 'л', 'упак.', 'бан.', 'бут.'];
-export const categories = ['products', 'household'];
+export const categories = ['products', 'household', 'medicine'];
 
 const name = z.string().trim().min(1).max(120);
 const quantity = z.number().positive().max(1_000_000);

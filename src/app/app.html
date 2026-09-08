@@ -440,7 +440,7 @@
             <input
               name="fridge-name"
               [(ngModel)]="newFridgeItem.name"
-              [placeholder]="activeCategory() === 'household' ? 'Например, шампунь' : 'Например, молоко'"
+              [placeholder]="activeCategory() === 'household' ? 'Например, шампунь' : activeCategory() === 'medicine' ? 'Например, ибупрофен' : 'Например, молоко'"
               autocomplete="off"
             />
           </label>
@@ -464,13 +464,13 @@
               </select>
             </label>
           </div>
-          @if (activeCategory() === 'products') {
+          @if (activeCategory() !== 'household') {
             <label class="checkbox-row">
               <input name="fridge-no-expiry" [(ngModel)]="newFridgeItem.noExpiry" type="checkbox" />
               <span>Без срока годности</span>
             </label>
           }
-          @if (activeCategory() === 'products' && !newFridgeItem.noExpiry) {
+          @if (activeCategory() !== 'household' && !newFridgeItem.noExpiry) {
           <label>
             Годен до
             <input
@@ -1000,6 +1000,13 @@
             >
               Бытовая химия
             </button>
+            <button
+              type="button"
+              [class.active]="activeCategory() === 'medicine'"
+              (click)="setCategory('medicine')"
+            >
+              Аптечка
+            </button>
           </div>
           <button class="primary-action add-shortcut" type="button" (click)="openFridgeAdd()" aria-label="Добавить">
             +
@@ -1010,7 +1017,7 @@
           <div class="summary-icon warning-icon">!</div>
           <div>
             <strong>Нужно купить {{ shoppingOpenCount() }} позиций</strong>
-            <p>2 раздела · общий список</p>
+            <p>3 раздела · общий список</p>
           </div>
         </article>
 
@@ -1023,25 +1030,16 @@
         } @else {
           @if (expiringSoonItems().length > 0) {
             <div class="section-heading compact-heading">
-              <h2>Скоро закончатся</h2>
+              <h2>Срок подходит</h2>
               <span class="alert-pill">{{ expiringSoonCount() }}</span>
             </div>
             <div class="list fridge-list">
               @for (item of expiringSoonItems(); track item.id) {
-                <article
-                  class="fridge-row"
-                  [class.move-right]="swipeOffset(item.id) > 36"
-                  [class.move-left]="swipeOffset(item.id) < -36"
-                  [class.swipe-shopping]="swipeAction(item.id) === 'shopping'"
-                  [class.swipe-delete]="swipeAction(item.id) === 'delete'"
-                  [class.actions-open]="isSwipeActionsOpen(item.id)"
-                  [style.--swipe-progress]="swipeProgress(item.id)"
-                  [style.transform]="'translateX(' + swipeOffset(item.id) + 'px)'"
-                  (pointerdown)="beginSwipe($event, item.id)"
-                  (pointermove)="moveSwipe($event, item.id)"
-                  (pointerup)="endSwipe(item.id)"
-                  (pointercancel)="endSwipe(item.id)"
-                >
+                <div class="fridge-swipe-shell" [class.swipe-shopping]="swipeAction(item.id) === 'shopping'" [class.swipe-delete]="swipeAction(item.id) === 'delete'" [style.--swipe-progress]="swipeProgress(item.id)">
+                  <button class="swipe-reveal" type="button" (click)="runSwipeAction(item)" [attr.aria-label]="swipeAction(item.id) === 'shopping' ? 'Добавить в список покупок' : 'Удалить'">
+                    {{ swipeAction(item.id) === 'shopping' ? '🛒' : '🗑' }}
+                  </button>
+                  <article class="fridge-row" [style.transform]="'translateX(' + swipeOffset(item.id) + 'px)'" (pointerdown)="beginSwipe($event, item.id)" (pointermove)="moveSwipe($event, item.id)" (pointerup)="endSwipe(item.id)" (pointercancel)="endSwipe(item.id)">
                   <div class="item-thumb"></div>
                   <div class="item-content">
                     <h3>{{ item.name }}</h3>
@@ -1058,23 +1056,9 @@
                       </button>
                     </div>
                   </div>
-                  <span class="status" [ngClass]="expiryClass(item.expiresAt)">{{
-                    item.reminderDays
-                  }} дн.</span>
-                </article>
-                @if (isSwipeActionsOpen(item.id)) {
-                  <div class="swipe-actions" role="group" aria-label="Действия с товаром">
-                    <button
-                      class="swipe-action"
-                      [ngClass]="openedSwipeAction()?.action"
-                      type="button"
-                      (click)="runSwipeAction(item)"
-                      [attr.aria-label]="openedSwipeAction()?.action === 'shopping' ? 'В список покупок' : 'Удалить'"
-                    >
-                      {{ openedSwipeAction()?.action === 'shopping' ? '🛒' : '🗑' }}
-                    </button>
-                  </div>
-                }
+                    <span class="status" [ngClass]="expiryClass(item.expiresAt)">{{ expiryBadgeLabel(item.expiresAt) }}</span>
+                  </article>
+                </div>
               }
             </div>
           }
@@ -1084,20 +1068,11 @@
           </div>
           <div class="list fridge-list">
             @for (item of stableFridgeItems(); track item.id) {
-              <article
-                class="fridge-row"
-                [class.move-right]="swipeOffset(item.id) > 36"
-                [class.move-left]="swipeOffset(item.id) < -36"
-                [class.swipe-shopping]="swipeAction(item.id) === 'shopping'"
-                [class.swipe-delete]="swipeAction(item.id) === 'delete'"
-                [class.actions-open]="isSwipeActionsOpen(item.id)"
-                [style.--swipe-progress]="swipeProgress(item.id)"
-                [style.transform]="'translateX(' + swipeOffset(item.id) + 'px)'"
-                (pointerdown)="beginSwipe($event, item.id)"
-                (pointermove)="moveSwipe($event, item.id)"
-                (pointerup)="endSwipe(item.id)"
-                (pointercancel)="endSwipe(item.id)"
-              >
+              <div class="fridge-swipe-shell" [class.swipe-shopping]="swipeAction(item.id) === 'shopping'" [class.swipe-delete]="swipeAction(item.id) === 'delete'" [style.--swipe-progress]="swipeProgress(item.id)">
+                <button class="swipe-reveal" type="button" (click)="runSwipeAction(item)" [attr.aria-label]="swipeAction(item.id) === 'shopping' ? 'Добавить в список покупок' : 'Удалить'">
+                  {{ swipeAction(item.id) === 'shopping' ? '🛒' : '🗑' }}
+                </button>
+                <article class="fridge-row" [style.transform]="'translateX(' + swipeOffset(item.id) + 'px)'" (pointerdown)="beginSwipe($event, item.id)" (pointermove)="moveSwipe($event, item.id)" (pointerup)="endSwipe(item.id)" (pointercancel)="endSwipe(item.id)">
                 <div class="item-thumb"></div>
                 <div class="item-content">
                   <h3>{{ item.name }}</h3>
@@ -1126,31 +1101,21 @@
                     </button>
                   </div>
                 </div>
-              </article>
-              @if (isSwipeActionsOpen(item.id)) {
-                <div class="swipe-actions" role="group" aria-label="Действия с товаром">
-                  <button
-                      class="swipe-action"
-                      [ngClass]="openedSwipeAction()?.action"
-                      type="button"
-                      (click)="runSwipeAction(item)"
-                      [attr.aria-label]="openedSwipeAction()?.action === 'shopping' ? 'В список покупок' : 'Удалить'"
-                    >
-                      {{ openedSwipeAction()?.action === 'shopping' ? '🛒' : '🗑' }}
-                    </button>
-                </div>
-              }
+                </article>
+              </div>
             } @empty {
               <div class="empty-state">
                 <div class="empty-illustration">⌂</div>
                 <h3>
-                  {{ activeCategory() === 'products' ? 'Добавьте первый продукт' : 'Добавьте первый товар' }}
+                  {{ activeCategory() === 'products' ? 'Добавьте первый продукт' : activeCategory() === 'medicine' ? 'Добавьте лекарство' : 'Добавьте первый товар' }}
                 </h3>
                 <p>
                   {{
                     activeCategory() === 'products'
                       ? 'Мы напомним о сроке годности и поможем составить список покупок.'
-                      : 'Храните бытовые товары вместе с продуктами и следите за запасами в одном месте.'
+                      : activeCategory() === 'medicine'
+                        ? 'Храните лекарства, следите за сроками и вовремя пополняйте аптечку.'
+                        : 'Храните бытовые товары вместе с продуктами и следите за запасами в одном месте.'
                   }}
                 </p>
               </div>
@@ -1191,6 +1156,7 @@
             <select name="shopping-category" [(ngModel)]="newShoppingItem.category" aria-label="Раздел">
               <option value="products">Продукты</option>
               <option value="household">Бытовая химия</option>
+              <option value="medicine">Аптечка</option>
             </select>
           </div>
           @if (hasCompletedShoppingItems()) {
@@ -1213,6 +1179,9 @@
           </button>
           <button type="button" [class.active]="activeShoppingFilter() === 'household'" (click)="setShoppingFilter('household')">
             Бытовое {{ shoppingHouseholdCount() }}
+          </button>
+          <button type="button" [class.active]="activeShoppingFilter() === 'medicine'" (click)="setShoppingFilter('medicine')">
+            Аптечка {{ shoppingMedicineCount() }}
           </button>
         </div>
 

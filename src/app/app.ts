@@ -105,14 +105,14 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
     tab: 'fridge',
     label: 'Шаг 1 из 5',
     title: 'Начните с того, что уже есть дома',
-    body: 'Добавляйте продукты или бытовую химию, количество и срок годности. Так приложение покажет, что скоро закончится или испортится.',
+    body: 'Добавляйте продукты, бытовую химию или лекарства. Указывайте количество и срок годности там, где он важен.',
     action: 'Далее',
   },
   {
     tab: 'shopping',
     label: 'Шаг 2 из 5',
     title: 'Покупки собираются в один список',
-    body: 'Отмечайте купленное, меняйте количество и переносите покупки обратно в запасы, когда принесли их домой.',
+    body: 'Свайпните карточку вправо, чтобы добавить её в покупки, или влево, чтобы удалить. Карточка сдвинется и откроет зелёную корзину или красную урну.',
     action: 'Далее',
   },
   {
@@ -152,7 +152,7 @@ export class App implements OnDestroy, OnInit {
   );
 
   protected readonly tabs: { id: TabId; label: string; icon: string }[] = [
-    { id: 'fridge', label: 'Продукты', icon: 'fridge' },
+    { id: 'fridge', label: 'Хранилище', icon: 'fridge' },
     { id: 'shopping', label: 'Покупки', icon: 'cart' },
     { id: 'dishes', label: 'Блюда', icon: 'spark' },
     { id: 'recipes', label: 'Рецепты', icon: 'book' },
@@ -362,6 +362,9 @@ export class App implements OnDestroy, OnInit {
   protected readonly shoppingHouseholdCount = computed(
     () => this.shoppingItems().filter((item) => item.category === 'household').length,
   );
+  protected readonly shoppingMedicineCount = computed(
+    () => this.shoppingItems().filter((item) => item.category === 'medicine').length,
+  );
   protected readonly hasCompletedShoppingItems = computed(() =>
     this.shoppingItems().some((item) => item.checked),
   );
@@ -377,7 +380,7 @@ export class App implements OnDestroy, OnInit {
   protected readonly hasNotifications = computed(() => this.notifications().length > 0);
   protected readonly activeTabLabel = computed(() => {
     if (this.activeTab() === 'fridge') {
-      return this.activeCategory() === 'products' ? 'Продукты' : 'Бытовая химия';
+      return this.categoryLabel(this.activeCategory());
     }
     return this.tabs.find((tab) => tab.id === this.activeTab())?.label ?? 'Homie';
   });
@@ -385,7 +388,9 @@ export class App implements OnDestroy, OnInit {
     if (this.activeTab() === 'fridge') {
       return this.activeCategory() === 'products'
         ? 'Сроки, запасы и напоминания'
-        : 'Запасы дома без привязки к сроку годности';
+        : this.activeCategory() === 'medicine'
+          ? 'Лекарства, сроки и домашняя аптечка'
+          : 'Запасы дома без привязки к сроку годности';
     }
     if (this.activeTab() === 'shopping') {
       return 'Общий список для дома';
@@ -662,6 +667,17 @@ export class App implements OnDestroy, OnInit {
       const result = await firstValueFrom(this.api.consumeFridgeItem(item.id, quantity));
       if (result.removed || !result.item) {
         this.fridgeItems.update((items) => items.filter((current) => current.id !== item.id));
+        if (window.confirm(`«${item.name}» закончился. Добавить в список покупок?`)) {
+          const shoppingItem = await firstValueFrom(
+            this.api.createShoppingItem({
+              name: item.name,
+              quantity: item.quantity,
+              unit: item.unit,
+              category: item.category,
+            }),
+          );
+          this.shoppingItems.update((items) => [shoppingItem, ...items]);
+        }
       } else {
         this.replaceFridgeItem(result.item);
       }
@@ -1378,7 +1394,24 @@ export class App implements OnDestroy, OnInit {
   }
 
   protected categoryLabel(category: ItemCategory): string {
-    return category === 'products' ? 'Продукты' : 'Бытовая химия';
+    if (category === 'household') {
+      return 'Бытовая химия';
+    }
+    return category === 'medicine' ? 'Аптечка' : 'Продукты';
+  }
+
+  protected expiryBadgeLabel(date: string | null): string {
+    if (!date) {
+      return 'Без срока';
+    }
+    const days = this.daysUntil(date);
+    if (days < 0) {
+      return `Просрочен ${Math.abs(days)} дн.`;
+    }
+    if (days === 0) {
+      return 'Сегодня';
+    }
+    return `Через ${days} дн.`;
   }
 
   protected displayUnit(unit: Unit | string | null | undefined): Unit {

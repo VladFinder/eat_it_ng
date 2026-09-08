@@ -10,6 +10,8 @@ describe('App', () => {
     getAuthProviders: ReturnType<typeof vi.fn>;
     getState: ReturnType<typeof vi.fn>;
     createFridgeItem: ReturnType<typeof vi.fn>;
+    consumeFridgeItem: ReturnType<typeof vi.fn>;
+    createShoppingItem: ReturnType<typeof vi.fn>;
     getNotifications: ReturnType<typeof vi.fn>;
     getSupportTickets: ReturnType<typeof vi.fn>;
   };
@@ -34,6 +36,16 @@ describe('App', () => {
       createFridgeItem: vi.fn().mockImplementation((payload: Record<string, unknown>) =>
         of({
           id: 'fridge-1',
+          createdAt: '2026-08-26T00:00:00.000Z',
+          updatedAt: '2026-08-26T00:00:00.000Z',
+          ...payload,
+        }),
+      ),
+      consumeFridgeItem: vi.fn().mockReturnValue(of({ removed: true, item: null })),
+      createShoppingItem: vi.fn().mockImplementation((payload: Record<string, unknown>) =>
+        of({
+          id: 'shopping-1',
+          checked: false,
           createdAt: '2026-08-26T00:00:00.000Z',
           updatedAt: '2026-08-26T00:00:00.000Z',
           ...payload,
@@ -108,5 +120,52 @@ describe('App', () => {
         reminderDays: 0,
       }),
     );
+  });
+
+  it('stores medicine with an expiry date', async () => {
+    const fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance as any;
+    await fixture.whenStable();
+
+    app.setCategory('medicine');
+    app.newFridgeItem.name = 'Ибупрофен';
+    app.newFridgeItem.expiresAt = '2027-01-15';
+
+    await app.addFridgeItem();
+
+    expect(apiService.createFridgeItem).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'Ибупрофен',
+        category: 'medicine',
+        expiresAt: '2027-01-15',
+      }),
+    );
+  });
+
+  it('adds a fully consumed item to shopping after confirmation', async () => {
+    const fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance as any;
+    await fixture.whenStable();
+    vi.spyOn(window, 'prompt').mockReturnValue('1');
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    await app.consumeFridgeItem({
+      id: 'fridge-1',
+      name: 'Молоко',
+      quantity: 1,
+      unit: 'л',
+      expiresAt: '2026-09-10',
+      reminderDays: 1,
+      category: 'products',
+      createdAt: '2026-08-26T00:00:00.000Z',
+      updatedAt: '2026-08-26T00:00:00.000Z',
+    });
+
+    expect(apiService.createShoppingItem).toHaveBeenCalledWith({
+      name: 'Молоко',
+      quantity: 1,
+      unit: 'л',
+      category: 'products',
+    });
   });
 });
