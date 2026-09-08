@@ -1075,7 +1075,7 @@
                   <button class="swipe-reveal" type="button" (click)="runSwipeAction(item)" [attr.aria-label]="swipeAction(item.id) === 'quantity' ? 'Изменить остаток' : 'Удалить'">
                     {{ swipeAction(item.id) === 'quantity' ? '✎' : '🗑' }}
                   </button>
-                  <article class="fridge-row" [style.transform]="swipeTransform(item.id)" (pointerdown)="beginSwipe($event, item.id)" (pointermove)="moveSwipe($event, item.id)" (pointerup)="endSwipe(item.id)" (pointercancel)="endSwipe(item.id)" (touchstart)="beginTouchSwipe($event, item.id)" (touchmove)="moveTouchSwipe($event, item.id)" (touchend)="endSwipe(item.id)" (touchcancel)="endSwipe(item.id)">
+                  <article class="fridge-row" [class.is-swiping]="isSwiping(item.id)" [style.transform]="swipeTransform(item.id)" (pointerdown)="beginSwipe($event, item.id)" (pointermove)="moveSwipe($event, item.id)" (pointerup)="endSwipe(item.id)" (pointercancel)="endSwipe(item.id)" (touchstart)="beginTouchSwipe($event, item.id)" (touchmove)="moveTouchSwipe($event, item.id)" (touchend)="endSwipe(item.id)" (touchcancel)="endSwipe(item.id)">
                   <div class="item-thumb"></div>
                   <div class="item-content">
                     <h3>{{ item.name }}</h3>
@@ -1098,7 +1098,7 @@
                 <button class="swipe-reveal" type="button" (click)="runSwipeAction(item)" [attr.aria-label]="swipeAction(item.id) === 'quantity' ? 'Изменить остаток' : 'Удалить'">
                   {{ swipeAction(item.id) === 'quantity' ? '✎' : '🗑' }}
                 </button>
-                <article class="fridge-row" [style.transform]="swipeTransform(item.id)" (pointerdown)="beginSwipe($event, item.id)" (pointermove)="moveSwipe($event, item.id)" (pointerup)="endSwipe(item.id)" (pointercancel)="endSwipe(item.id)" (touchstart)="beginTouchSwipe($event, item.id)" (touchmove)="moveTouchSwipe($event, item.id)" (touchend)="endSwipe(item.id)" (touchcancel)="endSwipe(item.id)">
+                <article class="fridge-row" [class.is-swiping]="isSwiping(item.id)" [style.transform]="swipeTransform(item.id)" (pointerdown)="beginSwipe($event, item.id)" (pointermove)="moveSwipe($event, item.id)" (pointerup)="endSwipe(item.id)" (pointercancel)="endSwipe(item.id)" (touchstart)="beginTouchSwipe($event, item.id)" (touchmove)="moveTouchSwipe($event, item.id)" (touchend)="endSwipe(item.id)" (touchcancel)="endSwipe(item.id)">
                 <div class="item-thumb"></div>
                 <div class="item-content">
                   <h3>{{ item.name }}</h3>
@@ -1660,7 +1660,7 @@
               <span class="status fresh">12.08.2026</span>
             </div>
           } @else if (onboardingStep().tab === 'shopping') {
-            <div class="preview-swipe" aria-hidden="true"><span>←</span><strong>Йогурт</strong><span>🛒 →</span></div>
+            <div class="preview-swipe" aria-hidden="true"><span>🗑 ←</span><strong>Йогурт</strong><span>✎ →</span></div>
             <div class="preview-row">
               <span class="check-button" aria-hidden="true">✓</span>
               <strong>Молоко · 1 л</strong>

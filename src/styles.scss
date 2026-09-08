@@ -591,9 +591,16 @@ a.secondary-action {
   min-height: 78px;
   padding: 14px;
   touch-action: pan-y;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
   background: var(--surface);
-  transition: transform 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  transition: transform 320ms cubic-bezier(0.22, 1, 0.36, 1);
   will-change: transform;
+}
+
+.fridge-row.is-swiping {
+  transition-duration: 0ms;
 }
 
 .shopping-row {
@@ -1147,7 +1154,7 @@ a.secondary-action {
   border-color: var(--border);
   background: var(--surface);
   box-shadow: 0 28px 70px rgba(54, 42, 26, 0.24);
-  animation: sheet-in 420ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  animation: sheet-in 480ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .notifications-popover {
@@ -1163,7 +1170,7 @@ a.secondary-action {
 @keyframes sheet-in {
   from {
     opacity: 0;
-    transform: translateY(22px) scale(0.985);
+    transform: translateY(24px) scale(0.97);
   }
   to {
     opacity: 1;
@@ -1178,7 +1185,7 @@ a.secondary-action {
 @keyframes dialog-in {
   from {
     opacity: 0;
-    transform: translateY(calc(-50% + 18px)) scale(0.98);
+    transform: translateY(calc(-50% + 22px)) scale(0.97);
   }
   to {
     opacity: 1;
@@ -2612,7 +2619,7 @@ a.secondary-action {
 @keyframes mobile-sheet-in {
   from {
     opacity: 0;
-    transform: translateY(32px) scale(0.985);
+    transform: translateY(36px) scale(0.97);
   }
   to {
     opacity: 1;

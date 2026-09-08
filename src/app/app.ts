@@ -80,7 +80,9 @@ interface DishIdea {
 interface SwipeState {
   id: string;
   startX: number;
+  startY: number;
   deltaX: number;
+  axis: 'horizontal' | 'vertical' | null;
 }
 
 type SwipeAction = 'quantity' | 'delete';
@@ -112,7 +114,7 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
     tab: 'shopping',
     label: 'Шаг 2 из 5',
     title: 'Покупки собираются в один список',
-    body: 'Свайпните карточку вправо, чтобы добавить её в покупки, или влево, чтобы удалить. Карточка сдвинется и откроет зелёную корзину или красную урну.',
+    body: 'Свайпните карточку вправо, чтобы изменить остаток, или влево, чтобы удалить. Карточка плавно сдвинется и откроет зелёное действие или красную урну.',
     action: 'Далее',
   },
   {
@@ -440,7 +442,7 @@ export class App implements OnDestroy, OnInit {
     });
   });
 
-  private swipe: SwipeState | null = null;
+  private readonly swipe = signal<SwipeState | null>(null);
   protected readonly openedSwipeItemId = signal<string | null>(null);
   protected readonly openedSwipeAction = signal<{ id: string; action: SwipeAction } | null>(null);
 
@@ -1333,7 +1335,7 @@ export class App implements OnDestroy, OnInit {
     if (event.pointerType === 'touch') return;
     if (event.pointerType === 'mouse' && event.button !== 0) return;
     (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
-    this.swipe = { id, startX: event.clientX, deltaX: 0 };
+    this.swipe.set({ id, startX: event.clientX, startY: event.clientY, deltaX: 0, axis: null });
     if (this.openedSwipeItemId() !== id) {
       this.openedSwipeItemId.set(null);
       this.openedSwipeAction.set(null);
@@ -1343,35 +1345,45 @@ export class App implements OnDestroy, OnInit {
   protected beginTouchSwipe(event: TouchEvent, id: string): void {
     const touch = event.touches.item(0);
     if (!touch) return;
-    this.swipe = { id, startX: touch.clientX, deltaX: 0 };
+    this.swipe.set({ id, startX: touch.clientX, startY: touch.clientY, deltaX: 0, axis: null });
     this.closeSwipeActions();
   }
 
   protected moveTouchSwipe(event: TouchEvent, id: string): void {
-    if (!this.swipe || this.swipe.id !== id) return;
+    const swipe = this.swipe();
+    if (!swipe || swipe.id !== id) return;
     const touch = event.touches.item(0);
     if (!touch) return;
-    const deltaX = touch.clientX - this.swipe.startX;
-    if (Math.abs(deltaX) > 6) event.preventDefault();
-    this.swipe.deltaX = Math.max(-148, Math.min(148, deltaX));
+    const deltaX = touch.clientX - swipe.startX;
+    const deltaY = touch.clientY - swipe.startY;
+    const axis = swipe.axis ?? (Math.hypot(deltaX, deltaY) > 6 ? (Math.abs(deltaX) > Math.abs(deltaY) ? 'horizontal' : 'vertical') : null);
+    if (axis !== 'horizontal') return;
+    if (event.cancelable) event.preventDefault();
+    this.swipe.set({ ...swipe, axis, deltaX: Math.max(-148, Math.min(148, deltaX)) });
   }
 
   protected moveSwipe(event: PointerEvent, id: string): void {
-    if (!this.swipe || this.swipe.id !== id) {
+    const swipe = this.swipe();
+    if (!swipe || swipe.id !== id) {
       return;
     }
-    if (Math.abs(event.clientX - this.swipe.startX) > 6) event.preventDefault();
-    this.swipe.deltaX = Math.max(-148, Math.min(148, event.clientX - this.swipe.startX));
+    const deltaX = event.clientX - swipe.startX;
+    const deltaY = event.clientY - swipe.startY;
+    const axis = swipe.axis ?? (Math.hypot(deltaX, deltaY) > 6 ? (Math.abs(deltaX) > Math.abs(deltaY) ? 'horizontal' : 'vertical') : null);
+    if (axis !== 'horizontal') return;
+    if (event.cancelable) event.preventDefault();
+    this.swipe.set({ ...swipe, axis, deltaX: Math.max(-148, Math.min(148, deltaX)) });
   }
 
   protected endSwipe(id: string): void {
-    if (!this.swipe || this.swipe.id !== id) {
+    const swipe = this.swipe();
+    if (!swipe || swipe.id !== id) {
       return;
     }
 
     const item = this.fridgeItems().find((fridgeItem) => fridgeItem.id === id);
-    const deltaX = this.swipe.deltaX;
-    this.swipe = null;
+    const deltaX = swipe.axis === 'horizontal' ? swipe.deltaX : 0;
+    this.swipe.set(null);
 
     if (!item) {
       return;
@@ -1388,8 +1400,9 @@ export class App implements OnDestroy, OnInit {
   }
 
   protected swipeOffset(id: string): number {
-    if (this.swipe?.id === id) {
-      return this.swipe.deltaX;
+    const swipe = this.swipe();
+    if (swipe?.id === id) {
+      return swipe.deltaX;
     }
     const openAction = this.openedSwipeAction();
     if (openAction?.id !== id) {
@@ -1399,7 +1412,7 @@ export class App implements OnDestroy, OnInit {
   }
 
   protected swipeProgress(id: string): number {
-    return Math.min(Math.abs(this.swipeOffset(id)) / 118, 1);
+    return Math.min(Math.abs(this.swipeOffset(id)) / 108, 1);
   }
 
   protected swipeTransform(id: string): string {
@@ -1409,8 +1422,9 @@ export class App implements OnDestroy, OnInit {
   }
 
   protected swipeAction(id: string): SwipeAction | null {
-    if (this.swipe?.id === id && Math.abs(this.swipe.deltaX) > 8) {
-      return this.swipe.deltaX > 0 ? 'quantity' : 'delete';
+    const swipe = this.swipe();
+    if (swipe?.id === id && swipe.axis === 'horizontal' && Math.abs(swipe.deltaX) > 8) {
+      return swipe.deltaX > 0 ? 'quantity' : 'delete';
     }
     const openAction = this.openedSwipeAction();
     return openAction?.id === id ? openAction.action : null;
@@ -1425,6 +1439,11 @@ export class App implements OnDestroy, OnInit {
 
   protected isSwipeActionsOpen(id: string): boolean {
     return this.openedSwipeItemId() === id;
+  }
+
+  protected isSwiping(id: string): boolean {
+    const swipe = this.swipe();
+    return swipe?.id === id && swipe.axis === 'horizontal';
   }
 
   protected closeSwipeActions(): void {
