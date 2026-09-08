@@ -1075,7 +1075,7 @@
                   <button class="swipe-reveal" type="button" (click)="runSwipeAction(item)" [attr.aria-label]="swipeAction(item.id) === 'quantity' ? 'Изменить остаток' : 'Удалить'">
                     {{ swipeAction(item.id) === 'quantity' ? '✎' : '🗑' }}
                   </button>
-                  <article class="fridge-row" [style.transform]="swipeTransform(item.id)" (pointerdown)="beginSwipe($event, item.id)" (pointermove)="moveSwipe($event, item.id)" (pointerup)="endSwipe(item.id)" (pointercancel)="endSwipe(item.id)">
+                  <article class="fridge-row" [style.transform]="swipeTransform(item.id)" (pointerdown)="beginSwipe($event, item.id)" (pointermove)="moveSwipe($event, item.id)" (pointerup)="endSwipe(item.id)" (pointercancel)="endSwipe(item.id)" (touchstart)="beginTouchSwipe($event, item.id)" (touchmove)="moveTouchSwipe($event, item.id)" (touchend)="endSwipe(item.id)" (touchcancel)="endSwipe(item.id)">
                   <div class="item-thumb"></div>
                   <div class="item-content">
                     <h3>{{ item.name }}</h3>
@@ -1098,7 +1098,7 @@
                 <button class="swipe-reveal" type="button" (click)="runSwipeAction(item)" [attr.aria-label]="swipeAction(item.id) === 'quantity' ? 'Изменить остаток' : 'Удалить'">
                   {{ swipeAction(item.id) === 'quantity' ? '✎' : '🗑' }}
                 </button>
-                <article class="fridge-row" [style.transform]="swipeTransform(item.id)" (pointerdown)="beginSwipe($event, item.id)" (pointermove)="moveSwipe($event, item.id)" (pointerup)="endSwipe(item.id)" (pointercancel)="endSwipe(item.id)">
+                <article class="fridge-row" [style.transform]="swipeTransform(item.id)" (pointerdown)="beginSwipe($event, item.id)" (pointermove)="moveSwipe($event, item.id)" (pointerup)="endSwipe(item.id)" (pointercancel)="endSwipe(item.id)" (touchstart)="beginTouchSwipe($event, item.id)" (touchmove)="moveTouchSwipe($event, item.id)" (touchend)="endSwipe(item.id)" (touchcancel)="endSwipe(item.id)">
                 <div class="item-thumb"></div>
                 <div class="item-content">
                   <h3>{{ item.name }}</h3>
