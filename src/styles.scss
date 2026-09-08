@@ -250,7 +250,8 @@ button:active {
 }
 
 .action-card,
-.fridge-row,
+.fridge-row:not([data-swipe-id]),
+.fridge-swipe-shell,
 .shopping-row,
 .profile-menu button,
 .notification-row,
@@ -590,9 +591,7 @@ a.secondary-action {
   gap: 14px;
   min-height: 78px;
   padding: 14px;
-  // iOS Web Apps otherwise hand horizontal gestures to the browser before JS sees them.
-  // Vertical movement is forwarded to window scrolling from the touch handler.
-  touch-action: none;
+  touch-action: pan-y;
   -webkit-touch-callout: none;
   -webkit-user-select: none;
   user-select: none;
@@ -603,6 +602,12 @@ a.secondary-action {
 
 .fridge-row.is-swiping {
   transition-duration: 0ms;
+}
+
+.fridge-row[data-swipe-id] {
+  // A forwards-filled entrance animation would override the gesture's inline transform.
+  // Animate the shell instead, leaving this transform exclusively to the swipe.
+  animation: none;
 }
 
 .shopping-row {

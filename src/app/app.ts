@@ -81,7 +81,7 @@ interface SwipeState {
   id: string;
   startX: number;
   startY: number;
-  lastY: number;
+  touchId: number | null;
   deltaX: number;
   axis: 'horizontal' | 'vertical' | null;
 }
@@ -459,14 +459,16 @@ export class App implements OnDestroy, OnInit {
     const id = this.swipe()?.id;
     if (id) this.endSwipe(id);
   };
+  private readonly handleNativeTouchCancel = (): void => {
+    this.cancelSwipe();
+  };
 
   ngOnInit(): void {
-    // Angular may register touchmove as passive on iOS. A native capture listener
-    // keeps horizontal card swipes cancellable while vertical scrolling stays native.
+    // Explicit non-passive touchmove allows horizontal gestures to prevent scrolling.
     document.addEventListener('touchstart', this.handleNativeTouchStart, { capture: true, passive: true });
     document.addEventListener('touchmove', this.handleNativeTouchMove, { capture: true, passive: false });
     document.addEventListener('touchend', this.handleNativeTouchEnd, { capture: true, passive: true });
-    document.addEventListener('touchcancel', this.handleNativeTouchEnd, { capture: true, passive: true });
+    document.addEventListener('touchcancel', this.handleNativeTouchCancel, { capture: true, passive: true });
     if (sessionStorage.getItem('eat-it.delete-account.after-oauth') === 'true') {
       sessionStorage.removeItem('eat-it.delete-account.after-oauth');
       window.location.replace('/?delete-account=1');
@@ -479,7 +481,7 @@ export class App implements OnDestroy, OnInit {
     document.removeEventListener('touchstart', this.handleNativeTouchStart, true);
     document.removeEventListener('touchmove', this.handleNativeTouchMove, true);
     document.removeEventListener('touchend', this.handleNativeTouchEnd, true);
-    document.removeEventListener('touchcancel', this.handleNativeTouchEnd, true);
+    document.removeEventListener('touchcancel', this.handleNativeTouchCancel, true);
     this.stopRealtimeRefresh();
   }
 
@@ -1359,7 +1361,7 @@ export class App implements OnDestroy, OnInit {
     if (event.pointerType === 'touch') return;
     if (event.pointerType === 'mouse' && event.button !== 0) return;
     (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
-    this.swipe.set({ id, startX: event.clientX, startY: event.clientY, lastY: event.clientY, deltaX: 0, axis: null });
+    this.swipe.set({ id, startX: event.clientX, startY: event.clientY, touchId: null, deltaX: 0, axis: null });
     if (this.openedSwipeItemId() !== id) {
       this.openedSwipeItemId.set(null);
       this.openedSwipeAction.set(null);
@@ -1367,23 +1369,30 @@ export class App implements OnDestroy, OnInit {
   }
 
   protected beginTouchSwipe(event: TouchEvent, id: string): void {
+    if (event.touches.length !== 1) {
+      this.cancelSwipe();
+      return;
+    }
     const touch = event.touches.item(0);
     if (!touch) return;
-    this.swipe.set({ id, startX: touch.clientX, startY: touch.clientY, lastY: touch.clientY, deltaX: 0, axis: null });
+    this.swipe.set({ id, startX: touch.clientX, startY: touch.clientY, touchId: touch.identifier, deltaX: 0, axis: null });
     this.closeSwipeActions();
   }
 
   protected moveTouchSwipe(event: TouchEvent, id: string): void {
     const swipe = this.swipe();
     if (!swipe || swipe.id !== id) return;
+    if (event.touches.length !== 1) {
+      this.cancelSwipe();
+      return;
+    }
     const touch = event.touches.item(0);
-    if (!touch) return;
+    if (!touch || touch.identifier !== swipe.touchId) return;
     const deltaX = touch.clientX - swipe.startX;
     const deltaY = touch.clientY - swipe.startY;
     const axis = swipe.axis ?? (Math.hypot(deltaX, deltaY) > 6 ? (Math.abs(deltaX) > Math.abs(deltaY) ? 'horizontal' : 'vertical') : null);
     if (axis === 'vertical') {
-      window.scrollBy({ top: swipe.lastY - touch.clientY, behavior: 'instant' });
-      this.swipe.set({ ...swipe, axis, lastY: touch.clientY });
+      this.swipe.set({ ...swipe, axis });
       return;
     }
     if (axis !== 'horizontal') return;
@@ -1392,6 +1401,7 @@ export class App implements OnDestroy, OnInit {
   }
 
   protected moveSwipe(event: PointerEvent, id: string): void {
+    if (event.pointerType === 'touch') return;
     const swipe = this.swipe();
     if (!swipe || swipe.id !== id) {
       return;
@@ -1399,7 +1409,10 @@ export class App implements OnDestroy, OnInit {
     const deltaX = event.clientX - swipe.startX;
     const deltaY = event.clientY - swipe.startY;
     const axis = swipe.axis ?? (Math.hypot(deltaX, deltaY) > 6 ? (Math.abs(deltaX) > Math.abs(deltaY) ? 'horizontal' : 'vertical') : null);
-    if (axis !== 'horizontal') return;
+    if (axis !== 'horizontal') {
+      if (axis) this.swipe.set({ ...swipe, axis });
+      return;
+    }
     if (event.cancelable) event.preventDefault();
     this.swipe.set({ ...swipe, axis, deltaX: Math.max(-148, Math.min(148, deltaX)) });
   }
@@ -1426,6 +1439,20 @@ export class App implements OnDestroy, OnInit {
 
     this.openedSwipeItemId.set(null);
     this.openedSwipeAction.set(null);
+  }
+
+  protected endPointerSwipe(event: PointerEvent, id: string): void {
+    // Safari emits both event families; only touchend may finish a touch gesture.
+    if (event.pointerType !== 'touch') this.endSwipe(id);
+  }
+
+  protected cancelPointerSwipe(event: PointerEvent): void {
+    if (event.pointerType !== 'touch') this.cancelSwipe();
+  }
+
+  private cancelSwipe(): void {
+    this.swipe.set(null);
+    this.closeSwipeActions();
   }
 
   protected swipeOffset(id: string): number {
@@ -1477,6 +1504,7 @@ export class App implements OnDestroy, OnInit {
 
   private swipeItemIdForTarget(target: EventTarget | null): string | null {
     if (!(target instanceof Element)) return null;
+    if (target.closest('button, input, select, textarea, a')) return null;
     return target.closest<HTMLElement>('.fridge-row[data-swipe-id]')?.dataset['swipeId'] ?? null;
   }
 
