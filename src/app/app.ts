@@ -1332,9 +1332,10 @@ export class App implements OnDestroy, OnInit {
   }
 
   protected beginSwipe(event: PointerEvent, id: string): void {
-    if (event.pointerType === 'touch') return;
     if (event.pointerType === 'mouse' && event.button !== 0) return;
-    (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
+    if (event.pointerType !== 'touch') {
+      (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
+    }
     this.swipe.set({ id, startX: event.clientX, startY: event.clientY, deltaX: 0, axis: null });
     if (this.openedSwipeItemId() !== id) {
       this.openedSwipeItemId.set(null);
@@ -1389,7 +1390,7 @@ export class App implements OnDestroy, OnInit {
       return;
     }
 
-    if (Math.abs(deltaX) >= 72) {
+    if (Math.abs(deltaX) >= 52) {
       this.openedSwipeItemId.set(id);
       this.openedSwipeAction.set({ id, action: deltaX > 0 ? 'quantity' : 'delete' });
       return;
@@ -1418,7 +1419,7 @@ export class App implements OnDestroy, OnInit {
   protected swipeTransform(id: string): string {
     const offset = this.swipeOffset(id);
     const drop = Math.min(Math.abs(offset) * 0.08, 10);
-    return `translate(${offset}px, ${drop}px) rotate(${offset * 0.025}deg)`;
+    return `translate3d(${offset}px, ${drop}px, 0) rotate(${offset * 0.025}deg)`;
   }
 
   protected swipeAction(id: string): SwipeAction | null {
