@@ -1071,10 +1071,10 @@
             </div>
             <div class="list fridge-list">
               @for (item of expiringSoonItems(); track item.id) {
-                <div class="fridge-swipe-shell" [class.swipe-quantity]="swipeAction(item.id) === 'quantity'" [class.swipe-delete]="swipeAction(item.id) === 'delete'" [style.--swipe-progress]="swipeProgress(item.id)">
-                  <button class="swipe-reveal" type="button" (click)="runSwipeAction(item)" [attr.aria-label]="swipeAction(item.id) === 'quantity' ? 'Изменить остаток' : 'Удалить'">
-                    {{ swipeAction(item.id) === 'quantity' ? '✎' : '🗑' }}
-                  </button>
+                <div class="fridge-swipe-shell" [class.swipe-shopping]="swipeAction(item.id) === 'shopping'" [class.swipe-delete]="swipeAction(item.id) === 'delete'" [attr.aria-busy]="committingSwipe()?.id === item.id" [style.--swipe-progress]="swipeProgress(item.id)">
+                  <div class="swipe-reveal" aria-hidden="true">
+                    {{ swipeAction(item.id) === 'shopping' ? '🛒' : '🗑' }}
+                  </div>
                   <article class="fridge-row" [attr.data-swipe-id]="item.id" [class.is-swiping]="isSwiping(item.id)" [style.transform]="swipeTransform(item.id)" (pointerdown)="beginSwipe($event, item.id)" (pointermove)="moveSwipe($event, item.id)" (pointerup)="endPointerSwipe($event, item.id)" (pointercancel)="cancelPointerSwipe($event)">
                   <div class="item-thumb"></div>
                   <div class="item-content">
@@ -1094,10 +1094,10 @@
           </div>
           <div class="list fridge-list">
             @for (item of stableFridgeItems(); track item.id) {
-              <div class="fridge-swipe-shell" [class.swipe-quantity]="swipeAction(item.id) === 'quantity'" [class.swipe-delete]="swipeAction(item.id) === 'delete'" [style.--swipe-progress]="swipeProgress(item.id)">
-                <button class="swipe-reveal" type="button" (click)="runSwipeAction(item)" [attr.aria-label]="swipeAction(item.id) === 'quantity' ? 'Изменить остаток' : 'Удалить'">
-                  {{ swipeAction(item.id) === 'quantity' ? '✎' : '🗑' }}
-                </button>
+              <div class="fridge-swipe-shell" [class.swipe-shopping]="swipeAction(item.id) === 'shopping'" [class.swipe-delete]="swipeAction(item.id) === 'delete'" [attr.aria-busy]="committingSwipe()?.id === item.id" [style.--swipe-progress]="swipeProgress(item.id)">
+                <div class="swipe-reveal" aria-hidden="true">
+                  {{ swipeAction(item.id) === 'shopping' ? '🛒' : '🗑' }}
+                </div>
                 <article class="fridge-row" [attr.data-swipe-id]="item.id" [class.is-swiping]="isSwiping(item.id)" [style.transform]="swipeTransform(item.id)" (pointerdown)="beginSwipe($event, item.id)" (pointermove)="moveSwipe($event, item.id)" (pointerup)="endPointerSwipe($event, item.id)" (pointercancel)="cancelPointerSwipe($event)">
                 <div class="item-thumb"></div>
                 <div class="item-content">
@@ -1660,7 +1660,7 @@
               <span class="status fresh">12.08.2026</span>
             </div>
           } @else if (onboardingStep().tab === 'shopping') {
-            <div class="preview-swipe" aria-hidden="true"><span>🗑 ←</span><strong>Йогурт</strong><span>✎ →</span></div>
+            <div class="preview-swipe" aria-hidden="true"><span>🗑 ←</span><strong>Йогурт</strong><span>🛒 →</span></div>
             <div class="preview-row">
               <span class="check-button" aria-hidden="true">✓</span>
               <strong>Молоко · 1 л</strong>

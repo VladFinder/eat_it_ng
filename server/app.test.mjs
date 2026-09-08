@@ -754,6 +754,45 @@ test('fridge item can be created and partially consumed', async () => {
   assert.equal(consumed.item.quantity, 1.5);
 });
 
+for (const category of ['products', 'household', 'medicine']) {
+  test(`moves ${category} from stock to shopping atomically and rejects a repeat`, async () => {
+    const input = { name: `Swipe ${category}`, quantity: 2.5, unit: 'упак.', category, expiresAt: null, reminderDays: 0 };
+    const createdResponse = await request('/api/fridge', { method: 'POST', body: JSON.stringify(input) });
+    assert.equal(createdResponse.status, 201);
+    const created = await createdResponse.json();
+    const route = `/api/fridge/${created.id}/move-to-shopping`;
+    const movedResponse = await request(route, { method: 'POST' });
+    assert.equal(movedResponse.status, 200);
+    const moved = await movedResponse.json();
+    for (const field of ['name', 'quantity', 'unit', 'category']) assert.equal(moved[field], input[field]);
+    assert.equal(moved.checked, false);
+    const repeatedResponse = await request(route, { method: 'POST' });
+    assert.equal(repeatedResponse.status, 404);
+    const state = await (await request('/api/state')).json();
+    assert.equal(state.fridgeItems.some((item) => item.id === created.id), false);
+    assert.equal(state.shoppingItems.filter((item) => item.name === input.name).length, 1);
+  });
+}
+
+test('failed stock-to-shopping transaction preserves the stock item', async () => {
+  const createResponse = await request('/api/fridge', {
+    method: 'POST', body: JSON.stringify({ name: 'Swipe rollback', quantity: 1, unit: 'шт.', expiresAt: null, reminderDays: 0 }),
+  });
+  const item = await createResponse.json();
+  // Fail the second half of the transaction after the shopping insert succeeds.
+  await prisma.$executeRawUnsafe(`CREATE TRIGGER swipe_delete_failure BEFORE DELETE ON FridgeItem
+    WHEN OLD.name = 'Swipe rollback' BEGIN SELECT RAISE(ABORT, 'test rollback'); END`);
+  try {
+    const result = await request(`/api/fridge/${item.id}/move-to-shopping`, { method: 'POST' });
+    assert.equal(result.status, 500);
+    const state = await (await request('/api/state')).json();
+    assert.equal(state.fridgeItems.some((current) => current.id === item.id), true);
+    assert.equal(state.shoppingItems.some((current) => current.name === item.name), false);
+  } finally {
+    await prisma.$executeRawUnsafe('DROP TRIGGER swipe_delete_failure');
+  }
+});
+
 test('completed shopping item can be moved to the fridge', async () => {
   const createResponse = await request('/api/shopping', {
     method: 'POST',

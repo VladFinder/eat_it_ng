@@ -86,7 +86,7 @@ interface SwipeState {
   axis: 'horizontal' | 'vertical' | null;
 }
 
-type SwipeAction = 'quantity' | 'delete';
+type SwipeAction = 'shopping' | 'delete';
 
 const STORAGE_KEYS = {
   recipes: 'eat-it.recipes',
@@ -115,7 +115,7 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
     tab: 'shopping',
     label: 'Шаг 2 из 5',
     title: 'Покупки собираются в один список',
-    body: 'Свайпните карточку вправо, чтобы изменить остаток, или влево, чтобы удалить. Карточка плавно сдвинется и откроет зелёное действие или красную урну.',
+    body: 'Свайпните карточку в запасах вправо, чтобы перенести товар в покупки, или влево, чтобы удалить. Доведите свайп до появления яркой иконки и отпустите: действие выполнится сразу, без нажатия. Для редактирования нажмите три точки.',
     action: 'Далее',
   },
   {
@@ -444,10 +444,14 @@ export class App implements OnDestroy, OnInit {
   });
 
   private readonly swipe = signal<SwipeState | null>(null);
-  protected readonly openedSwipeItemId = signal<string | null>(null);
-  protected readonly openedSwipeAction = signal<{ id: string; action: SwipeAction } | null>(null);
+  protected readonly committingSwipe = signal<{ id: string; action: SwipeAction } | null>(null);
+  private stateRevision = 0;
 
   private readonly handleNativeTouchStart = (event: TouchEvent): void => {
+    if (event.touches.length !== 1) {
+      this.cancelSwipe();
+      return;
+    }
     const id = this.swipeItemIdForTarget(event.target);
     if (id) this.beginTouchSwipe(event, id);
   };
@@ -601,8 +605,7 @@ export class App implements OnDestroy, OnInit {
 
   protected setCategory(category: ItemCategory): void {
     this.activeCategory.set(category);
-    this.openedSwipeItemId.set(null);
-    this.openedSwipeAction.set(null);
+    this.cancelSwipe();
     this.newFridgeItem.noExpiry = category === 'household';
     if (category === 'household') {
       this.newFridgeItem.reminderDays = 0;
@@ -1358,17 +1361,15 @@ export class App implements OnDestroy, OnInit {
   }
 
   protected beginSwipe(event: PointerEvent, id: string): void {
+    if (this.saving()) return;
     if (event.pointerType === 'touch') return;
     if (event.pointerType === 'mouse' && event.button !== 0) return;
     (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
     this.swipe.set({ id, startX: event.clientX, startY: event.clientY, touchId: null, deltaX: 0, axis: null });
-    if (this.openedSwipeItemId() !== id) {
-      this.openedSwipeItemId.set(null);
-      this.openedSwipeAction.set(null);
-    }
   }
 
   protected beginTouchSwipe(event: TouchEvent, id: string): void {
+    if (this.saving()) return;
     if (event.touches.length !== 1) {
       this.cancelSwipe();
       return;
@@ -1376,7 +1377,6 @@ export class App implements OnDestroy, OnInit {
     const touch = event.touches.item(0);
     if (!touch) return;
     this.swipe.set({ id, startX: touch.clientX, startY: touch.clientY, touchId: touch.identifier, deltaX: 0, axis: null });
-    this.closeSwipeActions();
   }
 
   protected moveTouchSwipe(event: TouchEvent, id: string): void {
@@ -1427,18 +1427,13 @@ export class App implements OnDestroy, OnInit {
     const deltaX = swipe.axis === 'horizontal' ? swipe.deltaX : 0;
     this.swipe.set(null);
 
-    if (!item) {
+    if (!item || this.saving()) {
       return;
     }
 
-    if (Math.abs(deltaX) >= 52) {
-      this.openedSwipeItemId.set(id);
-      this.openedSwipeAction.set({ id, action: deltaX > 0 ? 'quantity' : 'delete' });
-      return;
+    if (Math.abs(deltaX) >= 80) {
+      void this.commitSwipe(item, deltaX > 0 ? 'shopping' : 'delete');
     }
-
-    this.openedSwipeItemId.set(null);
-    this.openedSwipeAction.set(null);
   }
 
   protected endPointerSwipe(event: PointerEvent, id: string): void {
@@ -1452,7 +1447,6 @@ export class App implements OnDestroy, OnInit {
 
   private cancelSwipe(): void {
     this.swipe.set(null);
-    this.closeSwipeActions();
   }
 
   protected swipeOffset(id: string): number {
@@ -1460,15 +1454,15 @@ export class App implements OnDestroy, OnInit {
     if (swipe?.id === id) {
       return swipe.deltaX;
     }
-    const openAction = this.openedSwipeAction();
+    const openAction = this.committingSwipe();
     if (openAction?.id !== id) {
       return 0;
     }
-    return openAction.action === 'quantity' ? 108 : -108;
+    return openAction.action === 'shopping' ? 108 : -108;
   }
 
   protected swipeProgress(id: string): number {
-    return Math.min(Math.abs(this.swipeOffset(id)) / 108, 1);
+    return Math.min(Math.abs(this.swipeOffset(id)) / 80, 1);
   }
 
   protected swipeTransform(id: string): string {
@@ -1480,21 +1474,10 @@ export class App implements OnDestroy, OnInit {
   protected swipeAction(id: string): SwipeAction | null {
     const swipe = this.swipe();
     if (swipe?.id === id && swipe.axis === 'horizontal' && Math.abs(swipe.deltaX) > 8) {
-      return swipe.deltaX > 0 ? 'quantity' : 'delete';
+      return swipe.deltaX > 0 ? 'shopping' : 'delete';
     }
-    const openAction = this.openedSwipeAction();
+    const openAction = this.committingSwipe();
     return openAction?.id === id ? openAction.action : null;
-  }
-
-  protected swipeStyle(id: string): Record<string, string> {
-    return {
-      '--swipe-progress': String(this.swipeProgress(id)),
-      '--swipe-offset': `${this.swipeOffset(id)}px`,
-    };
-  }
-
-  protected isSwipeActionsOpen(id: string): boolean {
-    return this.openedSwipeItemId() === id;
   }
 
   protected isSwiping(id: string): boolean {
@@ -1508,32 +1491,23 @@ export class App implements OnDestroy, OnInit {
     return target.closest<HTMLElement>('.fridge-row[data-swipe-id]')?.dataset['swipeId'] ?? null;
   }
 
-  protected closeSwipeActions(): void {
-    this.openedSwipeItemId.set(null);
-    this.openedSwipeAction.set(null);
-  }
-
-  protected async moveSwipedFridgeToShopping(item: FridgeItem): Promise<void> {
-    this.closeSwipeActions();
-    await this.moveFridgeToShopping(item);
-  }
-
-  protected async deleteSwipedFridgeItem(id: string): Promise<void> {
-    this.closeSwipeActions();
-    await this.deleteFridgeItem(id);
-  }
-
-  protected async runSwipeAction(item: FridgeItem): Promise<void> {
-    const action = this.openedSwipeAction();
-    if (action?.id !== item.id) {
-      return;
+  private async commitSwipe(item: FridgeItem, action: SwipeAction): Promise<void> {
+    if (this.saving() || this.committingSwipe()) return;
+    this.committingSwipe.set({ id: item.id, action });
+    try {
+      await this.runMutation(async () => {
+        if (action === 'shopping') {
+          const shoppingItem = await firstValueFrom(this.api.moveFridgeToShopping(item.id));
+          this.shoppingItems.update((items) => [shoppingItem, ...items.filter((current) => current.id !== shoppingItem.id)]);
+        } else {
+          await firstValueFrom(this.api.deleteFridgeItem(item.id));
+        }
+        this.fridgeItems.update((items) => items.filter((current) => current.id !== item.id));
+        this.showToast(action === 'shopping' ? 'Перенесено в покупки' : 'Удалено из запасов');
+      });
+    } finally {
+      this.committingSwipe.set(null);
     }
-    if (action.action === 'quantity') {
-      this.closeSwipeActions();
-      this.openFridgeMenu(item);
-      return;
-    }
-    await this.deleteSwipedFridgeItem(item.id);
   }
 
   protected expiryLabel(date: string | null): string {
@@ -1663,6 +1637,7 @@ export class App implements OnDestroy, OnInit {
       return;
     }
 
+    const revision = this.stateRevision;
     try {
       if (this.devMode()) {
         if (this.hasDevAccess()) {
@@ -1673,6 +1648,8 @@ export class App implements OnDestroy, OnInit {
       }
 
       const state = await firstValueFrom(this.api.getState());
+      // A response started before a mutation must not resurrect a moved/deleted card.
+      if (this.saving() || revision !== this.stateRevision) return;
       this.fridgeItems.set(state.fridgeItems);
       this.shoppingItems.set(state.shoppingItems);
       this.household.set(state.household);
@@ -1736,15 +1713,9 @@ export class App implements OnDestroy, OnInit {
     });
   }
 
-  private async moveFridgeToShopping(item: FridgeItem): Promise<void> {
-    await this.runMutation(async () => {
-      const shoppingItem = await firstValueFrom(this.api.moveFridgeToShopping(item.id));
-      this.fridgeItems.update((items) => items.filter((current) => current.id !== item.id));
-      this.shoppingItems.update((items) => [shoppingItem, ...items]);
-    });
-  }
-
   private async runMutation(action: () => Promise<void>): Promise<void> {
+    if (this.saving()) return;
+    this.stateRevision++;
     this.saving.set(true);
     this.apiError.set('');
     try {

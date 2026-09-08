@@ -23,22 +23,26 @@ cannot prematurely finish the independent touch gesture.
 1. Run `npm run build`.
 2. Run `node scripts/serve-swipe-fixture.mjs`.
 3. Open `http://127.0.0.1:4318/` and skip onboarding.
-4. Drag a card right, then tap the exposed pencil: the quantity menu must open.
-5. Close the menu and drag an expired card left: the red delete action must be
-   exposed; the item must remain until deletion is explicitly confirmed.
+4. Drag a card at least 80 CSS pixels right and release. It must immediately
+   leave stock and appear in shopping with the same quantity, unit and category.
+   No click or confirmation is required.
+5. Drag an expired card left past the same threshold and release: it must be
+   deleted without a click or confirmation. A short/canceled swipe does nothing.
 6. Repeat after switching to household and medicine. Check both narrow and wide
    viewports, including a card whose entrance animation has already completed.
-7. Inspect computed style: the card must have `animation-name: none`; after
-   release the transform matrix must contain an X translation of approximately
-   `108` or `-108`, matching the inline transform.
+7. Inspect computed style: the card must have `animation-name: none`; during
+   dragging the transform matrix must match the inline transform. Editing
+   remains available via the three-dot menu.
 8. On an actual iPhone, additionally check vertical scrolling with inertia,
    slight diagonal swipes, canceled gestures and the three-dot menu.
 
-The fixture serves the actual production build with synthetic, read-only API
-responses, binds only to loopback, and does not use the production database.
+The fixture serves the actual production build with disposable, in-memory API
+data, binds only to loopback, and does not use the production database.
+Use `node scripts/serve-swipe-fixture.mjs --fail-move-once` to check that a failed
+move restores the card and displays an error. The next swipe should succeed.
 
-Browser verification during this fix confirmed left/right computed translations
-of approximately -108/+108, the visible red/green actions and the quantity menu.
+Browser verification confirmed automatic transfer, the unchanged quantity in
+shopping, immediate deletion, and card restoration/retry on a simulated error.
 Physical iPhone verification still requires the device.
 
 ## Automated checks
@@ -46,4 +50,9 @@ Physical iPhone verification still requires the device.
 `npm test -- --watch=false` exercises native touch events dispatched on rendered
 cards: products, household and medicine, expired items, vertical direction lock,
 duplicate touch pointer cancellation, short gestures, cancellation, multitouch
-and menu buttons. These DOM tests do not replace the browser CSS check above.
+and menu buttons, no confirmations, duplicate releases, failed requests/retry
+and stale refresh responses. These DOM tests do not replace the browser CSS check.
+
+`npm run test:server` additionally verifies transfers for all three categories,
+duplicate request rejection and rollback of the shopping insert if stock deletion
+fails, using a disposable SQLite database.

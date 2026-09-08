@@ -648,9 +648,8 @@ a.secondary-action {
   z-index: 0;
 }
 
-.fridge-swipe-shell.swipe-quantity .swipe-reveal {
+.fridge-swipe-shell.swipe-shopping .swipe-reveal {
   opacity: var(--swipe-progress, 0);
-  pointer-events: auto;
   transform: scale(calc(0.82 + var(--swipe-progress, 0) * 0.18));
   justify-items: start;
   padding-left: 42px;
@@ -660,7 +659,6 @@ a.secondary-action {
 
 .fridge-swipe-shell.swipe-delete .swipe-reveal {
   opacity: var(--swipe-progress, 0);
-  pointer-events: auto;
   transform: scale(calc(0.82 + var(--swipe-progress, 0) * 0.18));
   justify-items: end;
   padding-right: 42px;

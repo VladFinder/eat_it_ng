@@ -1,4 +1,4 @@
-// Local-only browser regression fixture: real production UI, synthetic read-only API.
+// Local-only browser regression fixture: real production UI, disposable in-memory API.
 // Run npm run build, then node scripts/serve-swipe-fixture.mjs.
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
@@ -20,11 +20,41 @@ const api = {
   '/api/state': { fridgeItems, shoppingItems: [], household: { id: 'fixture', name: 'Swipe test', members: [] } },
   '/api/notifications': { notifications: [], unreadCount: 0 },
   '/api/support/tickets': { tickets: [] },
+  '/api/recipes/suggestions': { recipes: [], ingredients: [] },
+  '/api/recipes': { recipes: [], ingredients: [] },
+  '/api/dishes': { recipes: [], ingredients: [] },
 };
+let failNextMove = process.argv.includes('--fail-move-once');
 const mime = { '.js': 'text/javascript', '.css': 'text/css', '.html': 'text/html', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon' };
 const server = createServer(async (req, res) => {
   const path = new URL(req.url, 'http://127.0.0.1').pathname;
   res.setHeader('Cache-Control', 'no-store');
+  const move = path.match(/^\/api\/fridge\/([^/]+)\/move-to-shopping$/);
+  const remove = path.match(/^\/api\/fridge\/([^/]+)$/);
+  if ((move && req.method === 'POST') || (remove && req.method === 'DELETE')) {
+    const id = (move ?? remove)[1];
+    const index = fridgeItems.findIndex((item) => item.id === id);
+    if (index < 0) {
+      res.writeHead(404).end();
+      return;
+    }
+    if (move && failNextMove) {
+      failNextMove = false;
+      res.writeHead(503, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Temporary test failure. Swipe again to retry.' }));
+      return;
+    }
+    const [item] = fridgeItems.splice(index, 1);
+    if (move) {
+      const shoppingItem = { ...item, id: `shopping-${id}`, checked: false };
+      api['/api/state'].shoppingItems.push(shoppingItem);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(shoppingItem));
+    } else {
+      res.writeHead(204).end();
+    }
+    return;
+  }
   if (req.method !== 'GET') {
     res.writeHead(405).end();
     return;

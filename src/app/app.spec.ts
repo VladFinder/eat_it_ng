@@ -1,5 +1,5 @@
 import { TestBed } from '@angular/core/testing';
-import { of } from 'rxjs';
+import { of, Subject, throwError } from 'rxjs';
 import { describe, beforeEach, expect, it, vi } from 'vitest';
 import { App } from './app';
 import { ApiService } from './core/api.service';
@@ -12,6 +12,8 @@ describe('App', () => {
     createFridgeItem: ReturnType<typeof vi.fn>;
     consumeFridgeItem: ReturnType<typeof vi.fn>;
     createShoppingItem: ReturnType<typeof vi.fn>;
+    moveFridgeToShopping: ReturnType<typeof vi.fn>;
+    deleteFridgeItem: ReturnType<typeof vi.fn>;
     getNotifications: ReturnType<typeof vi.fn>;
     getSupportTickets: ReturnType<typeof vi.fn>;
   };
@@ -42,6 +44,8 @@ describe('App', () => {
         }),
       ),
       consumeFridgeItem: vi.fn().mockReturnValue(of({ removed: true, item: null })),
+      moveFridgeToShopping: vi.fn().mockReturnValue(of({ id: 'moved-1', name: 'Test item', quantity: 1, unit: 'шт.', category: 'products', checked: false })),
+      deleteFridgeItem: vi.fn().mockReturnValue(of(undefined)),
       createShoppingItem: vi.fn().mockImplementation((payload: Record<string, unknown>) =>
         of({
           id: 'shopping-1',
@@ -188,7 +192,7 @@ describe('App', () => {
       fixture.detectChanges();
       const card = fixture.nativeElement.querySelector('[data-swipe-id="swipe-1"]') as HTMLElement;
       expect(card).toBeTruthy();
-      return { fixture, card };
+      return { fixture, card, app };
     }
 
     function touch(target: Element, type: string, x: number, y: number, count = 1) {
@@ -200,8 +204,9 @@ describe('App', () => {
     }
 
     for (const category of ['products', 'household', 'medicine']) {
-      it(`renders touch movement and opens the quantity editor for ${category}`, async () => {
-        const { fixture, card } = await renderCard(category);
+      it(`moves ${category} to shopping on release without clicking or confirming`, async () => {
+        const { fixture, card, app } = await renderCard(category);
+        const confirm = vi.spyOn(window, 'confirm').mockClear();
         const content = card.querySelector('h3')!;
         touch(content, 'touchstart', 100, 150);
         const move = touch(content, 'touchmove', 190, 158);
@@ -211,24 +216,27 @@ describe('App', () => {
         expect(card.classList.contains('is-swiping')).toBe(true);
         touch(content, 'touchend', 190, 158, 0);
         await fixture.whenStable();
-        expect(card.style.transform).toContain('translate3d(108px,');
-        expect(card.classList.contains('is-swiping')).toBe(false);
-        (card.parentElement!.querySelector('.swipe-reveal') as HTMLButtonElement).click();
-        await fixture.whenStable();
-        expect(fixture.nativeElement.querySelector('.ticket-dialog')).toBeTruthy();
+        await vi.waitFor(() => expect(card.isConnected).toBe(false));
+        expect(apiService.moveFridgeToShopping).toHaveBeenCalledExactlyOnceWith('swipe-1');
+        expect(apiService.deleteFridgeItem).not.toHaveBeenCalled();
+        expect(app.shoppingItems()).toEqual([expect.objectContaining({ id: 'moved-1' })]);
+        expect(fixture.nativeElement.querySelector('.ticket-dialog')).toBeNull();
+        expect(confirm).not.toHaveBeenCalled();
         fixture.destroy();
       });
     }
 
-    it('reveals delete for an expired item without deleting on release', async () => {
+    it('deletes an expired item on release without a click or confirmation', async () => {
       const { fixture, card } = await renderCard('products', '2020-01-01');
+      const confirm = vi.spyOn(window, 'confirm').mockClear();
       touch(card, 'touchstart', 200, 150);
       touch(card, 'touchmove', 90, 160);
       touch(card, 'touchend', 90, 160, 0);
       await fixture.whenStable();
-      expect(card.style.transform).toContain('translate3d(-108px,');
-      expect(card.parentElement!.classList.contains('swipe-delete')).toBe(true);
-      expect(card.isConnected).toBe(true);
+      await vi.waitFor(() => expect(card.isConnected).toBe(false));
+      expect(apiService.deleteFridgeItem).toHaveBeenCalledExactlyOnceWith('swipe-1');
+      expect(apiService.moveFridgeToShopping).not.toHaveBeenCalled();
+      expect(confirm).not.toHaveBeenCalled();
       fixture.destroy();
     });
 
@@ -242,6 +250,8 @@ describe('App', () => {
       await fixture.whenStable();
       expect(card.style.transform).toContain('translate3d(0px,');
       expect(scroll).not.toHaveBeenCalled();
+      expect(apiService.deleteFridgeItem).not.toHaveBeenCalled();
+      expect(apiService.moveFridgeToShopping).not.toHaveBeenCalled();
       scroll.mockRestore();
       fixture.destroy();
     });
@@ -256,7 +266,8 @@ describe('App', () => {
       touch(card, 'touchmove', 190, 155);
       touch(card, 'touchend', 190, 155, 0);
       await fixture.whenStable();
-      expect(card.style.transform).toContain('translate3d(108px,');
+      await vi.waitFor(() => expect(card.isConnected).toBe(false));
+      expect(apiService.moveFridgeToShopping).toHaveBeenCalledTimes(1);
       fixture.destroy();
     });
 
@@ -269,7 +280,9 @@ describe('App', () => {
         touch(card, finish === 'touchcancel' ? 'touchcancel' : 'touchend', 190, 153, 0);
         await fixture.whenStable();
         expect(card.style.transform).toContain('translate3d(0px,');
-        expect(card.parentElement!.classList.contains('swipe-quantity')).toBe(false);
+        expect(card.parentElement!.classList.contains('swipe-shopping')).toBe(false);
+        expect(apiService.moveFridgeToShopping).not.toHaveBeenCalled();
+        expect(apiService.deleteFridgeItem).not.toHaveBeenCalled();
         fixture.destroy();
       });
     }
@@ -284,6 +297,66 @@ describe('App', () => {
       await fixture.whenStable();
       expect(card.style.transform).toContain('translate3d(0px,');
       expect(fixture.nativeElement.querySelector('.ticket-dialog')).toBeTruthy();
+      fixture.destroy();
+    });
+
+    it('sends only one request while a move is pending', async () => {
+      const { fixture, card } = await renderCard();
+      const pending = new Subject<any>();
+      apiService.moveFridgeToShopping.mockReturnValue(pending);
+      touch(card, 'touchstart', 100, 150);
+      touch(card, 'touchmove', 200, 150);
+      touch(card, 'touchend', 200, 150, 0);
+      touch(card, 'touchend', 200, 150, 0);
+      touch(card, 'touchstart', 100, 150);
+      touch(card, 'touchmove', 200, 150);
+      touch(card, 'touchend', 200, 150, 0);
+      expect(apiService.moveFridgeToShopping).toHaveBeenCalledTimes(1);
+      expect(card.isConnected).toBe(true);
+      pending.next({ id: 'moved-1' });
+      pending.complete();
+      await vi.waitFor(() => expect(card.isConnected).toBe(false));
+      fixture.destroy();
+    });
+
+    for (const direction of [1, -1]) {
+      it(`restores the card on a failed ${direction === 1 ? 'move' : 'delete'} and allows retry`, async () => {
+        const { fixture, card, app } = await renderCard();
+        const method = direction === 1 ? apiService.moveFridgeToShopping : apiService.deleteFridgeItem;
+        method.mockReturnValueOnce(throwError(() => new Error('offline')));
+        touch(card, 'touchstart', 150, 150);
+        touch(card, 'touchmove', 150 + direction * 100, 150);
+        touch(card, 'touchend', 150 + direction * 100, 150, 0);
+        await vi.waitFor(() => expect(app.committingSwipe()).toBeNull());
+        await fixture.whenStable();
+        expect(card.isConnected).toBe(true);
+        expect(card.style.transform).toContain('translate3d(0px,');
+        expect(app.shoppingItems()).toEqual([]);
+        expect(app.apiError()).toBeTruthy();
+        touch(card, 'touchstart', 150, 150);
+        touch(card, 'touchmove', 150 + direction * 100, 150);
+        touch(card, 'touchend', 150 + direction * 100, 150, 0);
+        await vi.waitFor(() => expect(card.isConnected).toBe(false));
+        expect(method).toHaveBeenCalledTimes(2);
+        fixture.destroy();
+      });
+    }
+
+    it('does not resurrect a moved item when an older refresh finishes', async () => {
+      const { fixture, card, app } = await renderCard();
+      const staleItems = app.fridgeItems();
+      const pending = new Subject<any>();
+      apiService.getState.mockReturnValueOnce(pending);
+      const refresh = app.refreshState();
+      touch(card, 'touchstart', 100, 150);
+      touch(card, 'touchmove', 200, 150);
+      touch(card, 'touchend', 200, 150, 0);
+      await vi.waitFor(() => expect(card.isConnected).toBe(false));
+      pending.next({ fridgeItems: staleItems, shoppingItems: [], household: { id: 'household-1', name: 'Test' } });
+      pending.complete();
+      await refresh;
+      expect(app.fridgeItems()).toEqual([]);
+      expect(app.shoppingItems()).toHaveLength(1);
       fixture.destroy();
     });
   });
