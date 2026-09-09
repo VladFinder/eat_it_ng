@@ -1224,7 +1224,7 @@ export function createApiServer(prisma, logger = console) {
         let warning = '';
 
         if (!spoonacularApiKey()) {
-          warning = 'Spoonacular не настроен на сервере: добавьте SPOONACULAR_API_KEY.';
+          warning = 'Сервис рецептов временно недоступен. Показаны сохраненные рецепты.';
         } else if (ingredients.length > 0) {
           try {
             const recipes = await fetchRecipeSuggestions(ingredients);
