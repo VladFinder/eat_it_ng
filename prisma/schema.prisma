@@ -209,6 +209,19 @@ model PushSubscription {
   @@index([userId])
 }
 
+model TranslationCache {
+  id             String   @id @default(cuid())
+  sourceLanguage String
+  targetLanguage String
+  sourceText     String
+  translatedText String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([sourceLanguage, targetLanguage, sourceText])
+  @@index([targetLanguage, updatedAt])
+}
+
 model AuthIdentity {
   id        String   @id @default(cuid())
   userId    String

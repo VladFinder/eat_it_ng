@@ -1220,14 +1220,17 @@ export class App implements OnDestroy, OnInit {
   }
 
   private toRecipe(recipe: RecipeSuggestion, saved?: Recipe): Recipe {
+    const isCatalogFallback = recipe.source === 'spoonacular-catalog';
     return {
       id: recipe.id,
       title: recipe.title,
       time: recipe.subtitle ?? 'Рецепт из базы',
       tags:
-        recipe.missedIngredientCount > 0
-          ? [`докупить ${recipe.missedIngredientCount}`, `${recipe.matchPercent}%`]
-          : ['все есть', `${recipe.matchPercent}%`],
+        isCatalogFallback
+          ? ['популярное', 'Spoonacular']
+          : recipe.missedIngredientCount > 0
+            ? [`докупить ${recipe.missedIngredientCount}`, `${recipe.matchPercent}%`]
+            : ['все есть', `${recipe.matchPercent}%`],
       liked: saved?.liked ?? false,
       mine: false,
       image: recipe.image,

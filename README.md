@@ -46,6 +46,17 @@ Recipe suggestions use the Spoonacular API. Keep the key on the API server:
 SPOONACULAR_API_KEY="..."
 ```
 
+To localize Spoonacular titles, ingredients, descriptions, and instructions,
+configure Yandex Translate. Translations are cached in SQLite and reused:
+
+```dotenv
+YANDEX_TRANSLATE_API_KEY="..."
+YANDEX_TRANSLATE_FOLDER_ID="..." # optional for service-account API keys
+```
+
+If Yandex Translate is not configured or temporarily fails, recipes remain
+available in their original language.
+
 Web Push requires one VAPID key pair. Generate it once:
 
 ```bash

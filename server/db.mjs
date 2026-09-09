@@ -243,6 +243,19 @@ export async function ensureDatabaseSchema(prismaClient = prisma) {
   );
   await ensureTable(
     prismaClient,
+    'TranslationCache',
+    `CREATE TABLE "TranslationCache" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "sourceLanguage" TEXT NOT NULL,
+      "targetLanguage" TEXT NOT NULL,
+      "sourceText" TEXT NOT NULL,
+      "translatedText" TEXT NOT NULL,
+      "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" DATETIME NOT NULL
+    )`,
+  );
+  await ensureTable(
+    prismaClient,
     'Product',
     `CREATE TABLE "Product" (
       "id" TEXT NOT NULL PRIMARY KEY,
@@ -304,6 +317,12 @@ export async function ensureDatabaseSchema(prismaClient = prisma) {
   );
   await prismaClient.$executeRawUnsafe(
     'CREATE INDEX IF NOT EXISTS "PushSubscription_userId_idx" ON "PushSubscription"("userId")',
+  );
+  await prismaClient.$executeRawUnsafe(
+    'CREATE UNIQUE INDEX IF NOT EXISTS "TranslationCache_sourceLanguage_targetLanguage_sourceText_key" ON "TranslationCache"("sourceLanguage", "targetLanguage", "sourceText")',
+  );
+  await prismaClient.$executeRawUnsafe(
+    'CREATE INDEX IF NOT EXISTS "TranslationCache_targetLanguage_updatedAt_idx" ON "TranslationCache"("targetLanguage", "updatedAt")',
   );
   await prismaClient.$executeRawUnsafe(
     'CREATE UNIQUE INDEX IF NOT EXISTS "Product_normalizedName_key" ON "Product"("normalizedName")',

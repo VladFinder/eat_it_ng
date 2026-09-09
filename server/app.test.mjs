@@ -119,6 +119,21 @@ before(async () => {
     )
   `);
   await prisma.$executeRawUnsafe(`
+    CREATE TABLE "TranslationCache" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "sourceLanguage" TEXT NOT NULL,
+      "targetLanguage" TEXT NOT NULL,
+      "sourceText" TEXT NOT NULL,
+      "translatedText" TEXT NOT NULL,
+      "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" DATETIME NOT NULL
+    )
+  `);
+  await prisma.$executeRawUnsafe(`
+    CREATE UNIQUE INDEX "TranslationCache_sourceLanguage_targetLanguage_sourceText_key"
+    ON "TranslationCache"("sourceLanguage", "targetLanguage", "sourceText")
+  `);
+  await prisma.$executeRawUnsafe(`
     CREATE TABLE "SupportTicket" (
       "id" TEXT NOT NULL PRIMARY KEY,
       "userId" TEXT NOT NULL,
@@ -681,6 +696,7 @@ test('recipe catalog loads Spoonacular recipes with images', async () => {
   await prisma.dishIngredient.deleteMany();
   await prisma.dish.deleteMany();
   await prisma.product.deleteMany();
+  await prisma.fridgeItem.deleteMany();
   process.env.SPOONACULAR_API_KEY = 'test-spoonacular-key';
   let requestedUrl;
 
@@ -757,6 +773,139 @@ test('recipe catalog loads Spoonacular recipes with images', async () => {
     assert.equal(savedResponse.status, 200);
     const saved = await savedResponse.json();
     assert.equal(saved.recipes.some((recipe) => recipe.externalId === '715538'), true);
+  } finally {
+    globalThis.fetch = previousFetch;
+    restoreEnv('SPOONACULAR_API_KEY', previousKey);
+  }
+});
+
+test('recipe translations are localized once and then loaded from SQLite cache', async () => {
+  const previousSpoonacularKey = process.env.SPOONACULAR_API_KEY;
+  const previousYandexKey = process.env.YANDEX_TRANSLATE_API_KEY;
+  const previousFetch = globalThis.fetch;
+  await prisma.translationCache.deleteMany();
+  await prisma.dishIngredient.deleteMany();
+  await prisma.dish.deleteMany();
+  await prisma.product.deleteMany();
+  await prisma.fridgeItem.deleteMany();
+  process.env.SPOONACULAR_API_KEY = 'test-spoonacular-key';
+  process.env.YANDEX_TRANSLATE_API_KEY = 'test-yandex-key';
+  let translationCalls = 0;
+
+  const translations = new Map([
+    ['Banana Smoothie', 'Банановый смузи'],
+    ['banana', 'банан'],
+    ['milk', 'молоко'],
+  ]);
+  globalThis.fetch = async (url, options) => {
+    const parsedUrl = new URL(url);
+    if (parsedUrl.origin === baseUrl) {
+      return previousFetch(url, options);
+    }
+    if (parsedUrl.hostname === 'translate.api.cloud.yandex.net') {
+      translationCalls += 1;
+      assert.equal(options.headers.Authorization, 'Api-Key test-yandex-key');
+      const body = JSON.parse(options.body);
+      assert.equal(body.targetLanguageCode, 'ru');
+      return Response.json({
+        translations: body.texts.map((text) => ({ text: translations.get(text) ?? text })),
+      });
+    }
+    return Response.json([
+      {
+        id: 774411,
+        title: 'Banana Smoothie',
+        image: 'https://example.com/banana-smoothie.jpg',
+        usedIngredientCount: 1,
+        missedIngredientCount: 1,
+        usedIngredients: [{ name: 'banana' }],
+        missedIngredients: [{ name: 'milk' }],
+      },
+    ]);
+  };
+
+  try {
+    await request('/api/fridge', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: 'банан',
+        quantity: 2,
+        unit: 'шт.',
+        expiresAt: null,
+        reminderDays: 0,
+        category: 'products',
+      }),
+    });
+
+    const firstResponse = await request('/api/recipes');
+    assert.equal(firstResponse.status, 200);
+    const firstResult = await firstResponse.json();
+    assert.equal(firstResult.recipes[0].title, 'Банановый смузи');
+    assert.deepEqual(firstResult.recipes[0].usedIngredients, ['банан']);
+    assert.equal(translationCalls, 1);
+
+    const secondResponse = await request('/api/recipes');
+    assert.equal(secondResponse.status, 200);
+    assert.equal(translationCalls, 1);
+    assert.equal(await prisma.translationCache.count(), 3);
+  } finally {
+    globalThis.fetch = previousFetch;
+    restoreEnv('SPOONACULAR_API_KEY', previousSpoonacularKey);
+    restoreEnv('YANDEX_TRANSLATE_API_KEY', previousYandexKey);
+  }
+});
+
+test('recipe catalog falls back to popular Spoonacular recipes for unknown names', async () => {
+  const previousKey = process.env.SPOONACULAR_API_KEY;
+  const previousFetch = globalThis.fetch;
+  await prisma.dishIngredient.deleteMany();
+  await prisma.dish.deleteMany();
+  await prisma.product.deleteMany();
+  await prisma.fridgeItem.deleteMany();
+  process.env.SPOONACULAR_API_KEY = 'test-spoonacular-key';
+  let requestedUrl;
+
+  globalThis.fetch = async (url, options) => {
+    const parsedUrl = new URL(url);
+    if (parsedUrl.origin === baseUrl) {
+      return previousFetch(url, options);
+    }
+    requestedUrl = parsedUrl;
+    return Response.json({
+      results: [
+        {
+          id: 991122,
+          title: 'Popular Salmon Dinner',
+          image: 'https://example.com/popular-salmon.jpg',
+          extendedIngredients: [{ name: 'salmon' }, { name: 'lemon' }],
+        },
+      ],
+    });
+  };
+
+  try {
+    await request('/api/fridge', {
+      method: 'POST',
+      body: JSON.stringify({
+        name: 'Неизвестный продукт',
+        quantity: 1,
+        unit: 'шт.',
+        expiresAt: null,
+        reminderDays: 0,
+        category: 'products',
+      }),
+    });
+
+    const response = await request('/api/recipes');
+    assert.equal(response.status, 200);
+    assert.equal(requestedUrl.pathname, '/recipes/complexSearch');
+    assert.equal(requestedUrl.searchParams.get('addRecipeInformation'), 'true');
+
+    const result = await response.json();
+    assert.equal(result.warning, undefined);
+    assert.equal(result.recipes[0].source, 'spoonacular-catalog');
+    assert.equal(result.recipes[0].image, 'https://example.com/popular-salmon.jpg');
+    assert.deepEqual(result.recipes[0].missedIngredients, ['lemon', 'salmon']);
   } finally {
     globalThis.fetch = previousFetch;
     restoreEnv('SPOONACULAR_API_KEY', previousKey);

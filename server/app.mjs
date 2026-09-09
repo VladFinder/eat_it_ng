@@ -299,6 +299,27 @@ function recipeTitle(value) {
   return typeof value === 'string' && value.trim() ? value.trim() : 'Рецепт';
 }
 
+function plainText(value) {
+  if (typeof value !== 'string') return '';
+  return value
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/gi, "'")
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function recipeSteps(recipe) {
+  if (!Array.isArray(recipe.analyzedInstructions)) return [];
+  return recipe.analyzedInstructions
+    .flatMap((section) => (Array.isArray(section.steps) ? section.steps : []))
+    .map((step) => plainText(step.step))
+    .filter(Boolean)
+    .slice(0, 20);
+}
+
 function serializeRecipeSuggestion(recipe) {
   const used = Number(recipe.usedIngredientCount ?? recipe.usedIngredients?.length ?? 0);
   const missed = Number(recipe.missedIngredientCount ?? recipe.missedIngredients?.length ?? 0);
@@ -322,6 +343,185 @@ function serializeRecipeSuggestion(recipe) {
   };
 }
 
+function serializePopularRecipe(recipe) {
+  const ingredients = Array.from(
+    new Set(
+      (Array.isArray(recipe.extendedIngredients) ? recipe.extendedIngredients : [])
+        .map((item) => recipeTitle(item.name ?? item.originalName))
+        .filter(Boolean),
+    ),
+  ).slice(0, 12);
+  return {
+    id: String(recipe.id),
+    title: recipeTitle(recipe.title),
+    image: typeof recipe.image === 'string' ? recipe.image : null,
+    source: 'spoonacular-catalog',
+    externalId: String(recipe.id),
+    description: plainText(recipe.summary),
+    instructions: recipeSteps(recipe),
+    usedIngredientCount: 0,
+    missedIngredientCount: ingredients.length,
+    matchPercent: 0,
+    usedIngredients: [],
+    missedIngredients: ingredients,
+  };
+}
+
+function yandexTranslateConfiguration() {
+  return {
+    apiKey: process.env.YANDEX_TRANSLATE_API_KEY ?? '',
+    folderId: process.env.YANDEX_TRANSLATE_FOLDER_ID ?? '',
+  };
+}
+
+function translationBatches(texts, maximumLength = 9_500) {
+  const batches = [];
+  let current = [];
+  let currentLength = 0;
+  for (const text of texts) {
+    if (current.length > 0 && currentLength + text.length > maximumLength) {
+      batches.push(current);
+      current = [];
+      currentLength = 0;
+    }
+    current.push(text);
+    currentLength += text.length;
+  }
+  if (current.length > 0) batches.push(current);
+  return batches;
+}
+
+async function translateTextsToRussian(prisma, texts) {
+  const configuration = yandexTranslateConfiguration();
+  const uniqueTexts = Array.from(
+    new Set(texts.map((text) => plainText(text)).filter((text) => text && !/[а-яё]/i.test(text))),
+  );
+  const translations = new Map();
+  if (!configuration.apiKey || uniqueTexts.length === 0) return translations;
+
+  const cached = await prisma.translationCache.findMany({
+    where: {
+      sourceLanguage: 'en',
+      targetLanguage: 'ru',
+      sourceText: { in: uniqueTexts },
+    },
+  });
+  for (const item of cached) translations.set(item.sourceText, item.translatedText);
+
+  const missing = uniqueTexts.filter((text) => !translations.has(text));
+  for (const batch of translationBatches(missing)) {
+    const body = {
+      sourceLanguageCode: 'en',
+      targetLanguageCode: 'ru',
+      format: 'PLAIN_TEXT',
+      texts: batch,
+      speller: true,
+      ...(configuration.folderId ? { folderId: configuration.folderId } : {}),
+    };
+    const response = await fetch('https://translate.api.cloud.yandex.net/translate/v2/translate', {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Api-Key ${configuration.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) {
+      const error = new Error('Yandex Translate request failed');
+      error.status = response.status;
+      throw error;
+    }
+    const result = await response.json();
+    if (!Array.isArray(result?.translations) || result.translations.length !== batch.length) {
+      throw new Error('Yandex Translate returned an invalid response');
+    }
+    for (let index = 0; index < batch.length; index++) {
+      const sourceText = batch[index];
+      const translatedText = plainText(result.translations[index]?.text) || sourceText;
+      translations.set(sourceText, translatedText);
+      await prisma.translationCache.upsert({
+        where: {
+          sourceLanguage_targetLanguage_sourceText: {
+            sourceLanguage: 'en',
+            targetLanguage: 'ru',
+            sourceText,
+          },
+        },
+        update: { translatedText },
+        create: {
+          sourceLanguage: 'en',
+          targetLanguage: 'ru',
+          sourceText,
+          translatedText,
+        },
+      });
+    }
+  }
+  return translations;
+}
+
+async function localizeRecipeSuggestions(prisma, recipes, logger = console) {
+  if (!yandexTranslateConfiguration().apiKey || recipes.length === 0) return recipes;
+  const texts = recipes.flatMap((recipe) => [
+    recipe.title,
+    recipe.description,
+    ...(recipe.usedIngredients ?? []),
+    ...(recipe.missedIngredients ?? []),
+    ...(recipe.instructions ?? []),
+  ]);
+  try {
+    const translations = await translateTextsToRussian(prisma, texts);
+    const translate = (text) => translations.get(plainText(text)) ?? text;
+    return recipes.map((recipe) => ({
+      ...recipe,
+      title: translate(recipe.title),
+      description: recipe.description ? translate(recipe.description) : recipe.description,
+      usedIngredients: recipe.usedIngredients.map(translate),
+      missedIngredients: recipe.missedIngredients.map(translate),
+      instructions: (recipe.instructions ?? []).map(translate),
+    }));
+  } catch (error) {
+    logger.error('Recipe translation failed', error);
+    return recipes;
+  }
+}
+
+async function fetchPopularRecipeSuggestions(apiKey) {
+  const cacheKey = '__popular-recipes__';
+  const cached = recipeSuggestionsCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return cached.recipes;
+  }
+
+  const params = new URLSearchParams({
+    apiKey,
+    number: '8',
+    addRecipeInformation: 'true',
+    fillIngredients: 'true',
+    instructionsRequired: 'true',
+  });
+  const response = await fetch(
+    `https://api.spoonacular.com/recipes/complexSearch?${params.toString()}`,
+    { headers: { Accept: 'application/json' } },
+  );
+  if (!response.ok) {
+    const error = new Error('Recipe catalog request failed');
+    error.status = response.status === 402 || response.status === 429 ? 429 : 502;
+    throw error;
+  }
+
+  const result = await response.json();
+  const recipes = Array.isArray(result?.results)
+    ? result.results.map(serializePopularRecipe)
+    : [];
+  recipeSuggestionsCache.set(cacheKey, {
+    recipes,
+    expiresAt: Date.now() + RECIPE_CACHE_TTL_MS,
+  });
+  return recipes;
+}
+
 async function fetchRecipeSuggestions(ingredients) {
   const apiKey = spoonacularApiKey();
   if (!apiKey) {
@@ -334,9 +534,7 @@ async function fetchRecipeSuggestions(ingredients) {
     new Set(ingredients.map(spoonacularIngredientName).filter(Boolean)),
   );
   if (!apiIngredients.length) {
-    const error = new Error('Recipe ingredients are not recognized');
-    error.status = 422;
-    throw error;
+    return fetchPopularRecipeSuggestions(apiKey);
   }
 
   const cacheKey = apiIngredients.map((ingredient) => ingredient.toLowerCase()).sort().join('|');
@@ -365,6 +563,9 @@ async function fetchRecipeSuggestions(ingredients) {
 
   const recipes = await response.json();
   const suggestions = Array.isArray(recipes) ? recipes.map(serializeRecipeSuggestion) : [];
+  if (!suggestions.length) {
+    return fetchPopularRecipeSuggestions(apiKey);
+  }
   recipeSuggestionsCache.set(cacheKey, {
     recipes: suggestions,
     expiresAt: Date.now() + RECIPE_CACHE_TTL_MS,
@@ -446,24 +647,36 @@ async function saveSpoonacularSuggestions(prisma, recipes) {
   for (const recipe of recipes) {
     const externalId = String(recipe.externalId ?? recipe.id);
     const dishId = `spoonacular-${externalId}`;
+    const source = recipe.source === 'spoonacular-catalog' ? recipe.source : 'spoonacular';
+    const description =
+      recipe.description ||
+      (source === 'spoonacular-catalog'
+        ? 'Популярный рецепт из каталога Spoonacular.'
+        : recipe.missedIngredients.length > 0
+          ? `Можно приготовить, если докупить: ${recipe.missedIngredients.join(', ')}.`
+          : `Подходит под ваши продукты: ${recipe.usedIngredients.join(', ')}.`);
+    const instructions = recipe.instructions?.length
+      ? JSON.stringify(recipe.instructions)
+      : null;
     await prisma.dish.upsert({
       where: { id: dishId },
       update: {
         title: recipe.title,
+        subtitle: 'Spoonacular',
+        description,
+        instructions,
         imageUrl: recipe.image,
-        source: 'spoonacular',
+        source,
         externalId,
       },
       create: {
         id: dishId,
         title: recipe.title,
         subtitle: 'Spoonacular',
-        description:
-          recipe.missedIngredients.length > 0
-            ? `Можно приготовить, если докупить: ${recipe.missedIngredients.join(', ')}.`
-            : `Подходит под ваши продукты: ${recipe.usedIngredients.join(', ')}.`,
+        description,
+        instructions,
         imageUrl: recipe.image,
-        source: 'spoonacular',
+        source,
         externalId,
       },
     });
@@ -1200,7 +1413,8 @@ export function createApiServer(prisma, logger = console) {
         if (spoonacularApiKey()) {
           try {
             const recipes = await fetchRecipeSuggestions(ingredients);
-            await saveSpoonacularSuggestions(prisma, recipes);
+            const localizedRecipes = await localizeRecipeSuggestions(prisma, recipes, logger);
+            await saveSpoonacularSuggestions(prisma, localizedRecipes);
           } catch (error) {
             logger.error(`${method} ${url.pathname}`, error);
           }
@@ -1228,7 +1442,8 @@ export function createApiServer(prisma, logger = console) {
         } else if (ingredients.length > 0) {
           try {
             const recipes = await fetchRecipeSuggestions(ingredients);
-            await saveSpoonacularSuggestions(prisma, recipes);
+            const localizedRecipes = await localizeRecipeSuggestions(prisma, recipes, logger);
+            await saveSpoonacularSuggestions(prisma, localizedRecipes);
           } catch (error) {
             logger.error(`${method} ${url.pathname}`, error);
             warning =
