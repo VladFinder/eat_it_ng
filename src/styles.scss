@@ -773,6 +773,63 @@ a.secondary-action {
   padding-left: 44px;
 }
 
+.inventory-tools {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: rgba(255, 253, 248, 0.72);
+}
+
+.inventory-search input {
+  min-height: 44px;
+  background: var(--surface);
+}
+
+.inventory-search span {
+  top: 10px;
+}
+
+.inventory-selects {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px;
+}
+
+.inventory-selects label {
+  gap: 5px;
+  font-size: 11px;
+}
+
+.inventory-selects select {
+  min-height: 42px;
+  border-radius: 12px;
+  padding-left: 11px;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.inventory-results {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.inventory-results button {
+  min-height: 32px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  padding: 0 12px;
+  font-weight: 800;
+}
+
 .dish-card {
   display: grid;
   align-content: start;

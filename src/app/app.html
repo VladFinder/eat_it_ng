@@ -1049,6 +1049,48 @@
           </button>
         </div>
 
+        <div class="inventory-tools" aria-label="Поиск, фильтры и сортировка запасов">
+          <label class="search-field inventory-search">
+            <span aria-hidden="true">⌕</span>
+            <input
+              name="fridge-search"
+              type="search"
+              [ngModel]="fridgeSearch()"
+              (ngModelChange)="fridgeSearch.set($event)"
+              [placeholder]="'Искать в разделе «' + categoryLabel(activeCategory()) + '»'"
+              [attr.aria-label]="'Поиск в разделе ' + categoryLabel(activeCategory())"
+              autocomplete="off"
+            />
+          </label>
+          <div class="inventory-selects">
+            <label>
+              <span>Фильтр</span>
+              <select name="fridge-status-filter" [ngModel]="fridgeStatusFilter()" (ngModelChange)="fridgeStatusFilter.set($event)">
+                <option value="all">Все товары</option>
+                <option value="expired">Просроченные</option>
+                <option value="soon">Срок подходит</option>
+                <option value="no-expiry">Без срока</option>
+              </select>
+            </label>
+            <label>
+              <span>Сортировка</span>
+              <select name="fridge-sort" [ngModel]="fridgeSort()" (ngModelChange)="fridgeSort.set($event)">
+                <option value="newest">Сначала новые</option>
+                <option value="oldest">Сначала старые</option>
+                <option value="expiry">По сроку годности</option>
+                <option value="name">По названию</option>
+                <option value="quantity">По количеству</option>
+              </select>
+            </label>
+          </div>
+          @if (fridgeFiltersActive()) {
+            <div class="inventory-results">
+              <span>Найдено: {{ visibleFridgeItems().length }}</span>
+              <button type="button" (click)="clearFridgeFilters()">Сбросить</button>
+            </div>
+          }
+        </div>
+
         <article class="summary-card">
           <div class="summary-icon warning-icon">!</div>
           <div>
@@ -1062,6 +1104,29 @@
             <div class="skeleton-row"></div>
             <div class="skeleton-row"></div>
             <div class="skeleton-row"></div>
+          </div>
+        } @else if (visibleFridgeItems().length === 0) {
+          <div class="empty-state">
+            @if (fridgeFiltersActive()) {
+              <div class="empty-illustration">⌕</div>
+              <h3>Ничего не найдено</h3>
+              <p>Измените запрос или сбросьте фильтры текущего раздела.</p>
+              <button class="secondary-action compact-action" type="button" (click)="clearFridgeFilters()">Сбросить</button>
+            } @else {
+              <div class="empty-illustration">⌂</div>
+              <h3>
+                {{ activeCategory() === 'products' ? 'Добавьте первый продукт' : activeCategory() === 'medicine' ? 'Добавьте лекарство' : 'Добавьте первый товар' }}
+              </h3>
+              <p>
+                {{
+                  activeCategory() === 'products'
+                    ? 'Мы напомним о сроке годности и поможем составить список покупок.'
+                    : activeCategory() === 'medicine'
+                      ? 'Храните лекарства, следите за сроками и вовремя пополняйте аптечку.'
+                      : 'Храните бытовые товары вместе с продуктами и следите за запасами в одном месте.'
+                }}
+              </p>
+            }
           </div>
         } @else {
           @if (expiringSoonItems().length > 0) {
@@ -1089,42 +1154,28 @@
             </div>
           }
 
-          <div class="section-heading compact-heading">
-            <h2>{{ activeTabLabel() }} в наличии:</h2>
-          </div>
-          <div class="list fridge-list">
-            @for (item of stableFridgeItems(); track item.id) {
-              <div class="fridge-swipe-shell" [class.swipe-shopping]="swipeAction(item.id) === 'shopping'" [class.swipe-delete]="swipeAction(item.id) === 'delete'" [attr.aria-busy]="committingSwipe()?.id === item.id" [style.--swipe-progress]="swipeProgress(item.id)">
-                <div class="swipe-reveal" aria-hidden="true">
-                  {{ swipeAction(item.id) === 'shopping' ? '🛒' : '🗑' }}
+          @if (stableFridgeItems().length > 0) {
+            <div class="section-heading compact-heading">
+              <h2>{{ activeTabLabel() }} в наличии:</h2>
+            </div>
+            <div class="list fridge-list">
+              @for (item of stableFridgeItems(); track item.id) {
+                <div class="fridge-swipe-shell" [class.swipe-shopping]="swipeAction(item.id) === 'shopping'" [class.swipe-delete]="swipeAction(item.id) === 'delete'" [attr.aria-busy]="committingSwipe()?.id === item.id" [style.--swipe-progress]="swipeProgress(item.id)">
+                  <div class="swipe-reveal" aria-hidden="true">
+                    {{ swipeAction(item.id) === 'shopping' ? '🛒' : '🗑' }}
+                  </div>
+                  <article class="fridge-row" [attr.data-swipe-id]="item.id" [class.is-swiping]="isSwiping(item.id)" [style.transform]="swipeTransform(item.id)" (pointerdown)="beginSwipe($event, item.id)" (pointermove)="moveSwipe($event, item.id)" (pointerup)="endPointerSwipe($event, item.id)" (pointercancel)="cancelPointerSwipe($event)">
+                  <div class="item-thumb"></div>
+                  <div class="item-content">
+                    <h3>{{ item.name }}</h3>
+                    <p>{{ item.quantity }} {{ displayUnit(item.unit) }} · {{ expiryLabel(item.expiresAt) }}</p>
+                  </div>
+                  <button class="menu-button" type="button" (pointerdown)="$event.stopPropagation()" (click)="openFridgeMenu(item)" aria-label="Меню товара">⋮</button>
+                  </article>
                 </div>
-                <article class="fridge-row" [attr.data-swipe-id]="item.id" [class.is-swiping]="isSwiping(item.id)" [style.transform]="swipeTransform(item.id)" (pointerdown)="beginSwipe($event, item.id)" (pointermove)="moveSwipe($event, item.id)" (pointerup)="endPointerSwipe($event, item.id)" (pointercancel)="cancelPointerSwipe($event)">
-                <div class="item-thumb"></div>
-                <div class="item-content">
-                  <h3>{{ item.name }}</h3>
-                  <p>{{ item.quantity }} {{ displayUnit(item.unit) }} · {{ expiryLabel(item.expiresAt) }}</p>
-                </div>
-                <button class="menu-button" type="button" (pointerdown)="$event.stopPropagation()" (click)="openFridgeMenu(item)" aria-label="Меню товара">⋮</button>
-                </article>
-              </div>
-            } @empty {
-              <div class="empty-state">
-                <div class="empty-illustration">⌂</div>
-                <h3>
-                  {{ activeCategory() === 'products' ? 'Добавьте первый продукт' : activeCategory() === 'medicine' ? 'Добавьте лекарство' : 'Добавьте первый товар' }}
-                </h3>
-                <p>
-                  {{
-                    activeCategory() === 'products'
-                      ? 'Мы напомним о сроке годности и поможем составить список покупок.'
-                      : activeCategory() === 'medicine'
-                        ? 'Храните лекарства, следите за сроками и вовремя пополняйте аптечку.'
-                        : 'Храните бытовые товары вместе с продуктами и следите за запасами в одном месте.'
-                  }}
-                </p>
-              </div>
-            }
-          </div>
+              }
+            </div>
+          }
         }
       </section>
     }
@@ -1189,6 +1240,47 @@
           </button>
         </div>
 
+        <div class="inventory-tools" aria-label="Поиск, фильтры и сортировка покупок">
+          <label class="search-field inventory-search">
+            <span aria-hidden="true">⌕</span>
+            <input
+              name="shopping-search"
+              type="search"
+              [ngModel]="shoppingSearch()"
+              (ngModelChange)="shoppingSearch.set($event)"
+              [placeholder]="shoppingSearchPlaceholder()"
+              aria-label="Поиск в списке покупок"
+              autocomplete="off"
+            />
+          </label>
+          <div class="inventory-selects">
+            <label>
+              <span>Статус</span>
+              <select name="shopping-status-filter" [ngModel]="shoppingStatusFilter()" (ngModelChange)="shoppingStatusFilter.set($event)">
+                <option value="all">Все позиции</option>
+                <option value="open">Нужно купить</option>
+                <option value="completed">Куплено</option>
+              </select>
+            </label>
+            <label>
+              <span>Сортировка</span>
+              <select name="shopping-sort" [ngModel]="shoppingSort()" (ngModelChange)="shoppingSort.set($event)">
+                <option value="newest">Сначала новые</option>
+                <option value="oldest">Сначала старые</option>
+                <option value="status">Сначала активные</option>
+                <option value="name">По названию</option>
+                <option value="quantity">По количеству</option>
+              </select>
+            </label>
+          </div>
+          @if (shoppingFiltersActive()) {
+            <div class="inventory-results">
+              <span>Найдено: {{ visibleShoppingItems().length }}</span>
+              <button type="button" (click)="clearShoppingFilters()">Сбросить</button>
+            </div>
+          }
+        </div>
+
         @if (loading()) {
           <div class="skeleton-list" aria-label="Загружаем список покупок">
             <div class="skeleton-row"></div>
@@ -1222,8 +1314,15 @@
               </article>
             } @empty {
               <div class="empty-state">
-                <h3>Список пуст</h3>
-                <p>Покупки появятся здесь вручную или после свайпа продукта вправо.</p>
+                @if (shoppingFiltersActive()) {
+                  <div class="empty-illustration">⌕</div>
+                  <h3>Ничего не найдено</h3>
+                  <p>Измените запрос или сбросьте фильтры покупок.</p>
+                  <button class="secondary-action compact-action" type="button" (click)="clearShoppingFilters()">Сбросить</button>
+                } @else {
+                  <h3>Список пуст</h3>
+                  <p>Покупки появятся здесь вручную или после свайпа продукта вправо.</p>
+                }
               </div>
             }
           </div>

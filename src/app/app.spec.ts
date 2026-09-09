@@ -173,6 +173,119 @@ describe('App', () => {
     });
   });
 
+  describe('inventory search and sorting', () => {
+    function fridgeItem(
+      id: string,
+      name: string,
+      category: 'products' | 'household' | 'medicine',
+      createdAt: string,
+      quantity = 1,
+      expiresAt: string | null = null,
+    ) {
+      return {
+        id,
+        name,
+        category,
+        quantity,
+        unit: 'шт.',
+        expiresAt,
+        reminderDays: 2,
+        autoAddToShopping: false,
+        createdAt,
+        updatedAt: createdAt,
+      };
+    }
+
+    function shoppingItem(
+      id: string,
+      name: string,
+      category: 'products' | 'household' | 'medicine',
+      createdAt: string,
+      quantity: number,
+      checked = false,
+    ) {
+      return {
+        id,
+        name,
+        category,
+        quantity,
+        unit: 'шт.',
+        checked,
+        createdAt,
+        updatedAt: createdAt,
+      };
+    }
+
+    it('searches by a name fragment only inside the active stock section', () => {
+      const fixture = TestBed.createComponent(App);
+      const app = fixture.componentInstance as any;
+      app.fridgeItems.set([
+        fridgeItem('potato', 'Картошка', 'products', '2026-09-03T00:00:00.000Z'),
+        fridgeItem('cabbage', 'Капуста', 'products', '2026-09-02T00:00:00.000Z'),
+        fridgeItem('milk', 'Молоко', 'products', '2026-09-01T00:00:00.000Z'),
+        fridgeItem('drops', 'Капли', 'medicine', '2026-09-04T00:00:00.000Z'),
+      ]);
+
+      app.activeCategory.set('products');
+      app.fridgeSearch.set('КА');
+      expect(app.visibleFridgeItems().map((item: any) => item.name)).toEqual(['Картошка', 'Капуста']);
+
+      app.activeCategory.set('medicine');
+      expect(app.visibleFridgeItems().map((item: any) => item.name)).toEqual(['Капли']);
+      fixture.destroy();
+    });
+
+    it('filters stock by expiry state and sorts it by expiry or quantity', () => {
+      const fixture = TestBed.createComponent(App);
+      const app = fixture.componentInstance as any;
+      app.fridgeItems.set([
+        fridgeItem('expired', 'Йогурт', 'products', '2026-09-01T00:00:00.000Z', 2, '2020-01-01'),
+        fridgeItem('soon', 'Молоко', 'products', '2026-09-03T00:00:00.000Z', 1, app.addDays(1)),
+        fridgeItem('no-expiry', 'Соль', 'products', '2026-09-02T00:00:00.000Z', 5),
+      ]);
+
+      app.fridgeStatusFilter.set('expired');
+      expect(app.visibleFridgeItems().map((item: any) => item.id)).toEqual(['expired']);
+      app.fridgeStatusFilter.set('soon');
+      expect(app.visibleFridgeItems().map((item: any) => item.id)).toEqual(['soon']);
+      app.fridgeStatusFilter.set('no-expiry');
+      expect(app.visibleFridgeItems().map((item: any) => item.id)).toEqual(['no-expiry']);
+
+      app.fridgeStatusFilter.set('all');
+      app.fridgeSort.set('expiry');
+      expect(app.visibleFridgeItems().map((item: any) => item.id)).toEqual(['expired', 'soon', 'no-expiry']);
+      app.fridgeSort.set('quantity');
+      expect(app.visibleFridgeItems().map((item: any) => item.id)).toEqual(['no-expiry', 'expired', 'soon']);
+      fixture.destroy();
+    });
+
+    it('searches, filters and sorts the current shopping section', () => {
+      const fixture = TestBed.createComponent(App);
+      const app = fixture.componentInstance as any;
+      app.shoppingItems.set([
+        shoppingItem('potato', 'Картошка', 'products', '2026-09-03T00:00:00.000Z', 2),
+        shoppingItem('cabbage', 'Капуста', 'products', '2026-09-01T00:00:00.000Z', 5, true),
+        shoppingItem('drops', 'Капли', 'medicine', '2026-09-04T00:00:00.000Z', 1),
+      ]);
+
+      app.activeShoppingFilter.set('products');
+      app.shoppingSearch.set('ка');
+      expect(app.visibleShoppingItems().map((item: any) => item.id)).toEqual(['potato', 'cabbage']);
+
+      app.shoppingStatusFilter.set('completed');
+      expect(app.visibleShoppingItems().map((item: any) => item.id)).toEqual(['cabbage']);
+
+      app.shoppingSearch.set('');
+      app.shoppingStatusFilter.set('all');
+      app.shoppingSort.set('quantity');
+      expect(app.visibleShoppingItems().map((item: any) => item.id)).toEqual(['cabbage', 'potato']);
+
+      app.activeShoppingFilter.set('medicine');
+      expect(app.visibleShoppingItems().map((item: any) => item.id)).toEqual(['drops']);
+      fixture.destroy();
+    });
+  });
+
   describe('card gestures', () => {
     async function renderCard(category = 'products', expiresAt: string | null = null) {
       const fixture = TestBed.createComponent(App);

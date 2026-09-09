@@ -24,6 +24,10 @@ import {
 type TabId = 'fridge' | 'shopping' | 'dishes' | 'recipes' | 'profile';
 type RecipeTab = 'mine' | 'likes' | 'all';
 type ShoppingFilter = 'all' | ItemCategory;
+type FridgeStatusFilter = 'all' | 'expired' | 'soon' | 'no-expiry';
+type FridgeSort = 'newest' | 'oldest' | 'expiry' | 'name' | 'quantity';
+type ShoppingStatusFilter = 'all' | 'open' | 'completed';
+type ShoppingSort = 'newest' | 'oldest' | 'name' | 'quantity' | 'status';
 type DishFilter = 'available' | 'almost' | 'planned';
 type AuthMode = 'login' | 'register';
 type ProfileSection = 'menu' | 'household' | 'notifications' | 'support' | 'feedback';
@@ -178,6 +182,12 @@ export class App implements OnDestroy, OnInit {
   protected readonly activeTab = signal<TabId>('fridge');
   protected readonly activeCategory = signal<ItemCategory>('products');
   protected readonly activeShoppingFilter = signal<ShoppingFilter>('all');
+  protected readonly fridgeSearch = signal('');
+  protected readonly fridgeStatusFilter = signal<FridgeStatusFilter>('all');
+  protected readonly fridgeSort = signal<FridgeSort>('newest');
+  protected readonly shoppingSearch = signal('');
+  protected readonly shoppingStatusFilter = signal<ShoppingStatusFilter>('all');
+  protected readonly shoppingSort = signal<ShoppingSort>('newest');
   protected readonly activeDishFilter = signal<DishFilter>('available');
   protected readonly activeRecipeTab = signal<RecipeTab>('all');
   protected readonly profileSection = signal<ProfileSection>('menu');
@@ -336,14 +346,29 @@ export class App implements OnDestroy, OnInit {
     'Разложите по тарелкам и отметьте использованные продукты.',
   ];
 
-  protected readonly visibleFridgeItems = computed(() =>
-    this.fridgeItems()
+  protected readonly visibleFridgeItems = computed(() => {
+    const search = this.normalizeSearch(this.fridgeSearch());
+    const filter = this.fridgeStatusFilter();
+    const sort = this.fridgeSort();
+    return this.fridgeItems()
       .filter((item) => item.category === this.activeCategory())
-      .sort(
-        (left, right) =>
-          this.expirySortValue(left).localeCompare(this.expirySortValue(right)) ||
-          right.createdAt.localeCompare(left.createdAt),
-      ),
+      .filter((item) => !search || this.normalizeSearch(item.name).includes(search))
+      .filter((item) => {
+        if (filter === 'expired') return Boolean(item.expiresAt && this.daysUntil(item.expiresAt) < 0);
+        if (filter === 'soon') {
+          return Boolean(
+            item.expiresAt &&
+              this.daysUntil(item.expiresAt) >= 0 &&
+              this.daysUntil(item.expiresAt) <= item.reminderDays,
+          );
+        }
+        if (filter === 'no-expiry') return !item.expiresAt;
+        return true;
+      })
+      .sort((left, right) => this.compareFridgeItems(left, right, sort));
+  });
+  protected readonly fridgeFiltersActive = computed(
+    () => Boolean(this.fridgeSearch().trim()) || this.fridgeStatusFilter() !== 'all',
   );
   protected readonly expiringSoonCount = computed(
     () =>
@@ -365,10 +390,22 @@ export class App implements OnDestroy, OnInit {
     () => this.shoppingItems().filter((item) => !item.checked).length,
   );
   protected readonly visibleShoppingItems = computed(() => {
-    const filter = this.activeShoppingFilter();
-    return filter === 'all'
-      ? this.shoppingItems()
-      : this.shoppingItems().filter((item) => item.category === filter);
+    const category = this.activeShoppingFilter();
+    const search = this.normalizeSearch(this.shoppingSearch());
+    const status = this.shoppingStatusFilter();
+    const sort = this.shoppingSort();
+    return this.shoppingItems()
+      .filter((item) => category === 'all' || item.category === category)
+      .filter((item) => !search || this.normalizeSearch(item.name).includes(search))
+      .filter((item) => status === 'all' || (status === 'completed' ? item.checked : !item.checked))
+      .sort((left, right) => this.compareShoppingItems(left, right, sort));
+  });
+  protected readonly shoppingFiltersActive = computed(
+    () => Boolean(this.shoppingSearch().trim()) || this.shoppingStatusFilter() !== 'all',
+  );
+  protected readonly shoppingSearchPlaceholder = computed(() => {
+    const category = this.activeShoppingFilter();
+    return category === 'all' ? 'Искать во всех покупках' : `Искать в разделе «${this.categoryLabel(category)}»`;
   });
   protected readonly shoppingProductsCount = computed(
     () => this.shoppingItems().filter((item) => item.category === 'products').length,
@@ -612,6 +649,16 @@ export class App implements OnDestroy, OnInit {
     } else if (!this.newFridgeItem.reminderDays) {
       this.newFridgeItem.reminderDays = 1;
     }
+  }
+
+  protected clearFridgeFilters(): void {
+    this.fridgeSearch.set('');
+    this.fridgeStatusFilter.set('all');
+  }
+
+  protected clearShoppingFilters(): void {
+    this.shoppingSearch.set('');
+    this.shoppingStatusFilter.set('all');
   }
 
   protected setShoppingFilter(filter: ShoppingFilter): void {
@@ -1867,6 +1914,44 @@ export class App implements OnDestroy, OnInit {
 
   private expirySortValue(item: FridgeItem): string {
     return item.expiresAt ?? '9999-12-31';
+  }
+
+  private compareFridgeItems(left: FridgeItem, right: FridgeItem, sort: FridgeSort): number {
+    if (sort === 'oldest') return this.timestamp(left.createdAt) - this.timestamp(right.createdAt);
+    if (sort === 'expiry') {
+      return (
+        this.expirySortValue(left).localeCompare(this.expirySortValue(right)) ||
+        this.timestamp(right.createdAt) - this.timestamp(left.createdAt)
+      );
+    }
+    if (sort === 'name') return this.compareNames(left.name, right.name);
+    if (sort === 'quantity') return right.quantity - left.quantity || this.compareNames(left.name, right.name);
+    return this.timestamp(right.createdAt) - this.timestamp(left.createdAt);
+  }
+
+  private compareShoppingItems(left: ShoppingItem, right: ShoppingItem, sort: ShoppingSort): number {
+    if (sort === 'oldest') return this.timestamp(left.createdAt) - this.timestamp(right.createdAt);
+    if (sort === 'name') return this.compareNames(left.name, right.name);
+    if (sort === 'quantity') {
+      return (right.quantity ?? 1) - (left.quantity ?? 1) || this.compareNames(left.name, right.name);
+    }
+    if (sort === 'status') {
+      return Number(left.checked) - Number(right.checked) || this.timestamp(right.createdAt) - this.timestamp(left.createdAt);
+    }
+    return this.timestamp(right.createdAt) - this.timestamp(left.createdAt);
+  }
+
+  private normalizeSearch(value: string): string {
+    return value.trim().toLocaleLowerCase('ru-RU').replaceAll('ё', 'е');
+  }
+
+  private compareNames(left: string, right: string): number {
+    return left.localeCompare(right, 'ru-RU', { sensitivity: 'base' });
+  }
+
+  private timestamp(value: string | null | undefined): number {
+    const timestamp = Date.parse(value ?? '');
+    return Number.isFinite(timestamp) ? timestamp : 0;
   }
 
   private daysUntil(date: string): number {
