@@ -1,5 +1,6 @@
 import { createServer } from 'node:http';
 import { ZodError } from 'zod';
+import webpush from 'web-push';
 import {
   authenticate,
   clearSessionCookie,
@@ -28,6 +29,8 @@ import {
   householdUpdateSchema,
   loginSchema,
   notificationUpdateSchema,
+  pushSubscriptionSchema,
+  pushUnsubscribeSchema,
   registerSchema,
   shoppingCreateSchema,
   shoppingToFridgeSchema,
@@ -220,6 +223,78 @@ function normalizeProductName(value) {
     .replace(/\s+/g, ' ');
 }
 
+const SPOONACULAR_INGREDIENTS = {
+  'куриное филе': 'chicken breast',
+  'цветная капуста': 'cauliflower',
+  'сливочное масло': 'butter',
+  'болгарский перец': 'bell pepper',
+  картофель: 'potato',
+  картошка: 'potato',
+  помидоры: 'tomato',
+  помидор: 'tomato',
+  огурцы: 'cucumber',
+  огурец: 'cucumber',
+  морковь: 'carrot',
+  лук: 'onion',
+  чеснок: 'garlic',
+  капуста: 'cabbage',
+  перец: 'bell pepper',
+  кабачок: 'zucchini',
+  баклажан: 'eggplant',
+  свекла: 'beet',
+  брокколи: 'broccoli',
+  грибы: 'mushrooms',
+  яблоко: 'apple',
+  яблоки: 'apple',
+  банан: 'banana',
+  молоко: 'milk',
+  сыр: 'cheese',
+  творог: 'cottage cheese',
+  сметана: 'sour cream',
+  йогурт: 'yogurt',
+  яйца: 'eggs',
+  яйцо: 'eggs',
+  курица: 'chicken',
+  говядина: 'beef',
+  свинина: 'pork',
+  фарш: 'ground meat',
+  рыба: 'fish',
+  лосось: 'salmon',
+  рис: 'rice',
+  макароны: 'pasta',
+  гречка: 'buckwheat',
+  овсянка: 'oats',
+  мука: 'flour',
+  фасоль: 'beans',
+  горох: 'peas',
+  хлеб: 'bread',
+};
+
+function spoonacularIngredientName(value) {
+  const normalized = normalizeProductName(value);
+  if (!/[а-я]/i.test(normalized)) return normalized;
+  if (SPOONACULAR_INGREDIENTS[normalized]) return SPOONACULAR_INGREDIENTS[normalized];
+  const match = Object.keys(SPOONACULAR_INGREDIENTS)
+    .sort((left, right) => right.length - left.length)
+    .find((name) => normalized.includes(name));
+  return match ? SPOONACULAR_INGREDIENTS[match] : '';
+}
+
+const ENGLISH_INGREDIENT_ALIASES = {
+  potatoes: 'potato',
+  tomatoes: 'tomato',
+  eggs: 'egg',
+  mushrooms: 'mushroom',
+  beans: 'bean',
+  peas: 'pea',
+  oats: 'oat',
+};
+
+function canonicalIngredientName(value) {
+  const translated = spoonacularIngredientName(value) || normalizeProductName(value);
+  return ENGLISH_INGREDIENT_ALIASES[translated] ?? translated;
+}
+
 function recipeTitle(value) {
   return typeof value === 'string' && value.trim() ? value.trim() : 'Рецепт';
 }
@@ -255,7 +330,16 @@ async function fetchRecipeSuggestions(ingredients) {
     throw error;
   }
 
-  const cacheKey = ingredients.map((ingredient) => ingredient.toLowerCase()).sort().join('|');
+  const apiIngredients = Array.from(
+    new Set(ingredients.map(spoonacularIngredientName).filter(Boolean)),
+  );
+  if (!apiIngredients.length) {
+    const error = new Error('Recipe ingredients are not recognized');
+    error.status = 422;
+    throw error;
+  }
+
+  const cacheKey = apiIngredients.map((ingredient) => ingredient.toLowerCase()).sort().join('|');
   const cached = recipeSuggestionsCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
     return cached.recipes;
@@ -263,7 +347,7 @@ async function fetchRecipeSuggestions(ingredients) {
 
   const params = new URLSearchParams({
     apiKey,
-    ingredients: ingredients.join(','),
+    ingredients: apiIngredients.join(','),
     number: '5',
     ranking: '1',
     ignorePantry: 'true',
@@ -302,7 +386,10 @@ function parseJsonArray(value) {
 
 function productMatchesFridge(product, fridgeNames) {
   const names = [product.normalizedName, ...parseJsonArray(product.aliases)];
-  return names.some((name) => fridgeNames.has(name));
+  return names.some(
+    (name) =>
+      fridgeNames.has(normalizeProductName(name)) || fridgeNames.has(canonicalIngredientName(name)),
+  );
 }
 
 function formatIngredient(product, ingredient) {
@@ -449,7 +536,12 @@ async function matchedDishSuggestions(prisma, householdId, scope = 'catalog') {
       ...(scope === 'user' ? [householdId] : []),
     ),
   ]);
-  const fridgeNames = new Set(fridgeItems.map((item) => normalizeProductName(item.name)));
+  const fridgeIngredients = Array.from(
+    new Set(fridgeItems.map((item) => normalizeProductName(item.name))),
+  );
+  const fridgeNames = new Set(
+    fridgeItems.flatMap((item) => [normalizeProductName(item.name), canonicalIngredientName(item.name)]),
+  );
   const dishes = new Map();
   for (const row of rows) {
     const dish = dishes.get(row.dishId) ?? {
@@ -491,7 +583,7 @@ async function matchedDishSuggestions(prisma, householdId, scope = 'catalog') {
     .slice(0, 8);
   return {
     recipes,
-    ingredients: Array.from(fridgeNames),
+    ingredients: fridgeIngredients,
     hasLocalCatalog: dishCount > 0,
   };
 }
@@ -635,7 +727,105 @@ async function createNotification(prisma, { userId, type, title, body, data, ded
   }
 }
 
-async function ensureExpiryNotifications(prisma, user) {
+function pushConfiguration() {
+  const publicKey = process.env.VAPID_PUBLIC_KEY ?? '';
+  const privateKey = process.env.VAPID_PRIVATE_KEY ?? '';
+  return {
+    publicKey,
+    privateKey,
+    subject: process.env.VAPID_SUBJECT ?? 'mailto:support@eat-it.space',
+    configured: Boolean(publicKey && privateKey),
+  };
+}
+
+async function sendPushNotification(prisma, userId, notification, logger = console) {
+  const configuration = pushConfiguration();
+  if (!configuration.configured) {
+    return;
+  }
+
+  const subscriptions = await prisma.pushSubscription.findMany({ where: { userId } });
+  const payload = JSON.stringify({
+    title: notification.title,
+    body: notification.body,
+    tag: notification.dedupeKey ?? notification.id,
+    data: {
+      url: '/',
+      notificationId: notification.id,
+      ...(notification.data ? JSON.parse(notification.data) : {}),
+    },
+  });
+
+  await Promise.all(
+    subscriptions.map(async (subscription) => {
+      try {
+        await webpush.sendNotification(
+          {
+            endpoint: subscription.endpoint,
+            keys: { p256dh: subscription.p256dh, auth: subscription.auth },
+          },
+          payload,
+          {
+            TTL: 60 * 60 * 24,
+            timeout: 5_000,
+            urgency: notification.type === 'expiry' ? 'normal' : 'high',
+            vapidDetails: {
+              subject: configuration.subject,
+              publicKey: configuration.publicKey,
+              privateKey: configuration.privateKey,
+            },
+          },
+        );
+      } catch (error) {
+        if (error?.statusCode === 404 || error?.statusCode === 410) {
+          await prisma.pushSubscription.deleteMany({ where: { endpoint: subscription.endpoint } });
+          return;
+        }
+        logger.error('Push delivery failed', error);
+      }
+    }),
+  );
+}
+
+async function createAndSendNotification(prisma, input, logger = console) {
+  const notification = await createNotification(prisma, input);
+  if (notification) {
+    await sendPushNotification(prisma, input.userId, notification, logger);
+  }
+  return notification;
+}
+
+async function notifyHouseholdShoppingChange(
+  prisma,
+  user,
+  item,
+  action,
+  logger = console,
+) {
+  const members = await prisma.user.findMany({
+    where: { householdId: user.householdId, id: { not: user.id } },
+    select: { id: true },
+  });
+  const added = action === 'added';
+  await Promise.all(
+    members.map((member) =>
+      createAndSendNotification(
+        prisma,
+        {
+          userId: member.id,
+          type: added ? 'shopping_added' : 'shopping_removed',
+          title: added ? 'Добавили в покупки' : 'Убрали из покупок',
+          body: `${user.displayName} ${added ? 'добавил(а)' : 'убрал(а)'} «${item.name}» ${added ? 'в список покупок' : 'из списка покупок'}.`,
+          data: { shoppingItemId: item.id, action },
+          dedupeKey: `shopping:${action}:${item.id}`,
+        },
+        logger,
+      ),
+    ),
+  );
+}
+
+async function ensureExpiryNotifications(prisma, user, logger = console) {
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
   const items = await prisma.fridgeItem.findMany({
@@ -659,16 +849,23 @@ async function ensureExpiryNotifications(prisma, user) {
         body = `${item.name}: срок истекает через ${days} дн.`;
       }
 
-      await createNotification(prisma, {
+      await createAndSendNotification(prisma, {
         userId: user.id,
         type: 'expiry',
         title: 'Срок годности',
         body,
         data: { fridgeItemId: item.id, expiresAt: item.expiresAt.toISOString().slice(0, 10) },
         dedupeKey: `expiry:${item.id}:${today.toISOString().slice(0, 10)}`,
-      });
+      }, logger);
     }),
   );
+}
+
+export async function dispatchExpiryNotifications(prisma, logger = console) {
+  const users = await prisma.user.findMany();
+  for (const user of users) {
+    await ensureExpiryNotifications(prisma, user, logger);
+  }
 }
 
 function routeMatch(pathname, pattern) {
@@ -1016,9 +1213,36 @@ export function createApiServer(prisma, logger = console) {
       }
 
       if (method === 'GET' && url.pathname === '/api/recipes') {
+        const fridgeItems = await prisma.fridgeItem.findMany({
+          where: { householdId: user.householdId, category: 'products' },
+          orderBy: [{ expiresAt: 'asc' }, { createdAt: 'desc' }],
+          take: 20,
+        });
+        const ingredients = Array.from(
+          new Set(fridgeItems.map((item) => item.name.trim()).filter(Boolean)),
+        ).slice(0, 10);
+        let warning = '';
+
+        if (!spoonacularApiKey()) {
+          warning = 'Spoonacular не настроен на сервере: добавьте SPOONACULAR_API_KEY.';
+        } else if (ingredients.length > 0) {
+          try {
+            const recipes = await fetchRecipeSuggestions(ingredients);
+            await saveSpoonacularSuggestions(prisma, recipes);
+          } catch (error) {
+            logger.error(`${method} ${url.pathname}`, error);
+            warning =
+              error?.status === 429
+                ? 'Лимит Spoonacular исчерпан. Показаны сохраненные рецепты.'
+                : error?.status === 422
+                  ? 'Spoonacular не распознал названия продуктов. Показаны сохраненные рецепты.'
+                  : 'Spoonacular временно недоступен. Показаны сохраненные рецепты.';
+          }
+        }
+
         const local = await matchedDishSuggestions(prisma, user.householdId, 'catalog');
         delete local.hasLocalCatalog;
-        json(response, 200, local);
+        json(response, 200, { ...local, ...(warning ? { warning } : {}) });
         return;
       }
 
@@ -1530,8 +1754,46 @@ export function createApiServer(prisma, logger = console) {
         return;
       }
 
+      if (method === 'GET' && url.pathname === '/api/push/config') {
+        const configuration = pushConfiguration();
+        json(response, 200, {
+          configured: configuration.configured,
+          publicKey: configuration.configured ? configuration.publicKey : '',
+        });
+        return;
+      }
+
+      if (method === 'POST' && url.pathname === '/api/push/subscriptions') {
+        const input = pushSubscriptionSchema.parse(await readJson(request));
+        await prisma.pushSubscription.upsert({
+          where: { endpoint: input.endpoint },
+          update: {
+            userId: user.id,
+            p256dh: input.keys.p256dh,
+            auth: input.keys.auth,
+          },
+          create: {
+            userId: user.id,
+            endpoint: input.endpoint,
+            p256dh: input.keys.p256dh,
+            auth: input.keys.auth,
+          },
+        });
+        json(response, 201, { subscribed: true });
+        return;
+      }
+
+      if (method === 'DELETE' && url.pathname === '/api/push/subscriptions') {
+        const input = pushUnsubscribeSchema.parse(await readJson(request));
+        await prisma.pushSubscription.deleteMany({
+          where: { endpoint: input.endpoint, userId: user.id },
+        });
+        json(response, 200, { subscribed: false });
+        return;
+      }
+
       if (method === 'GET' && url.pathname === '/api/notifications') {
-        await ensureExpiryNotifications(prisma, user);
+        await ensureExpiryNotifications(prisma, user, logger);
         const notifications = await prisma.notification.findMany({
           where: { userId: user.id },
           orderBy: { createdAt: 'desc' },
@@ -1687,6 +1949,7 @@ export function createApiServer(prisma, logger = console) {
           await transaction.fridgeItem.delete({ where: { id: current.id } });
           return shoppingItem;
         });
+        await notifyHouseholdShoppingChange(prisma, user, result, 'added', logger);
         json(response, 200, serializeShoppingItem(result));
         return;
       }
@@ -1699,14 +1962,21 @@ export function createApiServer(prisma, logger = console) {
             householdId: user.householdId,
           },
         });
+        await notifyHouseholdShoppingChange(prisma, user, item, 'added', logger);
         json(response, 201, serializeShoppingItem(item));
         return;
       }
 
       if (method === 'DELETE' && url.pathname === '/api/shopping/completed') {
+        const completedItems = await prisma.shoppingItem.findMany({
+          where: { householdId: user.householdId, checked: true },
+        });
         const result = await prisma.shoppingItem.deleteMany({
           where: { householdId: user.householdId, checked: true },
         });
+        for (const item of completedItems) {
+          await notifyHouseholdShoppingChange(prisma, user, item, 'removed', logger);
+        }
         json(response, 200, { deleted: result.count });
         return;
       }
@@ -1724,8 +1994,9 @@ export function createApiServer(prisma, logger = console) {
       }
 
       if (shoppingRoute && method === 'DELETE') {
-        await findShoppingItem(prisma, shoppingRoute.id, user.householdId);
+        const current = await findShoppingItem(prisma, shoppingRoute.id, user.householdId);
         await prisma.shoppingItem.delete({ where: { id: shoppingRoute.id } });
+        await notifyHouseholdShoppingChange(prisma, user, current, 'removed', logger);
         response.writeHead(204);
         response.end();
         return;
@@ -1755,9 +2026,16 @@ export function createApiServer(prisma, logger = console) {
             },
           });
           await transaction.shoppingItem.delete({ where: { id: current.id } });
-          return fridgeItem;
+          return { fridgeItem, shoppingItem: current };
         });
-        json(response, 200, serializeFridgeItem(result));
+        await notifyHouseholdShoppingChange(
+          prisma,
+          user,
+          result.shoppingItem,
+          'removed',
+          logger,
+        );
+        json(response, 200, serializeFridgeItem(result.fridgeItem));
         return;
       }
 

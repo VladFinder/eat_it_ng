@@ -1,0 +1,25 @@
+{
+  "id": "/",
+  "name": "Homie",
+  "short_name": "Homie",
+  "description": "Общие запасы, покупки и рецепты для дома",
+  "lang": "ru",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#eee7dc",
+  "theme_color": "#1f6449",
+  "icons": [
+    {
+      "src": "/play-assets/homie-icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/play-assets/homie-play-icon-512-v2.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

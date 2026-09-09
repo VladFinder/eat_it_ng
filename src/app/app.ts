@@ -49,6 +49,7 @@ interface OnboardingStep {
   title: string;
   body: string;
   action: string;
+  kind?: 'notifications';
 }
 
 interface Recipe {
@@ -110,38 +111,46 @@ const DEV_ALLOWED_EMAILS = new Set(['vladfinder@yandex.ru', 'krisyagodka@gmail.c
 const ONBOARDING_STEPS: OnboardingStep[] = [
   {
     tab: 'fridge',
-    label: 'Шаг 1 из 5',
+    label: 'Шаг 1 из 6',
     title: 'Начните с того, что уже есть дома',
     body: 'Добавляйте продукты, бытовую химию или лекарства. Указывайте количество и срок годности там, где он важен.',
     action: 'Далее',
   },
   {
     tab: 'shopping',
-    label: 'Шаг 2 из 5',
+    label: 'Шаг 2 из 6',
     title: 'Покупки собираются в один список',
     body: 'Свайпните карточку в запасах вправо, чтобы перенести товар в покупки, или влево, чтобы удалить. Доведите свайп до появления яркой иконки и отпустите: действие выполнится сразу, без нажатия. Для редактирования нажмите три точки.',
     action: 'Далее',
   },
   {
     tab: 'dishes',
-    label: 'Шаг 3 из 5',
+    label: 'Шаг 3 из 6',
     title: 'Раздел "Блюда" поможет решить, что приготовить',
     body: 'Этот раздел будет подбирать идеи из того, что уже лежит дома, чтобы меньше выбрасывать и быстрее выбирать ужин.',
     action: 'Показать рецепты',
   },
   {
     tab: 'recipes',
-    label: 'Шаг 4 из 5',
+    label: 'Шаг 4 из 6',
     title: 'Рецепты сохраняют удачные идеи',
     body: 'Здесь будут ваши рецепты, лайки и общая подборка. Сохраняйте то, что хочется повторить.',
     action: 'Показать профиль',
   },
   {
     tab: 'profile',
-    label: 'Шаг 5 из 5',
+    label: 'Шаг 5 из 6',
     title: 'В профиле настраивается общий дом',
     body: 'Переименуйте группу и пригласите участника по email, чтобы вести общий холодильник и список покупок.',
-    action: 'Начать пользоваться',
+    action: 'Настроить уведомления',
+  },
+  {
+    tab: 'profile',
+    label: 'Шаг 6 из 6',
+    title: 'Включите уведомления',
+    body: 'Homie сообщит, когда подходит срок годности и когда участник семьи добавляет или убирает товар из списка покупок.',
+    action: 'Включить уведомления',
+    kind: 'notifications',
   },
 ];
 
@@ -259,8 +268,12 @@ export class App implements OnDestroy, OnInit {
   protected readonly unreadNotifications = signal(0);
   protected readonly notificationsOpen = signal(false);
   protected readonly notificationsEnabled = signal(
-    this.load<boolean>(STORAGE_KEYS.notificationsEnabled, true),
+    this.load<boolean>(STORAGE_KEYS.notificationsEnabled, false),
   );
+  protected readonly pushPermission = signal<NotificationPermission | 'unsupported'>(
+    typeof Notification === 'undefined' ? 'unsupported' : Notification.permission,
+  );
+  protected readonly pushBusy = signal(false);
   protected readonly clearedNotificationIds = signal(
     this.load<string[]>(STORAGE_KEYS.clearedNotifications, []),
   );
@@ -429,6 +442,18 @@ export class App implements OnDestroy, OnInit {
     return `${count} участника ведут общий холодильник и список покупок.`;
   });
   protected readonly hasNotifications = computed(() => this.notifications().length > 0);
+  protected readonly onboardingIsNotificationStep = computed(
+    () => this.onboardingStep().kind === 'notifications',
+  );
+  protected readonly pushSupported = computed(() => this.browserSupportsPush());
+  protected readonly notificationStatusText = computed(() => {
+    if (this.isIosDevice() && !this.isStandaloneWebApp()) {
+      return 'Сначала добавьте Homie на экран «Домой»';
+    }
+    if (!this.pushSupported()) return 'Не поддерживаются на этом устройстве';
+    if (this.pushPermission() === 'denied') return 'Запрещены в настройках устройства';
+    return this.notificationsEnabled() ? 'Включены' : 'Выключены';
+  });
   protected readonly activeTabLabel = computed(() => {
     if (this.activeTab() === 'fridge') {
       return this.categoryLabel(this.activeCategory());
@@ -555,6 +580,7 @@ export class App implements OnDestroy, OnInit {
         return;
       }
       await this.loadState();
+      void this.syncPushState();
       this.openOnboardingIfNeeded(response.user);
       this.startRealtimeRefresh();
     } catch (error) {
@@ -957,11 +983,19 @@ export class App implements OnDestroy, OnInit {
     this.notificationsOpen.set(false);
   }
 
-  protected toggleNotificationsEnabled(): void {
-    const next = !this.notificationsEnabled();
-    this.notificationsEnabled.set(next);
-    localStorage.setItem(STORAGE_KEYS.notificationsEnabled, JSON.stringify(next));
-    this.showToast(next ? 'Уведомления включены' : 'Уведомления выключены');
+  protected async toggleNotificationsEnabled(): Promise<void> {
+    if (this.pushBusy()) return;
+    if (this.notificationsEnabled()) {
+      await this.disablePushNotifications();
+      return;
+    }
+    await this.enablePushNotifications();
+  }
+
+  protected async enableNotificationsFromOnboarding(): Promise<void> {
+    if (this.notificationsEnabled() || (await this.enablePushNotifications())) {
+      this.finishOnboarding();
+    }
   }
 
   protected toggleRecipeLike(id: string): void {
@@ -1055,14 +1089,25 @@ export class App implements OnDestroy, OnInit {
     if (image) {
       return image;
     }
-    const queries: Record<string, string> = {
-      'Омлет с сыром': 'omelette,cheese,breakfast',
-      'Паста с овощами': 'vegetable,pasta',
-      'Сырники': 'cheese,pancakes',
-      'Рис с курицей': 'chicken,rice,dinner',
+    const images: Record<string, string> = {
+      'Омлет с сыром':
+        'https://images.unsplash.com/photo-1525351484163-7529414344d8?auto=format&fit=crop&w=800&q=80',
+      'Паста с овощами':
+        'https://images.unsplash.com/photo-1551183053-bf91a1d81141?auto=format&fit=crop&w=800&q=80',
+      Сырники:
+        'https://images.unsplash.com/photo-1528207776546-365bb710ee93?auto=format&fit=crop&w=800&q=80',
+      'Рис с курицей':
+        'https://images.unsplash.com/photo-1603133872878-684f208fb84b?auto=format&fit=crop&w=800&q=80',
     };
-    const query = encodeURIComponent(queries[title ?? ''] ?? 'recipe,food');
-    return `https://source.unsplash.com/800x600/?${query}`;
+    return images[title ?? ''] ?? this.defaultRecipeImage();
+  }
+
+  protected useRecipeImageFallback(event: Event): void {
+    const image = event.target as HTMLImageElement;
+    const fallback = this.defaultRecipeImage();
+    if (image.src !== fallback) {
+      image.src = fallback;
+    }
   }
 
   protected async loadRecipeCatalog(): Promise<void> {
@@ -1074,6 +1119,7 @@ export class App implements OnDestroy, OnInit {
     this.recipeSuggestionsError.set('');
     try {
       const result = await firstValueFrom(this.api.getRecipes());
+      this.recipeSuggestionsError.set(result.warning ?? '');
       const savedById = new Map(this.recipes().map((recipe) => [recipe.id, recipe]));
       this.recipeDishIdeas.set(result.recipes.map((recipe) => this.toDishIdea(recipe)));
       this.recipes.update((recipes) => [
@@ -1628,6 +1674,9 @@ export class App implements OnDestroy, OnInit {
     if (notification.type === 'expiry') {
       return 'Сроки';
     }
+    if (notification.type === 'shopping_added' || notification.type === 'shopping_removed') {
+      return 'Покупки';
+    }
     return 'Событие';
   }
 
@@ -1637,6 +1686,12 @@ export class App implements OnDestroy, OnInit {
     }
     if (notification.type === 'expiry') {
       return '⏳';
+    }
+    if (notification.type === 'shopping_added') {
+      return '+';
+    }
+    if (notification.type === 'shopping_removed') {
+      return '−';
     }
     return '🔔';
   }
@@ -1810,6 +1865,7 @@ export class App implements OnDestroy, OnInit {
           return;
         }
         await this.loadState();
+        void this.syncPushState();
         this.openOnboardingIfNeeded(session.value.user);
         this.startRealtimeRefresh();
       }
@@ -1876,6 +1932,158 @@ export class App implements OnDestroy, OnInit {
     this.onboardingStepIndex.set(0);
     this.activeTab.set(this.onboardingSteps[0].tab);
     this.onboardingOpen.set(true);
+  }
+
+  private browserSupportsPush(): boolean {
+    return (
+      typeof Notification !== 'undefined' &&
+      typeof navigator !== 'undefined' &&
+      typeof window !== 'undefined' &&
+      'serviceWorker' in navigator &&
+      'PushManager' in window
+    );
+  }
+
+  private isIosDevice(): boolean {
+    return typeof navigator !== 'undefined' && /iphone|ipad|ipod/i.test(navigator.userAgent);
+  }
+
+  private isStandaloneWebApp(): boolean {
+    if (typeof navigator === 'undefined' || typeof window === 'undefined') return false;
+    return (
+      window.matchMedia('(display-mode: standalone)').matches ||
+      Boolean((navigator as Navigator & { standalone?: boolean }).standalone)
+    );
+  }
+
+  private iosHomeScreenRequired(): boolean {
+    return this.isIosDevice() && !this.isStandaloneWebApp();
+  }
+
+  private async syncPushState(): Promise<void> {
+    if (!this.pushSupported()) {
+      this.pushPermission.set('unsupported');
+      this.setNotificationsEnabled(false);
+      return;
+    }
+
+    this.pushPermission.set(Notification.permission);
+    try {
+      const registration = await navigator.serviceWorker.getRegistration();
+      const subscription = await registration?.pushManager.getSubscription();
+      this.setNotificationsEnabled(
+        Notification.permission === 'granted' && Boolean(subscription),
+      );
+    } catch {
+      this.setNotificationsEnabled(false);
+    }
+  }
+
+  private async enablePushNotifications(): Promise<boolean> {
+    if (this.pushBusy()) return false;
+    if (this.iosHomeScreenRequired()) {
+      this.showToast('На iPhone сначала добавьте Homie на экран «Домой»');
+      return false;
+    }
+    if (!this.pushSupported()) {
+      this.pushPermission.set('unsupported');
+      this.showToast('Push-уведомления не поддерживаются на этом устройстве');
+      return false;
+    }
+
+    this.pushBusy.set(true);
+    try {
+      const permission = await Notification.requestPermission();
+      this.pushPermission.set(permission);
+      if (permission !== 'granted') {
+        this.setNotificationsEnabled(false);
+        this.showToast(
+          permission === 'denied'
+            ? 'Разрешение заблокировано. Включите уведомления в настройках устройства'
+            : 'Уведомления не включены',
+        );
+        return false;
+      }
+
+      const configuration = await firstValueFrom(this.api.getPushConfig());
+      if (!configuration.configured || !configuration.publicKey) {
+        throw new Error('Push server is not configured');
+      }
+
+      const registration = await navigator.serviceWorker.register('/sw.js');
+      const existing = await registration.pushManager.getSubscription();
+      const subscription =
+        existing ??
+        (await registration.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: this.decodeVapidPublicKey(configuration.publicKey),
+        }));
+      const serialized = subscription.toJSON();
+      if (!serialized.endpoint || !serialized.keys?.['p256dh'] || !serialized.keys?.['auth']) {
+        throw new Error('Browser returned an incomplete push subscription');
+      }
+      await firstValueFrom(
+        this.api.savePushSubscription({
+          endpoint: serialized.endpoint,
+          keys: {
+            p256dh: serialized.keys['p256dh'],
+            auth: serialized.keys['auth'],
+          },
+        }),
+      );
+      this.setNotificationsEnabled(true);
+      this.showToast('Уведомления включены');
+      return true;
+    } catch (error) {
+      this.setNotificationsEnabled(false);
+      this.showToast(
+        error instanceof Error && error.message === 'Push server is not configured'
+          ? 'Push-уведомления ещё не настроены на сервере'
+          : 'Не удалось включить уведомления',
+      );
+      return false;
+    } finally {
+      this.pushBusy.set(false);
+    }
+  }
+
+  private async disablePushNotifications(): Promise<void> {
+    if (this.pushBusy()) return;
+    this.pushBusy.set(true);
+    try {
+      const registration = await navigator.serviceWorker.getRegistration();
+      const subscription = await registration?.pushManager.getSubscription();
+      if (subscription) {
+        try {
+          await firstValueFrom(this.api.deletePushSubscription(subscription.endpoint));
+        } finally {
+          await subscription.unsubscribe();
+        }
+      }
+      this.setNotificationsEnabled(false);
+      this.showToast('Уведомления выключены');
+    } catch {
+      this.setNotificationsEnabled(false);
+      this.showToast('Уведомления выключены на этом устройстве');
+    } finally {
+      this.pushBusy.set(false);
+    }
+  }
+
+  private setNotificationsEnabled(enabled: boolean): void {
+    this.notificationsEnabled.set(enabled);
+    localStorage.setItem(STORAGE_KEYS.notificationsEnabled, JSON.stringify(enabled));
+  }
+
+  private decodeVapidPublicKey(value: string): ArrayBuffer {
+    const padding = '='.repeat((4 - (value.length % 4)) % 4);
+    const base64 = (value + padding).replace(/-/g, '+').replace(/_/g, '/');
+    const decoded = atob(base64);
+    const bytes = new Uint8Array(decoded.length);
+    for (let index = 0; index < decoded.length; index++) {
+      bytes[index] = decoded.charCodeAt(index);
+    }
+    return bytes.buffer;
   }
 
   private finishOnboarding(): void {

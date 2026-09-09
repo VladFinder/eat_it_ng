@@ -830,6 +830,29 @@ a.secondary-action {
   font-weight: 800;
 }
 
+.recipe-notice {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.recipe-notice.warning {
+  border-color: rgba(185, 108, 36, 0.28);
+  background: rgba(255, 239, 214, 0.74);
+  color: #8a4d18;
+}
+
+.settings-hint {
+  margin: -4px 12px 6px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .dish-card {
   display: grid;
   align-content: start;
@@ -1555,7 +1578,7 @@ a.secondary-action {
   left: 0;
   z-index: 10;
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(6, 1fr);
   gap: 4px;
   width: min(calc(100% - 32px), 368px);
   margin: 0 auto 16px;
@@ -1667,6 +1690,40 @@ a.secondary-action {
   border-radius: 18px;
   background: var(--surface);
   padding: 12px;
+}
+
+.onboarding-notification-list {
+  display: grid;
+  gap: 10px;
+}
+
+.onboarding-notification-list > div {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.onboarding-notification-list > div > span {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 13px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.onboarding-notification-list p {
+  display: grid;
+  gap: 2px;
+  margin: 0;
+}
+
+.onboarding-notification-list small {
+  color: var(--muted);
 }
 
 .preview-row {

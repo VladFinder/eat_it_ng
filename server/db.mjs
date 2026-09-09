@@ -229,6 +229,20 @@ export async function ensureDatabaseSchema(prismaClient = prisma) {
   );
   await ensureTable(
     prismaClient,
+    'PushSubscription',
+    `CREATE TABLE "PushSubscription" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "userId" TEXT NOT NULL,
+      "endpoint" TEXT NOT NULL,
+      "p256dh" TEXT NOT NULL,
+      "auth" TEXT NOT NULL,
+      "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" DATETIME NOT NULL,
+      FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE
+    )`,
+  );
+  await ensureTable(
+    prismaClient,
     'Product',
     `CREATE TABLE "Product" (
       "id" TEXT NOT NULL PRIMARY KEY,
@@ -284,6 +298,12 @@ export async function ensureDatabaseSchema(prismaClient = prisma) {
   );
   await prismaClient.$executeRawUnsafe(
     'CREATE INDEX IF NOT EXISTS "Notification_userId_readAt_createdAt_idx" ON "Notification"("userId", "readAt", "createdAt")',
+  );
+  await prismaClient.$executeRawUnsafe(
+    'CREATE UNIQUE INDEX IF NOT EXISTS "PushSubscription_endpoint_key" ON "PushSubscription"("endpoint")',
+  );
+  await prismaClient.$executeRawUnsafe(
+    'CREATE INDEX IF NOT EXISTS "PushSubscription_userId_idx" ON "PushSubscription"("userId")',
   );
   await prismaClient.$executeRawUnsafe(
     'CREATE UNIQUE INDEX IF NOT EXISTS "Product_normalizedName_key" ON "Product"("normalizedName")',

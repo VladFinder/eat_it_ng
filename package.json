@@ -8,6 +8,7 @@
     "build": "ng build",
     "db:generate": "node server/prisma-command.mjs generate",
     "db:migrate": "node server/prisma-command.mjs migrate deploy",
+    "push:generate-keys": "web-push generate-vapid-keys",
     "db:seed": "node server/seed.mjs",
     "test:server": "node --test server/app.test.mjs",
     "android:sync": "npm run build -- --configuration production && cap sync android",
@@ -40,6 +41,7 @@
     "jose": "^6.2.3",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0",
+    "web-push": "^3.6.7",
     "zod": "^4.4.3"
   },
   "devDependencies": {

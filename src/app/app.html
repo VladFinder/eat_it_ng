@@ -1418,6 +1418,13 @@
           </button>
         </div>
 
+        @if (recipeSuggestionsLoading()) {
+          <div class="recipe-notice" role="status">Загружаем рецепты из Spoonacular…</div>
+        }
+        @if (recipeSuggestionsError()) {
+          <div class="recipe-notice warning" role="status">{{ recipeSuggestionsError() }}</div>
+        }
+
         <div class="recipe-grid">
           @for (recipe of recipeList(); track recipe.id) {
             <article
@@ -1427,7 +1434,12 @@
               (click)="openRecipe(recipe)"
               (keydown.enter)="openRecipe(recipe)"
             >
-              <img class="recipe-thumb" [src]="recipeImage(recipe.title, recipe.image)" alt="" />
+              <img
+                class="recipe-thumb"
+                [src]="recipeImage(recipe.title, recipe.image)"
+                (error)="useRecipeImageFallback($event)"
+                alt=""
+              />
               <div class="item-content">
                 <h3>{{ recipe.title }}</h3>
                 <p>{{ recipe.time }}</p>
@@ -1588,37 +1600,40 @@
           </div>
         </div>
         <div class="panel settings-panel">
-          <button class="setting-row" type="button" (click)="toggleNotificationsEnabled()">
+          <button
+            class="setting-row"
+            type="button"
+            (click)="toggleNotificationsEnabled()"
+            [disabled]="pushBusy()"
+          >
             <div>
-              <strong>Уведомления</strong>
-              <p>{{ notificationsEnabled() ? 'Включены' : 'Выключены' }}</p>
+              <strong>Push-уведомления</strong>
+              <p>{{ notificationStatusText() }}</p>
             </div>
             <span class="toggle" [class.active]="notificationsEnabled()">
               <i></i>
             </span>
           </button>
+          <p class="settings-hint">
+            На iPhone уведомления доступны для Homie, добавленного на экран «Домой». Разрешение
+            запрашивается только после нажатия на переключатель.
+          </p>
           <div class="setting-row static">
             <div>
               <strong>Скоро истекает срок</strong>
-              <p>За 1 день</p>
+              <p>По сроку, указанному у товара</p>
             </div>
           </div>
           <div class="setting-row static">
             <div>
-              <strong>Продукт закончился</strong>
-              <p>Сразу</p>
+              <strong>Добавили в покупки</strong>
+              <p>Сразу, если это сделал другой участник семьи</p>
             </div>
           </div>
           <div class="setting-row static">
             <div>
-              <strong>Новая покупка</strong>
-              <p>Сразу</p>
-            </div>
-          </div>
-          <div class="setting-row static">
-            <div>
-              <strong>Изменения участников</strong>
-              <p>Сразу</p>
+              <strong>Убрали из покупок</strong>
+              <p>Сразу, если это сделал другой участник семьи</p>
             </div>
           </div>
           <div class="setting-row static">
@@ -1749,7 +1764,13 @@
         <p>{{ onboardingStep().body }}</p>
 
         <div class="onboarding-preview">
-          @if (onboardingStep().tab === 'fridge') {
+          @if (onboardingStep().kind === 'notifications') {
+            <div class="onboarding-notification-list">
+              <div><span>!</span><p><strong>Срок годности</strong><small>Предупредим заранее</small></p></div>
+              <div><span>+</span><p><strong>Добавили покупку</strong><small>Сообщим остальным участникам</small></p></div>
+              <div><span>−</span><p><strong>Убрали покупку</strong><small>Список останется актуальным</small></p></div>
+            </div>
+          } @else if (onboardingStep().tab === 'fridge') {
             <div class="preview-row">
               <strong>Йогурт</strong>
               <span class="status warning">Сегодня</span>
@@ -1799,8 +1820,13 @@
           >
             Назад
           </button>
-          <button class="primary-action" type="button" (click)="nextOnboardingStep()">
-            {{ onboardingStep().action }}
+          <button
+            class="primary-action"
+            type="button"
+            (click)="onboardingStep().kind === 'notifications' ? enableNotificationsFromOnboarding() : nextOnboardingStep()"
+            [disabled]="pushBusy()"
+          >
+            {{ onboardingStep().kind === 'notifications' && notificationsEnabled() ? 'Начать пользоваться' : onboardingStep().action }}
           </button>
         </div>
       </article>

@@ -46,6 +46,24 @@ Recipe suggestions use the Spoonacular API. Keep the key on the API server:
 SPOONACULAR_API_KEY="..."
 ```
 
+Web Push requires one VAPID key pair. Generate it once:
+
+```bash
+npm run push:generate-keys
+```
+
+Store the generated keys in `/opt/eat-it/app/.env` and keep the private key secret:
+
+```dotenv
+VAPID_SUBJECT="mailto:support@eat-it.space"
+VAPID_PUBLIC_KEY="..."
+VAPID_PRIVATE_KEY="..."
+```
+
+Restart `eat-it-api` after changing these values. On iPhone, Web Push is available
+on iOS 16.4 or later only after the user adds Homie to the Home Screen and launches
+that installed web app.
+
 Google OAuth variables:
 
 ```dotenv

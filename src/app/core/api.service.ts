@@ -176,8 +176,8 @@ export class ApiService {
     );
   }
 
-  getRecipes(): Observable<{ recipes: RecipeSuggestion[]; ingredients: string[] }> {
-    return this.http.get<{ recipes: RecipeSuggestion[]; ingredients: string[] }>(
+  getRecipes(): Observable<{ recipes: RecipeSuggestion[]; ingredients: string[]; warning?: string }> {
+    return this.http.get<{ recipes: RecipeSuggestion[]; ingredients: string[]; warning?: string }>(
       `${this.baseUrl}/recipes`,
       this.options(),
     );
@@ -232,6 +232,28 @@ export class ApiService {
       { read },
       this.options(),
     );
+  }
+
+  getPushConfig(): Observable<{ configured: boolean; publicKey: string }> {
+    return this.http.get<{ configured: boolean; publicKey: string }>(
+      `${this.baseUrl}/push/config`,
+      this.options(),
+    );
+  }
+
+  savePushSubscription(subscription: PushSubscriptionJSON): Observable<{ subscribed: true }> {
+    return this.http.post<{ subscribed: true }>(
+      `${this.baseUrl}/push/subscriptions`,
+      subscription,
+      this.options(),
+    );
+  }
+
+  deletePushSubscription(endpoint: string): Observable<{ subscribed: false }> {
+    return this.http.delete<{ subscribed: false }>(`${this.baseUrl}/push/subscriptions`, {
+      ...this.options(),
+      body: { endpoint },
+    });
   }
 
   respondToInvitation(id: string, action: 'accept' | 'decline'): Observable<Household> {

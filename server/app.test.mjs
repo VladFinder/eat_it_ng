@@ -107,6 +107,18 @@ before(async () => {
     ON "Notification"("userId", "dedupeKey")
   `);
   await prisma.$executeRawUnsafe(`
+    CREATE TABLE "PushSubscription" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "userId" TEXT NOT NULL,
+      "endpoint" TEXT NOT NULL UNIQUE,
+      "p256dh" TEXT NOT NULL,
+      "auth" TEXT NOT NULL,
+      "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" DATETIME NOT NULL,
+      FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE
+    )
+  `);
+  await prisma.$executeRawUnsafe(`
     CREATE TABLE "SupportTicket" (
       "id" TEXT NOT NULL PRIMARY KEY,
       "userId" TEXT NOT NULL,
@@ -492,6 +504,29 @@ test('state rejects unauthenticated requests', async () => {
   assert.equal(response.status, 401);
 });
 
+test('push subscriptions can be enabled and disabled for the current device', async () => {
+  const endpoint = 'https://push.example.com/subscriptions/device-1';
+  const createResponse = await request('/api/push/subscriptions', {
+    method: 'POST',
+    body: JSON.stringify({
+      endpoint,
+      keys: {
+        p256dh: 'test-p256dh-key-material',
+        auth: 'test-auth-key',
+      },
+    }),
+  });
+  assert.equal(createResponse.status, 201);
+  assert.equal(await prisma.pushSubscription.count({ where: { endpoint } }), 1);
+
+  const deleteResponse = await request('/api/push/subscriptions', {
+    method: 'DELETE',
+    body: JSON.stringify({ endpoint }),
+  });
+  assert.equal(deleteResponse.status, 200);
+  assert.equal(await prisma.pushSubscription.count({ where: { endpoint } }), 0);
+});
+
 test('recipe suggestions return empty local result without external API key', async () => {
   const previous = process.env.SPOONACULAR_API_KEY;
   delete process.env.SPOONACULAR_API_KEY;
@@ -640,7 +675,7 @@ test('household dishes can be created and matched against fridge products', asyn
   assert.equal(listed.recipes.some((recipe) => recipe.title === 'Картофельное пюре'), true);
 });
 
-test('recipe suggestions fall back to Spoonacular when local catalog has no matches', async () => {
+test('recipe catalog loads Spoonacular recipes with images', async () => {
   const previousKey = process.env.SPOONACULAR_API_KEY;
   const previousFetch = globalThis.fetch;
   await prisma.dishIngredient.deleteMany();
@@ -657,12 +692,12 @@ test('recipe suggestions fall back to Spoonacular when local catalog has no matc
     return Response.json([
       {
         id: 715538,
-        title: 'Apple Pancakes',
-        image: 'https://example.com/apple-pancakes.jpg',
+        title: 'Potato Tomato Bake',
+        image: 'https://example.com/potato-tomato-bake.jpg',
         usedIngredientCount: 2,
         missedIngredientCount: 1,
-        usedIngredients: [{ name: 'apple' }, { name: 'flour' }],
-        missedIngredients: [{ name: 'egg' }],
+        usedIngredients: [{ name: 'potato' }, { name: 'tomato' }],
+        missedIngredients: [{ name: 'cheese' }],
       },
     ]);
   };
@@ -671,7 +706,7 @@ test('recipe suggestions fall back to Spoonacular when local catalog has no matc
     await request('/api/fridge', {
       method: 'POST',
       body: JSON.stringify({
-        name: 'apple',
+        name: 'картошка',
         quantity: 2,
         unit: 'шт.',
         expiresAt: '2026-06-12',
@@ -682,7 +717,7 @@ test('recipe suggestions fall back to Spoonacular when local catalog has no matc
     await request('/api/fridge', {
       method: 'POST',
       body: JSON.stringify({
-        name: 'flour',
+        name: 'помидор',
         quantity: 1,
         unit: 'кг',
         expiresAt: null,
@@ -691,29 +726,29 @@ test('recipe suggestions fall back to Spoonacular when local catalog has no matc
       }),
     });
 
-    const response = await request('/api/recipes/suggestions');
+    const response = await request('/api/recipes');
     assert.equal(response.status, 200);
     assert.equal(requestedUrl.origin, 'https://api.spoonacular.com');
     assert.equal(requestedUrl.searchParams.get('apiKey'), 'test-spoonacular-key');
-    assert.match(requestedUrl.searchParams.get('ingredients'), /apple/);
-    assert.match(requestedUrl.searchParams.get('ingredients'), /flour/);
+    assert.match(requestedUrl.searchParams.get('ingredients'), /potato/);
+    assert.match(requestedUrl.searchParams.get('ingredients'), /tomato/);
 
     const result = await response.json();
-    assert.equal(result.ingredients.includes('apple'), true);
+    assert.equal(result.ingredients.includes('картошка'), true);
     assert.deepEqual(result.recipes[0], {
       id: 'spoonacular-715538',
-      title: 'Apple Pancakes',
-      image: 'https://example.com/apple-pancakes.jpg',
+      title: 'Potato Tomato Bake',
+      image: 'https://example.com/potato-tomato-bake.jpg',
       source: 'spoonacular',
       externalId: '715538',
       subtitle: 'Spoonacular',
-      description: 'Можно приготовить, если докупить: egg.',
+      description: 'Можно приготовить, если докупить: cheese.',
       instructions: [],
       usedIngredientCount: 2,
       missedIngredientCount: 1,
       matchPercent: 67,
-      usedIngredients: ['apple', 'flour'],
-      missedIngredients: ['egg'],
+      usedIngredients: ['potato', 'tomato'],
+      missedIngredients: ['cheese'],
     });
     const previousAdmins = process.env.ADMIN_EMAILS;
     process.env.ADMIN_EMAILS = 'test@example.com';
@@ -948,6 +983,52 @@ test('household invitation can be accepted and items are shared', async () => {
     true,
   );
   assert.equal(state.household.members.length, 2);
+});
+
+test('shopping list changes notify the other household members', async () => {
+  const partnerLoginResponse = await request('/api/auth/login', {
+    method: 'POST',
+    body: JSON.stringify({
+      email: 'partner@example.com',
+      password: 'test-password-123',
+    }),
+    skipAuth: true,
+  });
+  assert.equal(partnerLoginResponse.status, 200);
+  const partner = await partnerLoginResponse.json();
+
+  const createResponse = await request('/api/shopping', {
+    method: 'POST',
+    body: JSON.stringify({ name: 'Хлеб', quantity: 1, unit: 'шт.', category: 'products' }),
+  });
+  assert.equal(createResponse.status, 201);
+  const item = await createResponse.json();
+
+  const afterCreateResponse = await request('/api/notifications', {
+    headers: { Authorization: `Bearer ${partner.token}` },
+  });
+  const afterCreate = await afterCreateResponse.json();
+  assert.equal(
+    afterCreate.notifications.some(
+      (notification) =>
+        notification.type === 'shopping_added' && notification.data?.shoppingItemId === item.id,
+    ),
+    true,
+  );
+
+  const deleteResponse = await request(`/api/shopping/${item.id}`, { method: 'DELETE' });
+  assert.equal(deleteResponse.status, 204);
+  const afterDeleteResponse = await request('/api/notifications', {
+    headers: { Authorization: `Bearer ${partner.token}` },
+  });
+  const afterDelete = await afterDeleteResponse.json();
+  assert.equal(
+    afterDelete.notifications.some(
+      (notification) =>
+        notification.type === 'shopping_removed' && notification.data?.shoppingItemId === item.id,
+    ),
+    true,
+  );
 });
 
 test('expiry notifications are generated once per day', async () => {

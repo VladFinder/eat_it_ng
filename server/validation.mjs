@@ -43,6 +43,18 @@ export const notificationUpdateSchema = z.object({
   read: z.boolean(),
 });
 
+export const pushSubscriptionSchema = z.object({
+  endpoint: z.string().trim().url().max(2_000),
+  keys: z.object({
+    p256dh: z.string().trim().min(20).max(500),
+    auth: z.string().trim().min(8).max(500),
+  }),
+});
+
+export const pushUnsubscribeSchema = z.object({
+  endpoint: z.string().trim().url().max(2_000),
+});
+
 const fridgeFields = {
   name,
   quantity,

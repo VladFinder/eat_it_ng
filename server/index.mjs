@@ -1,4 +1,4 @@
-import { createApiServer } from './app.mjs';
+import { createApiServer, dispatchExpiryNotifications } from './app.mjs';
 import { ensureDatabaseSchema, prisma } from './db.mjs';
 import { readFile } from 'node:fs/promises';
 
@@ -24,11 +24,24 @@ const port = Number(process.env.PORT ?? 3000);
 await ensureDatabaseSchema();
 const server = createApiServer(prisma);
 
+async function runExpiryNotificationCheck() {
+  try {
+    await dispatchExpiryNotifications(prisma);
+  } catch (error) {
+    console.error('Expiry notification check failed', error);
+  }
+}
+
+void runExpiryNotificationCheck();
+const expiryNotificationTimer = setInterval(runExpiryNotificationCheck, 30 * 60 * 1000);
+expiryNotificationTimer.unref();
+
 server.listen(port, '127.0.0.1', () => {
   console.log(`Eat it API listening on http://127.0.0.1:${port}`);
 });
 
 async function shutdown() {
+  clearInterval(expiryNotificationTimer);
   server.close(async () => {
     await prisma.$disconnect();
     process.exit(0);
