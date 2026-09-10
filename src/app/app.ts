@@ -25,9 +25,8 @@ type TabId = 'fridge' | 'shopping' | 'dishes' | 'recipes' | 'profile';
 type RecipeTab = 'mine' | 'likes' | 'all';
 type ShoppingFilter = 'all' | ItemCategory;
 type FridgeStatusFilter = 'all' | 'expired' | 'soon' | 'no-expiry';
-type FridgeSort = 'newest' | 'oldest' | 'expiry' | 'name' | 'quantity';
-type ShoppingStatusFilter = 'all' | 'open' | 'completed';
-type ShoppingSort = 'newest' | 'oldest' | 'name' | 'quantity' | 'status';
+type FridgeSort = 'newest' | 'oldest' | 'expiry' | 'name';
+type ShoppingSort = 'newest' | 'oldest' | 'name' | 'status';
 type DishFilter = 'available' | 'almost' | 'planned';
 type AuthMode = 'login' | 'register';
 type ProfileSection = 'menu' | 'household' | 'notifications' | 'support' | 'feedback';
@@ -195,7 +194,6 @@ export class App implements OnDestroy, OnInit {
   protected readonly fridgeStatusFilter = signal<FridgeStatusFilter>('all');
   protected readonly fridgeSort = signal<FridgeSort>('newest');
   protected readonly shoppingSearch = signal('');
-  protected readonly shoppingStatusFilter = signal<ShoppingStatusFilter>('all');
   protected readonly shoppingSort = signal<ShoppingSort>('newest');
   protected readonly activeDishFilter = signal<DishFilter>('available');
   protected readonly activeRecipeTab = signal<RecipeTab>('all');
@@ -405,17 +403,13 @@ export class App implements OnDestroy, OnInit {
   protected readonly visibleShoppingItems = computed(() => {
     const category = this.activeShoppingFilter();
     const search = this.normalizeSearch(this.shoppingSearch());
-    const status = this.shoppingStatusFilter();
     const sort = this.shoppingSort();
     return this.shoppingItems()
       .filter((item) => category === 'all' || item.category === category)
       .filter((item) => !search || this.normalizeSearch(item.name).includes(search))
-      .filter((item) => status === 'all' || (status === 'completed' ? item.checked : !item.checked))
       .sort((left, right) => this.compareShoppingItems(left, right, sort));
   });
-  protected readonly shoppingFiltersActive = computed(
-    () => Boolean(this.shoppingSearch().trim()) || this.shoppingStatusFilter() !== 'all',
-  );
+  protected readonly shoppingFiltersActive = computed(() => Boolean(this.shoppingSearch().trim()));
   protected readonly shoppingSearchPlaceholder = computed(() => {
     const category = this.activeShoppingFilter();
     return category === 'all' ? 'Искать во всех покупках' : `Искать в разделе «${this.categoryLabel(category)}»`;
@@ -684,7 +678,6 @@ export class App implements OnDestroy, OnInit {
 
   protected clearShoppingFilters(): void {
     this.shoppingSearch.set('');
-    this.shoppingStatusFilter.set('all');
   }
 
   protected setShoppingFilter(filter: ShoppingFilter): void {
@@ -2136,16 +2129,12 @@ export class App implements OnDestroy, OnInit {
       );
     }
     if (sort === 'name') return this.compareNames(left.name, right.name);
-    if (sort === 'quantity') return right.quantity - left.quantity || this.compareNames(left.name, right.name);
     return this.timestamp(right.createdAt) - this.timestamp(left.createdAt);
   }
 
   private compareShoppingItems(left: ShoppingItem, right: ShoppingItem, sort: ShoppingSort): number {
     if (sort === 'oldest') return this.timestamp(left.createdAt) - this.timestamp(right.createdAt);
     if (sort === 'name') return this.compareNames(left.name, right.name);
-    if (sort === 'quantity') {
-      return (right.quantity ?? 1) - (left.quantity ?? 1) || this.compareNames(left.name, right.name);
-    }
     if (sort === 'status') {
       return Number(left.checked) - Number(right.checked) || this.timestamp(right.createdAt) - this.timestamp(left.createdAt);
     }

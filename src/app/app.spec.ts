@@ -235,13 +235,13 @@ describe('App', () => {
       fixture.destroy();
     });
 
-    it('filters stock by expiry state and sorts it by expiry or quantity', () => {
+    it('filters stock by expiry state and sorts it by expiry or name', () => {
       const fixture = TestBed.createComponent(App);
       const app = fixture.componentInstance as any;
       app.fridgeItems.set([
-        fridgeItem('expired', 'Йогурт', 'products', '2026-09-01T00:00:00.000Z', 2, '2020-01-01'),
+        fridgeItem('expired', 'Яблоко', 'products', '2026-09-01T00:00:00.000Z', 2, '2020-01-01'),
         fridgeItem('soon', 'Молоко', 'products', '2026-09-03T00:00:00.000Z', 1, app.addDays(1)),
-        fridgeItem('no-expiry', 'Соль', 'products', '2026-09-02T00:00:00.000Z', 5),
+        fridgeItem('no-expiry', 'Абрикос', 'products', '2026-09-02T00:00:00.000Z', 5),
       ]);
 
       app.fridgeStatusFilter.set('expired');
@@ -254,12 +254,12 @@ describe('App', () => {
       app.fridgeStatusFilter.set('all');
       app.fridgeSort.set('expiry');
       expect(app.visibleFridgeItems().map((item: any) => item.id)).toEqual(['expired', 'soon', 'no-expiry']);
-      app.fridgeSort.set('quantity');
-      expect(app.visibleFridgeItems().map((item: any) => item.id)).toEqual(['no-expiry', 'expired', 'soon']);
+      app.fridgeSort.set('name');
+      expect(app.visibleFridgeItems().map((item: any) => item.id)).toEqual(['no-expiry', 'soon', 'expired']);
       fixture.destroy();
     });
 
-    it('searches, filters and sorts the current shopping section', () => {
+    it('searches and sorts the current shopping section', () => {
       const fixture = TestBed.createComponent(App);
       const app = fixture.componentInstance as any;
       app.shoppingItems.set([
@@ -272,13 +272,9 @@ describe('App', () => {
       app.shoppingSearch.set('ка');
       expect(app.visibleShoppingItems().map((item: any) => item.id)).toEqual(['potato', 'cabbage']);
 
-      app.shoppingStatusFilter.set('completed');
-      expect(app.visibleShoppingItems().map((item: any) => item.id)).toEqual(['cabbage']);
-
       app.shoppingSearch.set('');
-      app.shoppingStatusFilter.set('all');
-      app.shoppingSort.set('quantity');
-      expect(app.visibleShoppingItems().map((item: any) => item.id)).toEqual(['cabbage', 'potato']);
+      app.shoppingSort.set('status');
+      expect(app.visibleShoppingItems().map((item: any) => item.id)).toEqual(['potato', 'cabbage']);
 
       app.activeShoppingFilter.set('medicine');
       expect(app.visibleShoppingItems().map((item: any) => item.id)).toEqual(['drops']);

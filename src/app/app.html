@@ -1079,7 +1079,6 @@
                 <option value="oldest">Сначала старые</option>
                 <option value="expiry">По сроку годности</option>
                 <option value="name">По названию</option>
-                <option value="quantity">По количеству</option>
               </select>
             </label>
           </div>
@@ -1240,7 +1239,7 @@
           </button>
         </div>
 
-        <div class="inventory-tools" aria-label="Поиск, фильтры и сортировка покупок">
+        <div class="inventory-tools" aria-label="Поиск и сортировка покупок">
           <label class="search-field inventory-search">
             <span aria-hidden="true">⌕</span>
             <input
@@ -1255,21 +1254,12 @@
           </label>
           <div class="inventory-selects">
             <label>
-              <span>Статус</span>
-              <select name="shopping-status-filter" [ngModel]="shoppingStatusFilter()" (ngModelChange)="shoppingStatusFilter.set($event)">
-                <option value="all">Все позиции</option>
-                <option value="open">Нужно купить</option>
-                <option value="completed">Куплено</option>
-              </select>
-            </label>
-            <label>
               <span>Сортировка</span>
               <select name="shopping-sort" [ngModel]="shoppingSort()" (ngModelChange)="shoppingSort.set($event)">
                 <option value="newest">Сначала новые</option>
                 <option value="oldest">Сначала старые</option>
                 <option value="status">Сначала активные</option>
                 <option value="name">По названию</option>
-                <option value="quantity">По количеству</option>
               </select>
             </label>
           </div>
