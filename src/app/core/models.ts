@@ -92,6 +92,15 @@ export interface Household {
   id: string;
   name: string;
   members: AuthUser[];
+  subscription: HouseholdSubscription;
+}
+
+export interface HouseholdSubscription {
+  plan: 'free' | 'plus';
+  status: 'inactive' | 'trialing' | 'active' | 'past_due' | 'canceled' | string;
+  provider: 'none' | 'admin' | 'rustore' | 'google_play' | 'app_store' | 'web' | string;
+  currentPeriodEnd: string | null;
+  isPlus: boolean;
 }
 
 export interface AppNotification {

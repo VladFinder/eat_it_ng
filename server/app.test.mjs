@@ -23,6 +23,10 @@ before(async () => {
     CREATE TABLE "Household" (
       "id" TEXT NOT NULL PRIMARY KEY,
       "name" TEXT NOT NULL,
+      "plan" TEXT NOT NULL DEFAULT 'free',
+      "subscriptionStatus" TEXT NOT NULL DEFAULT 'inactive',
+      "subscriptionProvider" TEXT NOT NULL DEFAULT 'none',
+      "subscriptionPeriodEnd" DATETIME,
       "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "updatedAt" DATETIME NOT NULL
     )
@@ -412,6 +416,26 @@ test('account can log in and access the current user', async () => {
   });
   assert.equal(meResponse.status, 200);
   assert.equal((await meResponse.json()).user.email, 'test@example.com');
+});
+
+test('Plus test access is granted to the entire household by member email', async () => {
+  const previous = process.env.PLUS_TEST_EMAILS;
+  process.env.PLUS_TEST_EMAILS = 'test@example.com';
+
+  try {
+    const response = await request('/api/state');
+    assert.equal(response.status, 200);
+    const state = await response.json();
+    assert.deepEqual(state.household.subscription, {
+      plan: 'plus',
+      status: 'active',
+      provider: 'admin',
+      currentPeriodEnd: null,
+      isPlus: true,
+    });
+  } finally {
+    restoreEnv('PLUS_TEST_EMAILS', previous);
+  }
 });
 
 test('support ticket can be created, answered by admin, and closed', async () => {

@@ -147,10 +147,22 @@ function serializeUser(user) {
 }
 
 function serializeHousehold(household) {
+  const currentPeriodEnd = household.subscriptionPeriodEnd ?? null;
+  const subscriptionActive = ['active', 'trialing'].includes(household.subscriptionStatus);
+  const periodActive = !currentPeriodEnd || currentPeriodEnd.getTime() > Date.now();
+  const isPlus = household.plan === 'plus' && subscriptionActive && periodActive;
+
   return {
     id: household.id,
     name: household.name,
     members: household.users.map(serializeUser),
+    subscription: {
+      plan: isPlus ? 'plus' : 'free',
+      status: household.subscriptionStatus,
+      provider: household.subscriptionProvider,
+      currentPeriodEnd: currentPeriodEnd?.toISOString() ?? null,
+      isPlus,
+    },
   };
 }
 
@@ -978,7 +990,7 @@ function countByDay(items, buckets, field) {
 }
 
 async function getHousehold(prisma, householdId) {
-  const household = await prisma.household.findUnique({
+  let household = await prisma.household.findUnique({
     where: { id: householdId },
     include: { users: { orderBy: [{ displayName: 'asc' }, { email: 'asc' }] } },
   });
@@ -986,6 +998,27 @@ async function getHousehold(prisma, householdId) {
     const error = new Error('Group not found');
     error.status = 404;
     throw error;
+  }
+
+  const hasTestAccess = household.users.some((user) =>
+    plusTestEmails().has(user.email.toLowerCase()),
+  );
+  if (
+    hasTestAccess &&
+    (household.plan !== 'plus' ||
+      household.subscriptionStatus !== 'active' ||
+      household.subscriptionProvider !== 'admin')
+  ) {
+    household = await prisma.household.update({
+      where: { id: householdId },
+      data: {
+        plan: 'plus',
+        subscriptionStatus: 'active',
+        subscriptionProvider: 'admin',
+        subscriptionPeriodEnd: null,
+      },
+      include: { users: { orderBy: [{ displayName: 'asc' }, { email: 'asc' }] } },
+    });
   }
   return household;
 }
@@ -1181,10 +1214,21 @@ function isSecureRequest(request) {
 }
 
 const DEFAULT_ADMIN_EMAILS = ['vladfinder@yandex.ru', 'krisyagodka@gmail.com'];
+const DEFAULT_PLUS_TEST_EMAILS = ['vladfinder@yandex.ru'];
 
 function adminEmails() {
   return new Set(
     [DEFAULT_ADMIN_EMAILS.join(','), process.env.ADMIN_EMAILS ?? '']
+      .join(',')
+      .split(',')
+      .map((email) => email.trim().toLowerCase())
+      .filter(Boolean),
+  );
+}
+
+function plusTestEmails() {
+  return new Set(
+    [DEFAULT_PLUS_TEST_EMAILS.join(','), process.env.PLUS_TEST_EMAILS ?? '']
       .join(',')
       .split(',')
       .map((email) => email.trim().toLowerCase())

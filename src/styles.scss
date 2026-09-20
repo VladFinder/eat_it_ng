@@ -951,6 +951,15 @@ a.secondary-action {
   padding: 16px;
 }
 
+.plan-badge {
+  border-radius: 999px;
+  background: #1f2e24;
+  color: #fff;
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
 .avatar {
   display: grid;
   place-items: center;
@@ -1022,6 +1031,155 @@ a.secondary-action {
   color: var(--muted);
   font-size: 22px;
   line-height: 1;
+}
+
+.subscription-hero {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface);
+  padding: 18px;
+}
+
+.subscription-hero.active {
+  border-color: #83a98d;
+  background: #eef6eb;
+}
+
+.subscription-hero-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.subscription-hero-head > span {
+  border-radius: 999px;
+  background: #dcebd8;
+  color: #275137;
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.subscription-hero p,
+.subscription-hero strong {
+  margin: 0;
+}
+
+.subscription-hero > p {
+  color: var(--muted);
+}
+
+.plus-teaser {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr) 18px;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  border: 1px solid #83a98d;
+  border-radius: 18px;
+  background: #eef6eb;
+  color: var(--text);
+  padding: 14px;
+  text-align: left;
+}
+
+.plus-teaser-icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: #1f2e24;
+  color: #fff;
+  font-size: 18px;
+}
+
+.plus-teaser-copy,
+.plus-teaser-title {
+  display: flex;
+}
+
+.plus-teaser-copy {
+  min-width: 0;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.plus-teaser-title {
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.plus-teaser-title small {
+  border-radius: 999px;
+  background: #dcebd8;
+  color: #275137;
+  padding: 5px 8px;
+  font-size: 10px;
+  font-weight: 900;
+}
+
+.plus-teaser-copy > span:not(.plus-teaser-title) {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.plus-teaser-copy .plus-teaser-features {
+  color: var(--primary);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.plus-feature-list {
+  display: grid;
+  gap: 10px;
+}
+
+.plus-feature-list article {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr);
+  align-items: center;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+  padding: 14px;
+}
+
+.plus-feature-list article > span {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-weight: 900;
+}
+
+.plus-feature-list p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.plus-coming-soon {
+  border-radius: 16px;
+  background: #1f2e24;
+  color: #fff;
+  padding: 16px;
+}
+
+.plus-coming-soon p {
+  margin: 6px 0 0;
+  color: #cbd8cc;
+  font-size: 13px;
+  line-height: 1.45;
 }
 
 .profile-menu .danger-menu-item {

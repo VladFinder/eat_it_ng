@@ -86,6 +86,10 @@ model DishIngredient {
 model Household {
   id                   String                @id @default(cuid())
   name                 String
+  plan                 String                @default("free")
+  subscriptionStatus   String                @default("inactive")
+  subscriptionProvider String                @default("none")
+  subscriptionPeriodEnd DateTime?
   createdAt            DateTime              @default(now())
   updatedAt            DateTime              @updatedAt
   users                User[]

@@ -192,6 +192,20 @@ async function seedLocalRecipeCatalog(prismaClient) {
 }
 
 export async function ensureDatabaseSchema(prismaClient = prisma) {
+  await ensureColumn(prismaClient, 'Household', 'plan', "TEXT NOT NULL DEFAULT 'free'");
+  await ensureColumn(
+    prismaClient,
+    'Household',
+    'subscriptionStatus',
+    "TEXT NOT NULL DEFAULT 'inactive'",
+  );
+  await ensureColumn(
+    prismaClient,
+    'Household',
+    'subscriptionProvider',
+    "TEXT NOT NULL DEFAULT 'none'",
+  );
+  await ensureColumn(prismaClient, 'Household', 'subscriptionPeriodEnd', 'DATETIME');
   await ensureColumn(prismaClient, 'FridgeItem', 'reminderDays', 'INTEGER NOT NULL DEFAULT 1');
   await ensureColumn(prismaClient, 'FridgeItem', 'category', "TEXT NOT NULL DEFAULT 'products'");
   await ensureColumn(prismaClient, 'ShoppingItem', 'category', "TEXT NOT NULL DEFAULT 'products'");

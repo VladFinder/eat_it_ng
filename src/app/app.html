@@ -1942,10 +1942,29 @@
             <h2>{{ currentUser()?.displayName }}</h2>
             <p>{{ currentUser()?.email }}</p>
           </div>
-          <span class="row-chevron">›</span>
+          @if (hasPlus()) {
+            <span class="plan-badge">Plus</span>
+          } @else {
+            <span class="row-chevron">›</span>
+          }
         </div>
 
         @if (profileSection() === 'menu') {
+          <button class="plus-teaser" type="button" (click)="setProfileSection('subscription')">
+            <span class="plus-teaser-icon">★</span>
+            <span class="plus-teaser-copy">
+              <span class="plus-teaser-title">
+                <strong>Homie Plus</strong>
+                <small>{{ hasPlus() ? 'Ранний доступ' : 'Скоро' }}</small>
+              </span>
+              <span>Больше возможностей для общего дома</span>
+              <span class="plus-teaser-features"
+                >Умные рецепты · Гибкие уведомления · Аналитика</span
+              >
+            </span>
+            <span class="row-chevron">›</span>
+          </button>
+
           <div class="profile-menu">
             <button type="button" (click)="setProfileSection('household')">
               <span>⌂</span>
@@ -1982,6 +2001,68 @@
               Удалить аккаунт
               <strong>›</strong>
             </button>
+          </div>
+        }
+
+        @if (profileSection() === 'subscription') {
+          <div class="subscreen-head">
+            <button class="back-button" type="button" (click)="setProfileSection('menu')">‹</button>
+            <div>
+              <p class="section-label">Профиль</p>
+              <h2>Homie Plus</h2>
+            </div>
+          </div>
+
+          <div class="subscription-hero" [class.active]="hasPlus()">
+            <div class="subscription-hero-head">
+              <div>
+                <p class="section-label">Подписка для общего дома</p>
+                <h2>Больше пользы для всей семьи</h2>
+              </div>
+              <span>{{ hasPlus() ? 'Ранний доступ' : 'Скоро' }}</span>
+            </div>
+            @if (hasPlus()) {
+              <p>{{ subscriptionSource() }}</p>
+              <strong>Тестовый Plus уже действует для всех участников вашего дома.</strong>
+            } @else {
+              <p>Мы готовим запуск. Основные функции Homie останутся бесплатными.</p>
+            }
+          </div>
+
+          <div class="plus-feature-list">
+            <article>
+              <span>✦</span>
+              <div>
+                <strong>Умные рецепты</strong>
+                <p>Подбор блюд из домашних продуктов и планирование меню на неделю.</p>
+              </div>
+            </article>
+            <article>
+              <span>◉</span>
+              <div>
+                <strong>Гибкие уведомления</strong>
+                <p>Персональные правила сроков и удобное расписание для всей семьи.</p>
+              </div>
+            </article>
+            <article>
+              <span>↗</span>
+              <div>
+                <strong>История и аналитика</strong>
+                <p>Расход продуктов, семейная активность и оценка сэкономленных покупок.</p>
+              </div>
+            </article>
+            <article>
+              <span>▣</span>
+              <div>
+                <strong>Быстрое добавление</strong>
+                <p>Импорт рецептов, распознавание чеков и сканирование штрихкодов.</p>
+              </div>
+            </article>
+          </div>
+
+          <div class="plus-coming-soon">
+            <strong>Подписка появится скоро</strong>
+            <p>До запуска можно пользоваться Homie как обычно. Мы заранее сообщим об условиях.</p>
           </div>
         }
 

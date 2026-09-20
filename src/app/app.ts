@@ -29,7 +29,13 @@ type FridgeSort = 'newest' | 'oldest' | 'expiry' | 'name';
 type ShoppingSort = 'newest' | 'oldest' | 'name' | 'status';
 type DishFilter = 'available' | 'almost' | 'planned';
 type AuthMode = 'login' | 'register';
-type ProfileSection = 'menu' | 'household' | 'notifications' | 'support' | 'feedback';
+type ProfileSection =
+  | 'menu'
+  | 'subscription'
+  | 'household'
+  | 'notifications'
+  | 'support'
+  | 'feedback';
 type DevSection =
   | 'overview'
   | 'users'
@@ -444,6 +450,16 @@ export class App implements OnDestroy, OnInit {
     this.shoppingItems().some((item) => item.checked),
   );
   protected readonly groupMembers = computed(() => this.household()?.members ?? []);
+  protected readonly hasPlus = computed(() => this.household()?.subscription?.isPlus ?? false);
+  protected readonly subscriptionSource = computed(() => {
+    const provider = this.household()?.subscription?.provider;
+    if (provider === 'admin') return 'Тестовый доступ команды Homie';
+    if (provider === 'rustore') return 'Подписка RuStore';
+    if (provider === 'google_play') return 'Подписка Google Play';
+    if (provider === 'app_store') return 'Подписка App Store';
+    if (provider === 'web') return 'Подписка на сайте';
+    return 'Бесплатный тариф';
+  });
   protected readonly groupTitle = computed(() => this.household()?.name || 'Моя группа');
   protected readonly groupSummary = computed(() => {
     const count = this.groupMembers().length;
