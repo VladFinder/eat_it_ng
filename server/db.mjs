@@ -206,6 +206,16 @@ export async function ensureDatabaseSchema(prismaClient = prisma) {
     "TEXT NOT NULL DEFAULT 'none'",
   );
   await ensureColumn(prismaClient, 'Household', 'subscriptionPeriodEnd', 'DATETIME');
+  await ensureColumn(prismaClient, 'User', 'notifyExpiry', 'BOOLEAN NOT NULL DEFAULT true');
+  await ensureColumn(prismaClient, 'User', 'notifyShopping', 'BOOLEAN NOT NULL DEFAULT true');
+  await ensureColumn(prismaClient, 'User', 'quietHoursStart', 'TEXT');
+  await ensureColumn(prismaClient, 'User', 'quietHoursEnd', 'TEXT');
+  await ensureColumn(
+    prismaClient,
+    'User',
+    'timezone',
+    "TEXT NOT NULL DEFAULT 'Europe/Moscow'",
+  );
   await ensureColumn(prismaClient, 'FridgeItem', 'reminderDays', 'INTEGER NOT NULL DEFAULT 1');
   await ensureColumn(prismaClient, 'FridgeItem', 'category', "TEXT NOT NULL DEFAULT 'products'");
   await ensureColumn(prismaClient, 'ShoppingItem', 'category', "TEXT NOT NULL DEFAULT 'products'");
@@ -311,6 +321,21 @@ export async function ensureDatabaseSchema(prismaClient = prisma) {
       FOREIGN KEY ("productId") REFERENCES "Product" ("id") ON DELETE CASCADE
     )`,
   );
+  await ensureTable(
+    prismaClient,
+    'MealPlanEntry',
+    `CREATE TABLE "MealPlanEntry" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "householdId" TEXT NOT NULL,
+      "dishId" TEXT NOT NULL,
+      "date" DATETIME NOT NULL,
+      "mealType" TEXT NOT NULL DEFAULT 'dinner',
+      "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" DATETIME NOT NULL,
+      FOREIGN KEY ("householdId") REFERENCES "Household" ("id") ON DELETE CASCADE,
+      FOREIGN KEY ("dishId") REFERENCES "Dish" ("id") ON DELETE CASCADE
+    )`,
+  );
   await prismaClient.$executeRawUnsafe(
     'CREATE UNIQUE INDEX IF NOT EXISTS "HouseholdInvitation_householdId_inviteeId_status_key" ON "HouseholdInvitation"("householdId", "inviteeId", "status")',
   );
@@ -358,6 +383,15 @@ export async function ensureDatabaseSchema(prismaClient = prisma) {
   );
   await prismaClient.$executeRawUnsafe(
     'CREATE INDEX IF NOT EXISTS "DishIngredient_productId_idx" ON "DishIngredient"("productId")',
+  );
+  await prismaClient.$executeRawUnsafe(
+    'CREATE UNIQUE INDEX IF NOT EXISTS "MealPlanEntry_householdId_date_mealType_key" ON "MealPlanEntry"("householdId", "date", "mealType")',
+  );
+  await prismaClient.$executeRawUnsafe(
+    'CREATE INDEX IF NOT EXISTS "MealPlanEntry_householdId_date_idx" ON "MealPlanEntry"("householdId", "date")',
+  );
+  await prismaClient.$executeRawUnsafe(
+    'CREATE INDEX IF NOT EXISTS "MealPlanEntry_dishId_idx" ON "MealPlanEntry"("dishId")',
   );
   await seedLocalRecipeCatalog(prismaClient);
 }

@@ -15,6 +15,9 @@ import {
   FridgeItem,
   Household,
   ItemCategory,
+  MealPlanEntry,
+  MealType,
+  NotificationPreferences,
   RecipeShoppingResult,
   RecipeSuggestion,
   ShoppingInput,
@@ -208,6 +211,18 @@ export class ApiService {
     );
   }
 
+  getMealPlan(): Observable<{ entries: MealPlanEntry[] }> {
+    return this.http.get<{ entries: MealPlanEntry[] }>(`${this.baseUrl}/meal-plan`, this.options());
+  }
+
+  planMeal(input: { dishId: string; date: string; mealType: MealType }): Observable<MealPlanEntry> {
+    return this.http.post<MealPlanEntry>(`${this.baseUrl}/meal-plan`, input, this.options());
+  }
+
+  deletePlannedMeal(id: string): Observable<void> {
+    return this.http.delete<void>(`${this.baseUrl}/meal-plan/${id}`, this.options());
+  }
+
   deleteDish(id: string): Observable<void> {
     return this.http.delete<void>(`${this.baseUrl}/dishes/${id}`, this.options());
   }
@@ -247,6 +262,23 @@ export class ApiService {
     return this.http.patch<AppNotification>(
       `${this.baseUrl}/notifications/${id}`,
       { read },
+      this.options(),
+    );
+  }
+
+  getNotificationPreferences(): Observable<NotificationPreferences> {
+    return this.http.get<NotificationPreferences>(
+      `${this.baseUrl}/notification-preferences`,
+      this.options(),
+    );
+  }
+
+  updateNotificationPreferences(
+    preferences: NotificationPreferences,
+  ): Observable<NotificationPreferences> {
+    return this.http.patch<NotificationPreferences>(
+      `${this.baseUrl}/notification-preferences`,
+      preferences,
       this.options(),
     );
   }

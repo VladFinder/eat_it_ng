@@ -14,6 +14,9 @@ import {
   FridgeItem,
   Household,
   ItemCategory,
+  MealPlanEntry,
+  MealType,
+  NotificationPreferences,
   RecipeSuggestion,
   ShoppingItem,
   SupportMessage,
@@ -218,9 +221,14 @@ export class App implements OnDestroy, OnInit {
   protected readonly dishesLoading = signal(false);
   protected readonly dishesError = signal('');
   protected readonly cookingDish = signal<DishIdea | null>(null);
+  protected readonly planningDish = signal<{ id: string; title: string } | null>(null);
   protected readonly cookingStepIndex = signal(0);
   protected readonly toastMessage = signal('');
   protected readonly today = new Date().toISOString().slice(0, 10);
+  protected readonly mealPlanForm = {
+    date: this.today,
+    mealType: 'dinner' as MealType,
+  };
 
   protected readonly newFridgeItem = {
     name: '',
@@ -278,9 +286,17 @@ export class App implements OnDestroy, OnInit {
     password: '',
   };
   protected readonly household = signal<Household | null>(null);
+  protected readonly mealPlan = signal<MealPlanEntry[]>([]);
   protected readonly groupName = signal('');
   protected readonly memberEmail = signal('');
   protected readonly notifications = signal<AppNotification[]>([]);
+  protected readonly notificationPreferences = signal<NotificationPreferences>({
+    notifyExpiry: true,
+    notifyShopping: true,
+    quietHoursStart: '22:00',
+    quietHoursEnd: '08:00',
+    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Europe/Moscow',
+  });
   protected readonly unreadNotifications = signal(0);
   protected readonly notificationsOpen = signal(false);
   protected readonly notificationsEnabled = signal(
@@ -548,6 +564,19 @@ export class App implements OnDestroy, OnInit {
       return false;
     });
   });
+  protected readonly mealPlanDays = computed(() =>
+    Array.from({ length: 7 }, (_, index) => {
+      const date = new Date(`${this.today}T12:00:00`);
+      date.setDate(date.getDate() + index);
+      const value = date.toISOString().slice(0, 10);
+      return {
+        value,
+        weekday: date.toLocaleDateString('ru-RU', { weekday: 'short' }),
+        label: date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' }),
+        entries: this.mealPlan().filter((entry) => entry.date === value),
+      };
+    }),
+  );
 
   private readonly swipe = signal<SwipeState | null>(null);
   protected readonly committingSwipe = signal<{ id: string; action: SwipeAction } | null>(null);
@@ -715,7 +744,7 @@ export class App implements OnDestroy, OnInit {
       this.profileSection.set('menu');
     }
     if (tab === 'dishes') {
-      void this.loadUserDishes();
+      void Promise.all([this.loadUserDishes(), this.loadMealPlan()]);
     }
     if (tab === 'recipes') {
       void Promise.all([this.loadRecipeCatalog(), this.loadUserDishes()]);
@@ -748,6 +777,7 @@ export class App implements OnDestroy, OnInit {
 
   protected setDishFilter(filter: DishFilter): void {
     this.activeDishFilter.set(filter);
+    if (filter === 'planned') void this.loadMealPlan();
   }
 
   protected setDevSection(section: DevSection): void {
@@ -1074,6 +1104,19 @@ export class App implements OnDestroy, OnInit {
     await this.enablePushNotifications();
   }
 
+  protected async updateNotificationPreferences(
+    patch: Partial<NotificationPreferences>,
+  ): Promise<void> {
+    const next = { ...this.notificationPreferences(), ...patch };
+    try {
+      const saved = await firstValueFrom(this.api.updateNotificationPreferences(next));
+      this.notificationPreferences.set(saved);
+      this.showToast('Настройки уведомлений сохранены');
+    } catch (error) {
+      this.apiError.set(this.errorMessage(error, 'Не удалось сохранить настройки уведомлений.'));
+    }
+  }
+
   protected async enableNotificationsFromOnboarding(): Promise<void> {
     if (this.notificationsEnabled() || (await this.enablePushNotifications())) {
       this.finishOnboarding();
@@ -1295,6 +1338,74 @@ export class App implements OnDestroy, OnInit {
     } finally {
       this.dishesLoading.set(false);
     }
+  }
+
+  protected async loadMealPlan(): Promise<void> {
+    if (!this.hasPlus()) {
+      this.mealPlan.set([]);
+      return;
+    }
+    try {
+      const result = await firstValueFrom(this.api.getMealPlan());
+      this.mealPlan.set(result.entries);
+    } catch (error) {
+      this.dishesError.set(this.errorMessage(error, 'Не удалось загрузить недельное меню.'));
+    }
+  }
+
+  protected openMealPlanner(dish: { id?: string; title: string }): void {
+    if (!this.hasPlus()) {
+      this.activeDish.set(null);
+      this.activeRecipe.set(null);
+      this.activeTab.set('profile');
+      this.profileSection.set('subscription');
+      return;
+    }
+    if (!dish.id) return;
+    this.mealPlanForm.date = this.today;
+    this.mealPlanForm.mealType = 'dinner';
+    this.planningDish.set({ id: dish.id, title: dish.title });
+  }
+
+  protected closeMealPlanner(): void {
+    this.planningDish.set(null);
+  }
+
+  protected async savePlannedMeal(): Promise<void> {
+    const dish = this.planningDish();
+    if (!dish || this.saving()) return;
+
+    await this.runMutation(async () => {
+      const entry = await firstValueFrom(
+        this.api.planMeal({
+          dishId: dish.id,
+          date: this.mealPlanForm.date,
+          mealType: this.mealPlanForm.mealType,
+        }),
+      );
+      this.mealPlan.update((entries) =>
+        [
+          ...entries.filter((item) => item.date !== entry.date || item.mealType !== entry.mealType),
+          entry,
+        ].sort((left, right) => left.date.localeCompare(right.date)),
+      );
+      this.planningDish.set(null);
+      this.showToast('Блюдо добавлено в недельное меню');
+    });
+  }
+
+  protected async deletePlannedMeal(entry: MealPlanEntry): Promise<void> {
+    await this.runMutation(async () => {
+      await firstValueFrom(this.api.deletePlannedMeal(entry.id));
+      this.mealPlan.update((entries) => entries.filter((item) => item.id !== entry.id));
+      this.showToast('Блюдо убрано из меню');
+    });
+  }
+
+  protected mealTypeLabel(mealType: MealType): string {
+    if (mealType === 'breakfast') return 'Завтрак';
+    if (mealType === 'lunch') return 'Обед';
+    return 'Ужин';
   }
 
   private async createUserDish(input: {
@@ -1887,7 +1998,12 @@ export class App implements OnDestroy, OnInit {
       this.shoppingItems.set(state.shoppingItems);
       this.household.set(state.household);
       this.groupName.set(state.household.name);
-      await Promise.all([this.loadNotifications(), this.loadSupportTickets()]);
+      await Promise.all([
+        this.loadNotifications(),
+        this.loadSupportTickets(),
+        this.loadMealPlan(),
+        this.loadNotificationPreferences(),
+      ]);
     } catch {
       this.apiError.set('Не удалось загрузить данные. Проверьте подключение к серверу.');
     } finally {
@@ -1934,6 +2050,14 @@ export class App implements OnDestroy, OnInit {
     this.unreadNotifications.set(
       notifications.filter((notification) => !notification.readAt).length,
     );
+  }
+
+  private async loadNotificationPreferences(): Promise<void> {
+    try {
+      this.notificationPreferences.set(await firstValueFrom(this.api.getNotificationPreferences()));
+    } catch {
+      // Keep defaults when an older API is still serving the app during deployment.
+    }
   }
 
   private async loadSupportTickets(): Promise<void> {

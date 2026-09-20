@@ -290,6 +290,49 @@
       </section>
     }
 
+    @if (!devMode() && planningDish()) {
+      <button
+        class="notification-backdrop"
+        type="button"
+        aria-label="Закрыть планирование"
+        (click)="closeMealPlanner()"
+      ></button>
+      <section class="panel ticket-dialog meal-plan-dialog" role="dialog" aria-modal="true">
+        <div class="notifications-head">
+          <div>
+            <p class="section-label">Недельное меню</p>
+            <h2>{{ planningDish()?.title }}</h2>
+          </div>
+          <button class="icon-button close-button" type="button" (click)="closeMealPlanner()">
+            ×
+          </button>
+        </div>
+        <form class="meal-plan-form" (ngSubmit)="savePlannedMeal()">
+          <label>
+            <span>Дата</span>
+            <input
+              name="meal-plan-date"
+              type="date"
+              [(ngModel)]="mealPlanForm.date"
+              [min]="today"
+              required
+            />
+          </label>
+          <label>
+            <span>Приём пищи</span>
+            <select name="meal-plan-type" [(ngModel)]="mealPlanForm.mealType">
+              <option value="breakfast">Завтрак</option>
+              <option value="lunch">Обед</option>
+              <option value="dinner">Ужин</option>
+            </select>
+          </label>
+          <button class="primary-action" type="submit" [disabled]="saving()">
+            Добавить в меню
+          </button>
+        </form>
+      </section>
+    }
+
     @if (!devMode() && activeDish()) {
       <button
         class="notification-backdrop"
@@ -332,6 +375,9 @@
           </div>
         }
         <div class="detail-actions">
+          <button class="secondary-action" type="button" (click)="openMealPlanner(activeDish()!)">
+            {{ hasPlus() ? 'Запланировать' : 'Запланировать с Plus' }}
+          </button>
           @if (activeDish()?.missedIngredients?.length) {
             <button
               class="primary-action"
@@ -418,6 +464,9 @@
           </div>
         }
         <div class="detail-actions">
+          <button class="secondary-action" type="button" (click)="openMealPlanner(activeRecipe()!)">
+            {{ hasPlus() ? 'Запланировать' : 'Запланировать с Plus' }}
+          </button>
           @if (activeRecipe()?.missedIngredients?.length) {
             <button
               class="primary-action"
@@ -1766,50 +1815,104 @@
             Запланировано
           </button>
         </div>
-        @let mainDish = filteredRecipeDishIdeas()[0];
-        @if (dishesLoading()) {
-          <div class="empty-state">
-            <h3>Подбираем блюда</h3>
-            <p>Смотрим блюда вашей группы.</p>
-          </div>
-        } @else if (mainDish) {
-          <button class="dish-card action-card" type="button" (click)="openDish(mainDish)">
-            <img class="dish-image" [src]="recipeImage(mainDish.title, mainDish.image)" alt="" />
-            <p class="section-label">{{ mainDish.subtitle }}</p>
-            <h2>{{ mainDish.title }}</h2>
-            <p>{{ mainDish.description }}</p>
-            <span class="primary-action compact-action">Открыть блюдо</span>
-          </button>
-        } @else {
-          <div class="empty-state">
-            <h3>Пока нет подходящих блюд</h3>
-            <p>
-              Добавьте свое блюдо и список ингредиентов, чтобы видеть совпадения с продуктами
-              группы.
-            </p>
-          </div>
-        }
-        @if (dishesError()) {
-          <p class="form-error">{{ dishesError() }}</p>
-        }
-        <div class="section-heading compact-heading">
-          <h2>Блюда группы</h2>
-        </div>
-        <div class="list">
-          @for (dish of filteredRecipeDishIdeas().slice(1); track dish.id ?? dish.title) {
-            <button class="fridge-row action-card" type="button" (click)="openDish(dish)">
-              <img class="item-thumb" [src]="recipeImage(dish.title, dish.image)" alt="" />
-              <div class="item-content">
-                <h3>{{ dish.title }}</h3>
-                <p>{{ dish.subtitle }}</p>
-              </div>
-              <span class="status fresh">{{ dish.badge }}</span>
+        @if (activeDishFilter() === 'planned') {
+          @if (hasPlus()) {
+            <div class="meal-plan-week">
+              @for (day of mealPlanDays(); track day.value) {
+                <section class="meal-plan-day">
+                  <header>
+                    <strong>{{ day.weekday }}</strong>
+                    <span>{{ day.label }}</span>
+                  </header>
+                  @for (entry of day.entries; track entry.id) {
+                    <article class="planned-meal">
+                      <img [src]="recipeImage(entry.dish.title, entry.dish.image)" alt="" />
+                      <div>
+                        <span>{{ mealTypeLabel(entry.mealType) }}</span>
+                        <strong>{{ entry.dish.title }}</strong>
+                      </div>
+                      <button
+                        class="icon-button"
+                        type="button"
+                        aria-label="Убрать блюдо из меню"
+                        [disabled]="saving()"
+                        (click)="deletePlannedMeal(entry)"
+                      >
+                        ×
+                      </button>
+                    </article>
+                  } @empty {
+                    <button
+                      class="meal-plan-empty"
+                      type="button"
+                      (click)="setDishFilter('available')"
+                    >
+                      + Выбрать блюдо
+                    </button>
+                  }
+                </section>
+              }
+            </div>
+          } @else {
+            <button
+              class="plus-teaser"
+              type="button"
+              (click)="setTab('profile'); setProfileSection('subscription')"
+            >
+              <span class="plus-teaser-icon">★</span>
+              <span class="plus-teaser-copy">
+                <strong>Недельное меню доступно в Homie Plus</strong>
+                <span>Планируйте завтраки, обеды и ужины для всей семьи.</span>
+              </span>
+              <span class="row-chevron">›</span>
             </button>
           }
-        </div>
-        <button class="primary-action create-recipe-button" type="button" (click)="createDish()">
-          + Добавить блюдо
-        </button>
+        } @else {
+          @let mainDish = filteredRecipeDishIdeas()[0];
+          @if (dishesLoading()) {
+            <div class="empty-state">
+              <h3>Подбираем блюда</h3>
+              <p>Смотрим блюда вашей группы.</p>
+            </div>
+          } @else if (mainDish) {
+            <button class="dish-card action-card" type="button" (click)="openDish(mainDish)">
+              <img class="dish-image" [src]="recipeImage(mainDish.title, mainDish.image)" alt="" />
+              <p class="section-label">{{ mainDish.subtitle }}</p>
+              <h2>{{ mainDish.title }}</h2>
+              <p>{{ mainDish.description }}</p>
+              <span class="primary-action compact-action">Открыть блюдо</span>
+            </button>
+          } @else {
+            <div class="empty-state">
+              <h3>Пока нет подходящих блюд</h3>
+              <p>
+                Добавьте свое блюдо и список ингредиентов, чтобы видеть совпадения с продуктами
+                группы.
+              </p>
+            </div>
+          }
+          @if (dishesError()) {
+            <p class="form-error">{{ dishesError() }}</p>
+          }
+          <div class="section-heading compact-heading">
+            <h2>Блюда группы</h2>
+          </div>
+          <div class="list">
+            @for (dish of filteredRecipeDishIdeas().slice(1); track dish.id ?? dish.title) {
+              <button class="fridge-row action-card" type="button" (click)="openDish(dish)">
+                <img class="item-thumb" [src]="recipeImage(dish.title, dish.image)" alt="" />
+                <div class="item-content">
+                  <h3>{{ dish.title }}</h3>
+                  <p>{{ dish.subtitle }}</p>
+                </div>
+                <span class="status fresh">{{ dish.badge }}</span>
+              </button>
+            }
+          </div>
+          <button class="primary-action create-recipe-button" type="button" (click)="createDish()">
+            + Добавить блюдо
+          </button>
+        }
       </section>
     }
 
@@ -2152,28 +2255,67 @@
               На iPhone уведомления доступны для Homie, добавленного на экран «Домой». Разрешение
               запрашивается только после нажатия на переключатель.
             </p>
-            <div class="setting-row static">
+            <button
+              class="setting-row"
+              type="button"
+              (click)="
+                updateNotificationPreferences({
+                  notifyExpiry: !notificationPreferences().notifyExpiry,
+                })
+              "
+            >
               <div>
-                <strong>Скоро истекает срок</strong>
-                <p>По сроку, указанному у товара</p>
+                <strong>Срок годности</strong>
+                <p>{{ notificationPreferences().notifyExpiry ? 'Включены' : 'Выключены' }}</p>
+              </div>
+              <span class="toggle" [class.active]="notificationPreferences().notifyExpiry">
+                <i></i>
+              </span>
+            </button>
+            <button
+              class="setting-row"
+              type="button"
+              (click)="
+                updateNotificationPreferences({
+                  notifyShopping: !notificationPreferences().notifyShopping,
+                })
+              "
+            >
+              <div>
+                <strong>Изменения покупок</strong>
+                <p>{{ notificationPreferences().notifyShopping ? 'Включены' : 'Выключены' }}</p>
+              </div>
+              <span class="toggle" [class.active]="notificationPreferences().notifyShopping">
+                <i></i>
+              </span>
+            </button>
+            <div class="quiet-hours-row">
+              <div>
+                <strong>Тихие часы</strong>
+                <p>Push не будут приходить в выбранный период</p>
+              </div>
+              <div class="quiet-hours-inputs">
+                <input
+                  type="time"
+                  aria-label="Начало тихих часов"
+                  [ngModel]="notificationPreferences().quietHoursStart || ''"
+                  (ngModelChange)="
+                    updateNotificationPreferences({ quietHoursStart: $event || null })
+                  "
+                />
+                <span>—</span>
+                <input
+                  type="time"
+                  aria-label="Конец тихих часов"
+                  [ngModel]="notificationPreferences().quietHoursEnd || ''"
+                  (ngModelChange)="updateNotificationPreferences({ quietHoursEnd: $event || null })"
+                />
               </div>
             </div>
             <div class="setting-row static">
               <div>
-                <strong>Добавили в покупки</strong>
-                <p>Сразу, если это сделал другой участник семьи</p>
-              </div>
-            </div>
-            <div class="setting-row static">
-              <div>
-                <strong>Убрали из покупок</strong>
-                <p>Сразу, если это сделал другой участник семьи</p>
-              </div>
-            </div>
-            <div class="setting-row static">
-              <div>
-                <strong>Советы и идеи</strong>
-                <p>Раз в неделю</p>
+                <strong>Часовой пояс</strong>
+                <p>{{ notificationPreferences().timezone }}</p>
               </div>
             </div>
           </div>

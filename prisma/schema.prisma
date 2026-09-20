@@ -63,6 +63,7 @@ model Dish {
   updatedAt    DateTime         @updatedAt
   household    Household?       @relation(fields: [householdId], references: [id], onDelete: Cascade)
   ingredients  DishIngredient[]
+  mealPlanEntries MealPlanEntry[]
 
   @@unique([source, externalId])
   @@index([householdId, updatedAt])
@@ -96,7 +97,24 @@ model Household {
   fridgeItems          FridgeItem[]
   shoppingItems        ShoppingItem[]
   dishes               Dish[]
+  mealPlanEntries      MealPlanEntry[]
   householdInvitations HouseholdInvitation[]
+}
+
+model MealPlanEntry {
+  id          String    @id @default(cuid())
+  householdId String
+  dishId      String
+  date        DateTime
+  mealType    String    @default("dinner")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  dish        Dish      @relation(fields: [dishId], references: [id], onDelete: Cascade)
+
+  @@unique([householdId, date, mealType])
+  @@index([householdId, date])
+  @@index([dishId])
 }
 
 model User {
@@ -107,6 +125,11 @@ model User {
   passwordHash    String?
   authProvider    String                @default("password")
   providerSubject String?
+  notifyExpiry     Boolean               @default(true)
+  notifyShopping   Boolean               @default(true)
+  quietHoursStart  String?
+  quietHoursEnd    String?
+  timezone         String                @default("Europe/Moscow")
   createdAt       DateTime              @default(now())
   updatedAt       DateTime              @updatedAt
   household       Household             @relation(fields: [householdId], references: [id], onDelete: Cascade)

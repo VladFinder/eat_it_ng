@@ -67,6 +67,23 @@ export interface RecipeShoppingResult {
   skippedCount: number;
 }
 
+export type MealType = 'breakfast' | 'lunch' | 'dinner';
+
+export interface MealPlanEntry {
+  id: string;
+  date: string;
+  mealType: MealType;
+  createdAt: string;
+  updatedAt: string;
+  dish: {
+    id: string;
+    title: string;
+    image: string | null;
+    subtitle: string | null;
+    source: string;
+  };
+}
+
 export interface AuthUser {
   id: string;
   email: string;
@@ -116,6 +133,14 @@ export interface AppNotification {
     expiresAt?: string;
   } | null;
   createdAt: string;
+}
+
+export interface NotificationPreferences {
+  notifyExpiry: boolean;
+  notifyShopping: boolean;
+  quietHoursStart: string | null;
+  quietHoursEnd: string | null;
+  timezone: string;
 }
 
 export type FridgeInput = Pick<

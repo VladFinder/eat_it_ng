@@ -35,6 +35,7 @@ Status legend: `[x]` implemented, `[~]` in progress, `[ ]` planned.
 - [x] Recipe search and filters for availability, ownership, and saved recipes.
 - [x] Add missing ingredients to the shopping list without duplicates.
 - [x] Prioritize recipes that use products approaching expiration.
+- [x] Household weekly meal plan for breakfast, lunch, and dinner.
 
 ## Stage 4: Dish matching and notifications - in progress
 

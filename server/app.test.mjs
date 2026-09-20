@@ -40,6 +40,11 @@ before(async () => {
       "passwordHash" TEXT,
       "authProvider" TEXT NOT NULL DEFAULT 'password',
       "providerSubject" TEXT,
+      "notifyExpiry" BOOLEAN NOT NULL DEFAULT true,
+      "notifyShopping" BOOLEAN NOT NULL DEFAULT true,
+      "quietHoursStart" TEXT,
+      "quietHoursEnd" TEXT,
+      "timezone" TEXT NOT NULL DEFAULT 'Europe/Moscow',
       "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
       "updatedAt" DATETIME NOT NULL,
       FOREIGN KEY ("householdId") REFERENCES "Household" ("id") ON DELETE CASCADE
@@ -234,6 +239,23 @@ before(async () => {
   await prisma.$executeRawUnsafe(`
     CREATE UNIQUE INDEX "Dish_source_externalId_key"
     ON "Dish"("source", "externalId")
+  `);
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE "MealPlanEntry" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "householdId" TEXT NOT NULL,
+      "dishId" TEXT NOT NULL,
+      "date" DATETIME NOT NULL,
+      "mealType" TEXT NOT NULL DEFAULT 'dinner',
+      "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" DATETIME NOT NULL,
+      FOREIGN KEY ("householdId") REFERENCES "Household" ("id") ON DELETE CASCADE,
+      FOREIGN KEY ("dishId") REFERENCES "Dish" ("id") ON DELETE CASCADE
+    )
+  `);
+  await prisma.$executeRawUnsafe(`
+    CREATE UNIQUE INDEX "MealPlanEntry_householdId_date_mealType_key"
+    ON "MealPlanEntry"("householdId", "date", "mealType")
   `);
   await prisma.$executeRawUnsafe(`
     CREATE TABLE "DishIngredient" (
@@ -436,6 +458,42 @@ test('Plus test access is granted to the entire household by member email', asyn
   } finally {
     restoreEnv('PLUS_TEST_EMAILS', previous);
   }
+});
+
+test('notification preferences control expiry and quiet hours', async () => {
+  const updateResponse = await request('/api/notification-preferences', {
+    method: 'PATCH',
+    body: JSON.stringify({
+      notifyExpiry: false,
+      notifyShopping: true,
+      quietHoursStart: '23:00',
+      quietHoursEnd: '07:00',
+      timezone: 'Asia/Yekaterinburg',
+    }),
+  });
+  assert.equal(updateResponse.status, 200);
+  assert.deepEqual(await updateResponse.json(), {
+    notifyExpiry: false,
+    notifyShopping: true,
+    quietHoursStart: '23:00',
+    quietHoursEnd: '07:00',
+    timezone: 'Asia/Yekaterinburg',
+  });
+
+  const getResponse = await request('/api/notification-preferences');
+  assert.equal(getResponse.status, 200);
+  assert.equal((await getResponse.json()).notifyExpiry, false);
+
+  await request('/api/notification-preferences', {
+    method: 'PATCH',
+    body: JSON.stringify({
+      notifyExpiry: true,
+      notifyShopping: true,
+      quietHoursStart: null,
+      quietHoursEnd: null,
+      timezone: 'Europe/Moscow',
+    }),
+  });
 });
 
 test('support ticket can be created, answered by admin, and closed', async () => {
@@ -718,6 +776,34 @@ test('household dishes can be created and matched against fridge products', asyn
     listed.recipes.some((recipe) => recipe.title === 'Картофельное пюре'),
     true,
   );
+});
+
+test('Plus household can plan a recipe for the week and remove it', async () => {
+  const dishesResponse = await request('/api/dishes');
+  const dishes = await dishesResponse.json();
+  const dish = dishes.recipes.find((recipe) => recipe.title === 'Картофельное пюре');
+  const date = new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10);
+
+  const createResponse = await request('/api/meal-plan', {
+    method: 'POST',
+    body: JSON.stringify({ dishId: dish.id, date, mealType: 'dinner' }),
+  });
+  assert.equal(createResponse.status, 201);
+  const created = await createResponse.json();
+  assert.equal(created.date, date);
+  assert.equal(created.mealType, 'dinner');
+  assert.equal(created.dish.title, 'Картофельное пюре');
+
+  const listResponse = await request('/api/meal-plan');
+  assert.equal(listResponse.status, 200);
+  const plan = await listResponse.json();
+  assert.equal(
+    plan.entries.some((entry) => entry.id === created.id),
+    true,
+  );
+
+  const deleteResponse = await request(`/api/meal-plan/${created.id}`, { method: 'DELETE' });
+  assert.equal(deleteResponse.status, 204);
 });
 
 test('recipes using expiring products are prioritized', async () => {

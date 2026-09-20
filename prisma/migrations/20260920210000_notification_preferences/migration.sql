@@ -1,0 +1,5 @@
+ALTER TABLE "User" ADD COLUMN "notifyExpiry" BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE "User" ADD COLUMN "notifyShopping" BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE "User" ADD COLUMN "quietHoursStart" TEXT;
+ALTER TABLE "User" ADD COLUMN "quietHoursEnd" TEXT;
+ALTER TABLE "User" ADD COLUMN "timezone" TEXT NOT NULL DEFAULT 'Europe/Moscow';

@@ -43,6 +43,16 @@ export const notificationUpdateSchema = z.object({
   read: z.boolean(),
 });
 
+const time = z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/);
+
+export const notificationPreferencesSchema = z.object({
+  notifyExpiry: z.boolean(),
+  notifyShopping: z.boolean(),
+  quietHoursStart: time.nullable(),
+  quietHoursEnd: time.nullable(),
+  timezone: z.string().trim().min(1).max(100),
+});
+
 export const pushSubscriptionSchema = z.object({
   endpoint: z.string().trim().url().max(2_000),
   keys: z.object({
@@ -132,4 +142,10 @@ export const dishCreateSchema = z.object({
   description: z.string().trim().max(600).optional(),
   imageUrl: z.string().trim().url().max(1000).optional(),
   ingredients: z.array(name).min(1).max(20),
+});
+
+export const mealPlanCreateSchema = z.object({
+  dishId: z.string().trim().min(1).max(200),
+  date,
+  mealType: z.enum(['breakfast', 'lunch', 'dinner']).default('dinner'),
 });

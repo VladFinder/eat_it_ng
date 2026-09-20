@@ -28,6 +28,8 @@ import {
   householdMemberSchema,
   householdUpdateSchema,
   loginSchema,
+  mealPlanCreateSchema,
+  notificationPreferencesSchema,
   notificationUpdateSchema,
   pushSubscriptionSchema,
   pushUnsubscribeSchema,
@@ -175,6 +177,23 @@ function serializeNotification(notification) {
     readAt: notification.readAt?.toISOString() ?? null,
     data: notification.data ? JSON.parse(notification.data) : null,
     createdAt: notification.createdAt.toISOString(),
+  };
+}
+
+function serializeMealPlanEntry(entry) {
+  return {
+    id: entry.id,
+    date: entry.date.toISOString().slice(0, 10),
+    mealType: entry.mealType,
+    createdAt: entry.createdAt.toISOString(),
+    updatedAt: entry.updatedAt.toISOString(),
+    dish: {
+      id: entry.dish.id,
+      title: entry.dish.title,
+      image: entry.dish.imageUrl ?? null,
+      subtitle: entry.dish.subtitle,
+      source: entry.dish.source,
+    },
   };
 }
 
@@ -1023,6 +1042,25 @@ async function getHousehold(prisma, householdId) {
   return household;
 }
 
+function householdHasPlus(household) {
+  const periodActive =
+    !household.subscriptionPeriodEnd || household.subscriptionPeriodEnd.getTime() > Date.now();
+  return (
+    household.plan === 'plus' &&
+    ['active', 'trialing'].includes(household.subscriptionStatus) &&
+    periodActive
+  );
+}
+
+async function requireHouseholdPlus(prisma, householdId) {
+  const household = await getHousehold(prisma, householdId);
+  if (householdHasPlus(household)) return;
+
+  const error = new Error('Функция доступна в Homie Plus');
+  error.status = 403;
+  throw error;
+}
+
 async function mergeHouseholdInto(transaction, sourceHouseholdId, targetHouseholdId) {
   if (sourceHouseholdId === targetHouseholdId) {
     return;
@@ -1076,11 +1114,38 @@ function pushConfiguration() {
   };
 }
 
+function isQuietHours(user, now = new Date()) {
+  if (!user.quietHoursStart || !user.quietHoursEnd) return false;
+  try {
+    const parts = new Intl.DateTimeFormat('en-GB', {
+      timeZone: user.timezone,
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    }).formatToParts(now);
+    const hour = Number(parts.find((part) => part.type === 'hour')?.value ?? 0);
+    const minute = Number(parts.find((part) => part.type === 'minute')?.value ?? 0);
+    const current = hour * 60 + minute;
+    const toMinutes = (value) => {
+      const [hours, minutes] = value.split(':').map(Number);
+      return hours * 60 + minutes;
+    };
+    const start = toMinutes(user.quietHoursStart);
+    const end = toMinutes(user.quietHoursEnd);
+    return start <= end ? current >= start && current < end : current >= start || current < end;
+  } catch {
+    return false;
+  }
+}
+
 async function sendPushNotification(prisma, userId, notification, logger = console) {
   const configuration = pushConfiguration();
   if (!configuration.configured) {
     return;
   }
+
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user || isQuietHours(user)) return;
 
   const subscriptions = await prisma.pushSubscription.findMany({ where: { userId } });
   const payload = JSON.stringify({
@@ -1136,28 +1201,31 @@ async function createAndSendNotification(prisma, input, logger = console) {
 async function notifyHouseholdShoppingChange(prisma, user, item, action, logger = console) {
   const members = await prisma.user.findMany({
     where: { householdId: user.householdId, id: { not: user.id } },
-    select: { id: true },
+    select: { id: true, notifyShopping: true },
   });
   const added = action === 'added';
   await Promise.all(
     members.map((member) =>
-      createAndSendNotification(
-        prisma,
-        {
-          userId: member.id,
-          type: added ? 'shopping_added' : 'shopping_removed',
-          title: added ? 'Добавили в покупки' : 'Убрали из покупок',
-          body: `${user.displayName} ${added ? 'добавил(а)' : 'убрал(а)'} «${item.name}» ${added ? 'в список покупок' : 'из списка покупок'}.`,
-          data: { shoppingItemId: item.id, action },
-          dedupeKey: `shopping:${action}:${item.id}`,
-        },
-        logger,
-      ),
+      member.notifyShopping
+        ? createAndSendNotification(
+            prisma,
+            {
+              userId: member.id,
+              type: added ? 'shopping_added' : 'shopping_removed',
+              title: added ? 'Добавили в покупки' : 'Убрали из покупок',
+              body: `${user.displayName} ${added ? 'добавил(а)' : 'убрал(а)'} «${item.name}» ${added ? 'в список покупок' : 'из списка покупок'}.`,
+              data: { shoppingItemId: item.id, action },
+              dedupeKey: `shopping:${action}:${item.id}`,
+            },
+            logger,
+          )
+        : Promise.resolve(null),
     ),
   );
 }
 
 async function ensureExpiryNotifications(prisma, user, logger = console) {
+  if (!user.notifyExpiry) return;
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);
   const items = await prisma.fridgeItem.findMany({
@@ -1642,6 +1710,73 @@ export function createApiServer(prisma, logger = console) {
         });
         if (result.count === 0) {
           const error = new Error('Рецепт не найден');
+          error.status = 404;
+          throw error;
+        }
+        response.writeHead(204);
+        response.end();
+        return;
+      }
+
+      if (method === 'GET' && url.pathname === '/api/meal-plan') {
+        await requireHouseholdPlus(prisma, user.householdId);
+        const from = new Date();
+        from.setUTCHours(0, 0, 0, 0);
+        const to = new Date(from);
+        to.setUTCDate(to.getUTCDate() + 13);
+        const entries = await prisma.mealPlanEntry.findMany({
+          where: { householdId: user.householdId, date: { gte: from, lte: to } },
+          include: { dish: true },
+          orderBy: [{ date: 'asc' }, { mealType: 'asc' }],
+        });
+        json(response, 200, { entries: entries.map(serializeMealPlanEntry) });
+        return;
+      }
+
+      if (method === 'POST' && url.pathname === '/api/meal-plan') {
+        await requireHouseholdPlus(prisma, user.householdId);
+        const input = mealPlanCreateSchema.parse(await readJson(request));
+        const dish = await prisma.dish.findFirst({
+          where: {
+            id: input.dishId,
+            OR: [{ householdId: null }, { householdId: user.householdId }],
+          },
+        });
+        if (!dish) {
+          const error = new Error('Рецепт не найден');
+          error.status = 404;
+          throw error;
+        }
+        const plannedDate = toDate(input.date);
+        const entry = await prisma.mealPlanEntry.upsert({
+          where: {
+            householdId_date_mealType: {
+              householdId: user.householdId,
+              date: plannedDate,
+              mealType: input.mealType,
+            },
+          },
+          update: { dishId: dish.id },
+          create: {
+            householdId: user.householdId,
+            dishId: dish.id,
+            date: plannedDate,
+            mealType: input.mealType,
+          },
+          include: { dish: true },
+        });
+        json(response, 201, serializeMealPlanEntry(entry));
+        return;
+      }
+
+      const mealPlanRoute = routeMatch(url.pathname, /^\/api\/meal-plan\/(?<id>[^/]+)$/);
+      if (mealPlanRoute && method === 'DELETE') {
+        await requireHouseholdPlus(prisma, user.householdId);
+        const deleted = await prisma.mealPlanEntry.deleteMany({
+          where: { id: mealPlanRoute.id, householdId: user.householdId },
+        });
+        if (deleted.count === 0) {
+          const error = new Error('Запись плана не найдена');
           error.status = 404;
           throw error;
         }
@@ -2194,6 +2329,30 @@ export function createApiServer(prisma, logger = console) {
         json(response, 200, {
           notifications: notifications.map(serializeNotification),
           unreadCount: notifications.filter((notification) => !notification.readAt).length,
+        });
+        return;
+      }
+
+      if (method === 'GET' && url.pathname === '/api/notification-preferences') {
+        json(response, 200, {
+          notifyExpiry: user.notifyExpiry,
+          notifyShopping: user.notifyShopping,
+          quietHoursStart: user.quietHoursStart,
+          quietHoursEnd: user.quietHoursEnd,
+          timezone: user.timezone,
+        });
+        return;
+      }
+
+      if (method === 'PATCH' && url.pathname === '/api/notification-preferences') {
+        const input = notificationPreferencesSchema.parse(await readJson(request));
+        const updated = await prisma.user.update({ where: { id: user.id }, data: input });
+        json(response, 200, {
+          notifyExpiry: updated.notifyExpiry,
+          notifyShopping: updated.notifyShopping,
+          quietHoursStart: updated.quietHoursStart,
+          quietHoursEnd: updated.quietHoursEnd,
+          timezone: updated.timezone,
         });
         return;
       }
