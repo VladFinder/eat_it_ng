@@ -952,12 +952,26 @@ test('recipe catalog loads Spoonacular recipes with images', async () => {
   await prisma.fridgeItem.deleteMany();
   process.env.SPOONACULAR_API_KEY = 'test-spoonacular-key';
   let requestedUrl;
+  let requestedIngredientUrl;
 
   globalThis.fetch = async (url, options) => {
     requestedUrl = new URL(url);
     if (requestedUrl.origin === baseUrl) {
       return previousFetch(url, options);
     }
+    if (requestedUrl.pathname === '/recipes/informationBulk') {
+      return Response.json([
+        {
+          id: 715538,
+          title: 'Potato Tomato Bake',
+          image: 'https://example.com/potato-tomato-bake.jpg',
+          summary: '<p>A complete potato and tomato bake.</p>',
+          readyInMinutes: 35,
+          analyzedInstructions: [{ steps: [{ step: 'Bake until golden.' }] }],
+        },
+      ]);
+    }
+    requestedIngredientUrl = requestedUrl;
     return Response.json([
       {
         id: 715538,
@@ -998,9 +1012,11 @@ test('recipe catalog loads Spoonacular recipes with images', async () => {
     const response = await request('/api/recipes');
     assert.equal(response.status, 200);
     assert.equal(requestedUrl.origin, 'https://api.spoonacular.com');
+    assert.equal(requestedUrl.pathname, '/recipes/informationBulk');
     assert.equal(requestedUrl.searchParams.get('apiKey'), 'test-spoonacular-key');
-    assert.match(requestedUrl.searchParams.get('ingredients'), /potato/);
-    assert.match(requestedUrl.searchParams.get('ingredients'), /tomato/);
+    assert.equal(requestedUrl.searchParams.get('ids'), '715538');
+    assert.match(requestedIngredientUrl.searchParams.get('ingredients'), /potato/);
+    assert.match(requestedIngredientUrl.searchParams.get('ingredients'), /tomato/);
 
     const result = await response.json();
     assert.equal(result.ingredients.includes('картошка'), true);
@@ -1010,9 +1026,9 @@ test('recipe catalog loads Spoonacular recipes with images', async () => {
       image: 'https://example.com/potato-tomato-bake.jpg',
       source: 'spoonacular',
       externalId: '715538',
-      subtitle: 'Spoonacular',
-      description: 'Можно приготовить, если докупить: cheese.',
-      instructions: [],
+      subtitle: '35 мин.',
+      description: 'A complete potato and tomato bake.',
+      instructions: ['Bake until golden.'],
       usedIngredientCount: 2,
       missedIngredientCount: 1,
       expiringIngredientCount: 1,

@@ -362,6 +362,9 @@ function serializeRecipeSuggestion(recipe) {
     image: typeof recipe.image === 'string' ? recipe.image : null,
     source: 'spoonacular',
     externalId: String(recipe.id),
+    subtitle: recipe.readyInMinutes ? `${recipe.readyInMinutes} мин.` : null,
+    description: plainText(recipe.summary),
+    instructions: recipeSteps(recipe),
     usedIngredientCount: used,
     missedIngredientCount: missed,
     expiringIngredientCount: 0,
@@ -377,6 +380,38 @@ function serializeRecipeSuggestion(recipe) {
           .slice(0, 8)
       : [],
   };
+}
+
+async function fetchRecipeInformationBulk(apiKey, recipes) {
+  const ids = recipes.map((recipe) => String(recipe.id)).filter(Boolean);
+  if (!ids.length) return recipes;
+
+  const params = new URLSearchParams({ apiKey, ids: ids.join(','), includeNutrition: 'false' });
+  const response = await fetch(
+    `https://api.spoonacular.com/recipes/informationBulk?${params.toString()}`,
+    { headers: { Accept: 'application/json' } },
+  );
+  if (!response.ok) {
+    const error = new Error('Recipe information request failed');
+    error.status = response.status === 402 || response.status === 429 ? 429 : 502;
+    throw error;
+  }
+
+  const details = await response.json();
+  if (!Array.isArray(details)) return recipes;
+  const detailsById = new Map(details.map((recipe) => [String(recipe.id), recipe]));
+  return recipes.map((summary) => {
+    const detail = detailsById.get(String(summary.id));
+    if (!detail) return summary;
+    return {
+      ...summary,
+      title: recipeTitle(detail.title) || summary.title,
+      image: typeof detail.image === 'string' ? detail.image : summary.image,
+      subtitle: detail.readyInMinutes ? `${detail.readyInMinutes} мин.` : summary.subtitle,
+      description: plainText(detail.summary) || summary.description,
+      instructions: recipeSteps(detail),
+    };
+  });
 }
 
 function serializePopularRecipe(recipe) {
@@ -600,9 +635,14 @@ async function fetchRecipeSuggestions(ingredients) {
   }
 
   const recipes = await response.json();
-  const suggestions = Array.isArray(recipes) ? recipes.map(serializeRecipeSuggestion) : [];
+  let suggestions = Array.isArray(recipes) ? recipes.map(serializeRecipeSuggestion) : [];
   if (!suggestions.length) {
     return fetchPopularRecipeSuggestions(apiKey);
+  }
+  try {
+    suggestions = await fetchRecipeInformationBulk(apiKey, suggestions);
+  } catch {
+    // The ingredient match remains useful if the optional details request is unavailable.
   }
   recipeSuggestionsCache.set(cacheKey, {
     recipes: suggestions,
@@ -718,7 +758,7 @@ async function saveSpoonacularSuggestions(prisma, recipes) {
       where: { id: dishId },
       update: {
         title: recipe.title,
-        subtitle: 'Spoonacular',
+        subtitle: recipe.subtitle || 'Spoonacular',
         description,
         instructions,
         imageUrl: recipe.image,
@@ -728,7 +768,7 @@ async function saveSpoonacularSuggestions(prisma, recipes) {
       create: {
         id: dishId,
         title: recipe.title,
-        subtitle: 'Spoonacular',
+        subtitle: recipe.subtitle || 'Spoonacular',
         description,
         instructions,
         imageUrl: recipe.image,
