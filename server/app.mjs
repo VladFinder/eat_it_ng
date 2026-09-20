@@ -423,14 +423,25 @@ async function refreshDishDetails(prisma, dish) {
 
   const [updated] = await fetchRecipeInformationBulk(apiKey, [{ id: dish.externalId }]);
   if (!updated) return false;
+  const sourceTexts = [updated.title, updated.description, ...(updated.instructions ?? [])];
+  let translations = new Map();
+  try {
+    translations = await translateTextsToRussian(prisma, sourceTexts);
+  } catch {
+    // Keep the recipe usable in English if translation is temporarily unavailable.
+  }
+  const translate = (value) => translations.get(plainText(value)) ?? value;
+  const title = translate(updated.title) || dish.title;
+  const description = translate(updated.description) || dish.description;
+  const instructions = (updated.instructions ?? []).map(translate);
   await prisma.dish.update({
     where: { id: dish.id },
     data: {
-      title: updated.title || dish.title,
+      title,
       subtitle: updated.subtitle || dish.subtitle,
-      description: updated.description || dish.description,
-      instructions: updated.instructions?.length
-        ? JSON.stringify(updated.instructions)
+      description,
+      instructions: instructions.length
+        ? JSON.stringify(instructions)
         : dish.instructions,
       imageUrl: updated.image || dish.imageUrl,
     },
