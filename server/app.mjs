@@ -2156,7 +2156,7 @@ export function createApiServer(prisma, logger = console) {
       if (method === 'GET' && url.pathname === '/api/dev/recipes') {
         requireAdmin(user);
         const recipes = await prisma.dish.findMany({
-          where: { source: 'spoonacular' },
+          where: { source: { in: ['spoonacular', 'spoonacular-catalog'] } },
           orderBy: { updatedAt: 'desc' },
           include: { ingredients: { include: { product: true } } },
           take: 100,

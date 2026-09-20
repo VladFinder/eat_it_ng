@@ -2086,11 +2086,13 @@ export class App implements OnDestroy, OnInit {
   }
 
   protected recipeSourceLabel(source?: string): string {
-    return source === 'spoonacular' ? 'SP' : 'DB';
+    return source === 'spoonacular' || source === 'spoonacular-catalog' ? 'SP' : 'DB';
   }
 
   protected recipeSourceClass(source?: string): string {
-    return source === 'spoonacular' ? 'spoonacular' : 'local';
+    return source === 'spoonacular' || source === 'spoonacular-catalog'
+      ? 'spoonacular'
+      : 'local';
   }
 
   protected async deleteFridgeItem(id: string): Promise<void> {
