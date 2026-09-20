@@ -1166,8 +1166,27 @@ export class App implements OnDestroy, OnInit {
     this.cookingStepIndex.set(next);
   }
 
-  protected openRecipe(recipe: Recipe): void {
+  protected async openRecipe(recipe: Recipe): Promise<void> {
     this.activeRecipe.set(recipe);
+    if (recipe.mine || recipe.instructions?.length) return;
+    try {
+      const result = await firstValueFrom(this.api.getRecipeDetails(recipe.id));
+      if (result.recipe) {
+        this.activeRecipe.update((current) =>
+          current?.id === recipe.id
+            ? {
+                ...current,
+                time: result.recipe?.subtitle ?? current.time,
+                description: result.recipe?.description ?? current.description,
+                instructions: result.recipe?.instructions ?? current.instructions,
+                image: result.recipe?.image ?? current.image,
+              }
+            : current,
+        );
+      }
+    } catch {
+      // The summary remains available if the optional details request fails.
+    }
   }
 
   protected closeRecipe(): void {

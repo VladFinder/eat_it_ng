@@ -414,6 +414,30 @@ async function fetchRecipeInformationBulk(apiKey, recipes) {
   });
 }
 
+async function refreshDishDetails(prisma, dish) {
+  if (!dish.externalId || !['spoonacular', 'spoonacular-catalog'].includes(dish.source)) {
+    return false;
+  }
+  const apiKey = spoonacularApiKey();
+  if (!apiKey) return false;
+
+  const [updated] = await fetchRecipeInformationBulk(apiKey, [{ id: dish.externalId }]);
+  if (!updated) return false;
+  await prisma.dish.update({
+    where: { id: dish.id },
+    data: {
+      title: updated.title || dish.title,
+      subtitle: updated.subtitle || dish.subtitle,
+      description: updated.description || dish.description,
+      instructions: updated.instructions?.length
+        ? JSON.stringify(updated.instructions)
+        : dish.instructions,
+      imageUrl: updated.image || dish.imageUrl,
+    },
+  });
+  return true;
+}
+
 function serializePopularRecipe(recipe) {
   const ingredients = Array.from(
     new Set(
@@ -1685,6 +1709,32 @@ export function createApiServer(prisma, logger = console) {
           ...result,
           items: result.items.map(serializeShoppingItem),
         });
+        return;
+      }
+
+      const recipeDetailsRoute = routeMatch(url.pathname, /^\/api\/recipes\/(?<id>[^/]+)$/);
+      if (recipeDetailsRoute && method === 'GET') {
+        const dish = await prisma.dish.findFirst({
+          where: {
+            id: recipeDetailsRoute.id,
+            OR: [{ householdId: null }, { householdId: user.householdId }],
+          },
+        });
+        if (!dish) {
+          const error = new Error('Рецепт не найден');
+          error.status = 404;
+          throw error;
+        }
+        if (!dish.instructions && dish.source !== 'user') {
+          try {
+            await refreshDishDetails(prisma, dish);
+          } catch (error) {
+            logger.error(`${method} ${url.pathname}`, error);
+          }
+        }
+        const local = await matchedDishSuggestions(prisma, user.householdId, 'catalog');
+        const recipe = local.recipes.find((item) => item.id === dish.id);
+        json(response, 200, { recipe: recipe ?? null });
         return;
       }
 

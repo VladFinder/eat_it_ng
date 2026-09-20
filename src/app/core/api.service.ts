@@ -191,6 +191,13 @@ export class ApiService {
     );
   }
 
+  getRecipeDetails(id: string): Observable<{ recipe: RecipeSuggestion | null }> {
+    return this.http.get<{ recipe: RecipeSuggestion | null }>(
+      `${this.baseUrl}/recipes/${encodeURIComponent(id)}`,
+      this.options(),
+    );
+  }
+
   getDishes(): Observable<{ recipes: RecipeSuggestion[]; ingredients: string[] }> {
     return this.http.get<{ recipes: RecipeSuggestion[]; ingredients: string[] }>(
       `${this.baseUrl}/dishes`,
