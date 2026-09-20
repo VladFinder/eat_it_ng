@@ -55,9 +55,16 @@ export interface RecipeSuggestion {
   instructions?: string[];
   usedIngredientCount: number;
   missedIngredientCount: number;
+  expiringIngredientCount: number;
   matchPercent: number;
   usedIngredients: string[];
   missedIngredients: string[];
+}
+
+export interface RecipeShoppingResult {
+  items: ShoppingItem[];
+  addedCount: number;
+  skippedCount: number;
 }
 
 export interface AuthUser {

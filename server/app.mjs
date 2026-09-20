@@ -333,12 +333,17 @@ function serializeRecipeSuggestion(recipe) {
     externalId: String(recipe.id),
     usedIngredientCount: used,
     missedIngredientCount: missed,
+    expiringIngredientCount: 0,
     matchPercent: match,
     usedIngredients: Array.isArray(recipe.usedIngredients)
-      ? recipe.usedIngredients.map((item) => recipeTitle(item.name ?? item.originalName)).slice(0, 8)
+      ? recipe.usedIngredients
+          .map((item) => recipeTitle(item.name ?? item.originalName))
+          .slice(0, 8)
       : [],
     missedIngredients: Array.isArray(recipe.missedIngredients)
-      ? recipe.missedIngredients.map((item) => recipeTitle(item.name ?? item.originalName)).slice(0, 8)
+      ? recipe.missedIngredients
+          .map((item) => recipeTitle(item.name ?? item.originalName))
+          .slice(0, 8)
       : [],
   };
 }
@@ -361,6 +366,7 @@ function serializePopularRecipe(recipe) {
     instructions: recipeSteps(recipe),
     usedIngredientCount: 0,
     missedIngredientCount: ingredients.length,
+    expiringIngredientCount: 0,
     matchPercent: 0,
     usedIngredients: [],
     missedIngredients: ingredients,
@@ -512,9 +518,7 @@ async function fetchPopularRecipeSuggestions(apiKey) {
   }
 
   const result = await response.json();
-  const recipes = Array.isArray(result?.results)
-    ? result.results.map(serializePopularRecipe)
-    : [];
+  const recipes = Array.isArray(result?.results) ? result.results.map(serializePopularRecipe) : [];
   recipeSuggestionsCache.set(cacheKey, {
     recipes,
     expiresAt: Date.now() + RECIPE_CACHE_TTL_MS,
@@ -537,7 +541,10 @@ async function fetchRecipeSuggestions(ingredients) {
     return fetchPopularRecipeSuggestions(apiKey);
   }
 
-  const cacheKey = apiIngredients.map((ingredient) => ingredient.toLowerCase()).sort().join('|');
+  const cacheKey = apiIngredients
+    .map((ingredient) => ingredient.toLowerCase())
+    .sort()
+    .join('|');
   const cached = recipeSuggestionsCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
     return cached.recipes;
@@ -593,6 +600,22 @@ function productMatchesFridge(product, fridgeNames) {
   );
 }
 
+function productMatchesFridgeItem(product, item) {
+  return productMatchesFridge(
+    product,
+    new Set([normalizeProductName(item.name), canonicalIngredientName(item.name)]),
+  );
+}
+
+function fridgeItemIsExpiring(item, now = new Date()) {
+  if (!item.expiresAt) return false;
+  const today = new Date(now);
+  today.setUTCHours(0, 0, 0, 0);
+  const expiry = new Date(item.expiresAt);
+  expiry.setUTCHours(0, 0, 0, 0);
+  return expiry.getTime() - today.getTime() <= (item.reminderDays ?? 0) * 86_400_000;
+}
+
 function formatIngredient(product, ingredient) {
   const amount =
     ingredient.quantity && ingredient.unit
@@ -607,6 +630,9 @@ function serializeLocalDishSuggestion(dish, ingredients) {
   const requiredIngredients = ingredients.filter((ingredient) => ingredient.required);
   const usedIngredients = requiredIngredients.filter((ingredient) => ingredient.available);
   const missedIngredients = requiredIngredients.filter((ingredient) => !ingredient.available);
+  const expiringIngredientCount = usedIngredients.filter(
+    (ingredient) => ingredient.expiring,
+  ).length;
   const total = Math.max(requiredIngredients.length, 1);
   const matchPercent = Math.round((usedIngredients.length / total) * 100);
   return {
@@ -620,6 +646,7 @@ function serializeLocalDishSuggestion(dish, ingredients) {
     instructions: parseJsonArray(dish.instructions),
     usedIngredientCount: usedIngredients.length,
     missedIngredientCount: missedIngredients.length,
+    expiringIngredientCount,
     matchPercent,
     usedIngredients: usedIngredients.map((ingredient) =>
       formatIngredient(ingredient.product, ingredient),
@@ -655,9 +682,7 @@ async function saveSpoonacularSuggestions(prisma, recipes) {
         : recipe.missedIngredients.length > 0
           ? `Можно приготовить, если докупить: ${recipe.missedIngredients.join(', ')}.`
           : `Подходит под ваши продукты: ${recipe.usedIngredients.join(', ')}.`);
-    const instructions = recipe.instructions?.length
-      ? JSON.stringify(recipe.instructions)
-      : null;
+    const instructions = recipe.instructions?.length ? JSON.stringify(recipe.instructions) : null;
     await prisma.dish.upsert({
       where: { id: dishId },
       update: {
@@ -753,7 +778,10 @@ async function matchedDishSuggestions(prisma, householdId, scope = 'catalog') {
     new Set(fridgeItems.map((item) => normalizeProductName(item.name))),
   );
   const fridgeNames = new Set(
-    fridgeItems.flatMap((item) => [normalizeProductName(item.name), canonicalIngredientName(item.name)]),
+    fridgeItems.flatMap((item) => [
+      normalizeProductName(item.name),
+      canonicalIngredientName(item.name),
+    ]),
   );
   const dishes = new Map();
   for (const row of rows) {
@@ -782,6 +810,9 @@ async function matchedDishSuggestions(prisma, householdId, scope = 'catalog') {
       unit: row.unit,
       required: Boolean(row.required),
       available: productMatchesFridge(product, fridgeNames),
+      expiring: fridgeItems.some(
+        (item) => productMatchesFridgeItem(product, item) && fridgeItemIsExpiring(item),
+      ),
     });
     dishes.set(row.dishId, dish);
   }
@@ -789,6 +820,7 @@ async function matchedDishSuggestions(prisma, householdId, scope = 'catalog') {
     .map(({ dish, ingredients }) => serializeLocalDishSuggestion(dish, ingredients))
     .sort(
       (left, right) =>
+        right.expiringIngredientCount - left.expiringIngredientCount ||
         right.matchPercent - left.matchPercent ||
         left.missedIngredientCount - right.missedIngredientCount ||
         left.title.localeCompare(right.title),
@@ -810,7 +842,10 @@ async function createUserDish(prisma, user, input) {
         subtitle: `${input.ingredients.length} ингредиент${ingredientEnding(input.ingredients.length)}`,
         description: input.description ?? 'Блюдо вашей группы.',
         imageUrl: input.imageUrl ?? null,
-        instructions: JSON.stringify(['Подготовьте ингредиенты.', 'Приготовьте блюдо привычным способом.']),
+        instructions: JSON.stringify([
+          'Подготовьте ингредиенты.',
+          'Приготовьте блюдо привычным способом.',
+        ]),
         source: 'user',
       },
     });
@@ -835,6 +870,63 @@ async function createUserDish(prisma, user, input) {
     }
 
     return dish;
+  });
+}
+
+async function addMissingDishIngredientsToShopping(prisma, user, dishId) {
+  return prisma.$transaction(async (transaction) => {
+    const dish = await transaction.dish.findFirst({
+      where: {
+        id: dishId,
+        OR: [{ householdId: null }, { householdId: user.householdId }],
+      },
+      include: { ingredients: { include: { product: true } } },
+    });
+    if (!dish) {
+      const error = new Error('Рецепт не найден');
+      error.status = 404;
+      throw error;
+    }
+
+    const [fridgeItems, shoppingItems] = await Promise.all([
+      transaction.fridgeItem.findMany({
+        where: { householdId: user.householdId, category: 'products' },
+      }),
+      transaction.shoppingItem.findMany({ where: { householdId: user.householdId } }),
+    ]);
+    const shoppingNames = new Set(
+      shoppingItems.flatMap((item) => [
+        normalizeProductName(item.name),
+        canonicalIngredientName(item.name),
+      ]),
+    );
+    const created = [];
+    let skippedCount = 0;
+
+    for (const ingredient of dish.ingredients.filter((item) => item.required)) {
+      if (fridgeItems.some((item) => productMatchesFridgeItem(ingredient.product, item))) {
+        continue;
+      }
+      if (productMatchesFridge(ingredient.product, shoppingNames)) {
+        skippedCount += 1;
+        continue;
+      }
+
+      const item = await transaction.shoppingItem.create({
+        data: {
+          householdId: user.householdId,
+          name: ingredient.product.name,
+          quantity: ingredient.quantity ?? 1,
+          unit: ingredient.unit ?? 'шт.',
+          category: 'products',
+        },
+      });
+      created.push(item);
+      shoppingNames.add(ingredient.product.normalizedName);
+      shoppingNames.add(canonicalIngredientName(ingredient.product.name));
+    }
+
+    return { items: created, addedCount: created.length, skippedCount };
   });
 }
 
@@ -1008,13 +1100,7 @@ async function createAndSendNotification(prisma, input, logger = console) {
   return notification;
 }
 
-async function notifyHouseholdShoppingChange(
-  prisma,
-  user,
-  item,
-  action,
-  logger = console,
-) {
+async function notifyHouseholdShoppingChange(prisma, user, item, action, logger = console) {
   const members = await prisma.user.findMany({
     where: { householdId: user.householdId, id: { not: user.id } },
     select: { id: true },
@@ -1062,14 +1148,18 @@ async function ensureExpiryNotifications(prisma, user, logger = console) {
         body = `${item.name}: срок истекает через ${days} дн.`;
       }
 
-      await createAndSendNotification(prisma, {
-        userId: user.id,
-        type: 'expiry',
-        title: 'Срок годности',
-        body,
-        data: { fridgeItemId: item.id, expiresAt: item.expiresAt.toISOString().slice(0, 10) },
-        dedupeKey: `expiry:${item.id}:${today.toISOString().slice(0, 10)}`,
-      }, logger);
+      await createAndSendNotification(
+        prisma,
+        {
+          userId: user.id,
+          type: 'expiry',
+          title: 'Срок годности',
+          body,
+          data: { fridgeItemId: item.id, expiresAt: item.expiresAt.toISOString().slice(0, 10) },
+          dedupeKey: `expiry:${item.id}:${today.toISOString().slice(0, 10)}`,
+        },
+        logger,
+      );
     }),
   );
 }
@@ -1426,6 +1516,26 @@ export function createApiServer(prisma, logger = console) {
         return;
       }
 
+      const recipeShoppingRoute = routeMatch(
+        url.pathname,
+        /^\/api\/recipes\/(?<id>[^/]+)\/missing-to-shopping$/,
+      );
+      if (recipeShoppingRoute && method === 'POST') {
+        const result = await addMissingDishIngredientsToShopping(
+          prisma,
+          user,
+          recipeShoppingRoute.id,
+        );
+        for (const item of result.items) {
+          await notifyHouseholdShoppingChange(prisma, user, item, 'added', logger);
+        }
+        json(response, 200, {
+          ...result,
+          items: result.items.map(serializeShoppingItem),
+        });
+        return;
+      }
+
       if (method === 'GET' && url.pathname === '/api/recipes') {
         const fridgeItems = await prisma.fridgeItem.findMany({
           where: { householdId: user.householdId, category: 'products' },
@@ -1474,6 +1584,25 @@ export function createApiServer(prisma, logger = console) {
         const local = await matchedDishSuggestions(prisma, user.householdId, 'user');
         delete local.hasLocalCatalog;
         json(response, 201, local);
+        return;
+      }
+
+      const dishRoute = routeMatch(url.pathname, /^\/api\/dishes\/(?<id>[^/]+)$/);
+      if (dishRoute && method === 'DELETE') {
+        const result = await prisma.dish.deleteMany({
+          where: {
+            id: dishRoute.id,
+            householdId: user.householdId,
+            source: 'user',
+          },
+        });
+        if (result.count === 0) {
+          const error = new Error('Рецепт не найден');
+          error.status = 404;
+          throw error;
+        }
+        response.writeHead(204);
+        response.end();
         return;
       }
 
@@ -1733,7 +1862,11 @@ export function createApiServer(prisma, logger = console) {
           households: { total: householdCount, pendingInvitations },
           notifications: { unread: unreadNotifications },
           sessions: { active: activeSessions, onlineWindowMinutes: 5 },
-          today: { newUsers: newUsersToday, newTickets: newTicketsToday, newFeedback: newFeedbackToday },
+          today: {
+            newUsers: newUsersToday,
+            newTickets: newTicketsToday,
+            newFeedback: newFeedbackToday,
+          },
           activity: { days: daily },
           events,
         });
@@ -2243,13 +2376,7 @@ export function createApiServer(prisma, logger = console) {
           await transaction.shoppingItem.delete({ where: { id: current.id } });
           return { fridgeItem, shoppingItem: current };
         });
-        await notifyHouseholdShoppingChange(
-          prisma,
-          user,
-          result.shoppingItem,
-          'removed',
-          logger,
-        );
+        await notifyHouseholdShoppingChange(prisma, user, result.shoppingItem, 'removed', logger);
         json(response, 200, serializeFridgeItem(result.fridgeItem));
         return;
       }

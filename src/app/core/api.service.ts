@@ -15,6 +15,7 @@ import {
   FridgeItem,
   Household,
   ItemCategory,
+  RecipeShoppingResult,
   RecipeSuggestion,
   ShoppingInput,
   ShoppingItem,
@@ -176,7 +177,11 @@ export class ApiService {
     );
   }
 
-  getRecipes(): Observable<{ recipes: RecipeSuggestion[]; ingredients: string[]; warning?: string }> {
+  getRecipes(): Observable<{
+    recipes: RecipeSuggestion[];
+    ingredients: string[];
+    warning?: string;
+  }> {
     return this.http.get<{ recipes: RecipeSuggestion[]; ingredients: string[]; warning?: string }>(
       `${this.baseUrl}/recipes`,
       this.options(),
@@ -199,6 +204,18 @@ export class ApiService {
     return this.http.post<{ recipes: RecipeSuggestion[]; ingredients: string[] }>(
       `${this.baseUrl}/dishes`,
       input,
+      this.options(),
+    );
+  }
+
+  deleteDish(id: string): Observable<void> {
+    return this.http.delete<void>(`${this.baseUrl}/dishes/${id}`, this.options());
+  }
+
+  addRecipeIngredientsToShopping(id: string): Observable<RecipeShoppingResult> {
+    return this.http.post<RecipeShoppingResult>(
+      `${this.baseUrl}/recipes/${id}/missing-to-shopping`,
+      {},
       this.options(),
     );
   }

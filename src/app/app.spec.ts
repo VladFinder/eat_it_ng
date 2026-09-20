@@ -12,6 +12,8 @@ describe('App', () => {
     createFridgeItem: ReturnType<typeof vi.fn>;
     consumeFridgeItem: ReturnType<typeof vi.fn>;
     createShoppingItem: ReturnType<typeof vi.fn>;
+    addRecipeIngredientsToShopping: ReturnType<typeof vi.fn>;
+    deleteDish: ReturnType<typeof vi.fn>;
     moveFridgeToShopping: ReturnType<typeof vi.fn>;
     deleteFridgeItem: ReturnType<typeof vi.fn>;
     getNotifications: ReturnType<typeof vi.fn>;
@@ -31,9 +33,15 @@ describe('App', () => {
           },
         }),
       ),
-      getAuthProviders: vi.fn().mockReturnValue(of({ password: true, google: false, apple: false })),
+      getAuthProviders: vi
+        .fn()
+        .mockReturnValue(of({ password: true, google: false, apple: false })),
       getState: vi.fn().mockReturnValue(
-        of({ fridgeItems: [], shoppingItems: [], household: { id: 'household-1', name: 'Дом', members: [] } }),
+        of({
+          fridgeItems: [],
+          shoppingItems: [],
+          household: { id: 'household-1', name: 'Дом', members: [] },
+        }),
       ),
       createFridgeItem: vi.fn().mockImplementation((payload: Record<string, unknown>) =>
         of({
@@ -44,7 +52,16 @@ describe('App', () => {
         }),
       ),
       consumeFridgeItem: vi.fn().mockReturnValue(of({ removed: true, item: null })),
-      moveFridgeToShopping: vi.fn().mockReturnValue(of({ id: 'moved-1', name: 'Test item', quantity: 1, unit: 'шт.', category: 'products', checked: false })),
+      moveFridgeToShopping: vi.fn().mockReturnValue(
+        of({
+          id: 'moved-1',
+          name: 'Test item',
+          quantity: 1,
+          unit: 'шт.',
+          category: 'products',
+          checked: false,
+        }),
+      ),
       deleteFridgeItem: vi.fn().mockReturnValue(of(undefined)),
       createShoppingItem: vi.fn().mockImplementation((payload: Record<string, unknown>) =>
         of({
@@ -55,6 +72,10 @@ describe('App', () => {
           ...payload,
         }),
       ),
+      addRecipeIngredientsToShopping: vi
+        .fn()
+        .mockReturnValue(of({ items: [], addedCount: 0, skippedCount: 0 })),
+      deleteDish: vi.fn().mockReturnValue(of(undefined)),
       getNotifications: vi.fn().mockReturnValue(of({ notifications: [] })),
       getSupportTickets: vi.fn().mockReturnValue(of({ tickets: [] })),
     };
@@ -228,7 +249,10 @@ describe('App', () => {
 
       app.activeCategory.set('products');
       app.fridgeSearch.set('КА');
-      expect(app.visibleFridgeItems().map((item: any) => item.name)).toEqual(['Картошка', 'Капуста']);
+      expect(app.visibleFridgeItems().map((item: any) => item.name)).toEqual([
+        'Картошка',
+        'Капуста',
+      ]);
 
       app.activeCategory.set('medicine');
       expect(app.visibleFridgeItems().map((item: any) => item.name)).toEqual(['Капли']);
@@ -253,9 +277,17 @@ describe('App', () => {
 
       app.fridgeStatusFilter.set('all');
       app.fridgeSort.set('expiry');
-      expect(app.visibleFridgeItems().map((item: any) => item.id)).toEqual(['expired', 'soon', 'no-expiry']);
+      expect(app.visibleFridgeItems().map((item: any) => item.id)).toEqual([
+        'expired',
+        'soon',
+        'no-expiry',
+      ]);
       app.fridgeSort.set('name');
-      expect(app.visibleFridgeItems().map((item: any) => item.id)).toEqual(['no-expiry', 'soon', 'expired']);
+      expect(app.visibleFridgeItems().map((item: any) => item.id)).toEqual([
+        'no-expiry',
+        'soon',
+        'expired',
+      ]);
       fixture.destroy();
     });
 
@@ -282,6 +314,98 @@ describe('App', () => {
     });
   });
 
+  describe('recipe flow', () => {
+    function recipe(
+      id: string,
+      title: string,
+      options: {
+        missed?: string[];
+        used?: string[];
+        mine?: boolean;
+        liked?: boolean;
+        expiring?: number;
+        match?: number;
+      } = {},
+    ) {
+      return {
+        id,
+        title,
+        time: '20 минут',
+        tags: [],
+        liked: options.liked ?? false,
+        mine: options.mine ?? false,
+        usedIngredients: options.used ?? [],
+        missedIngredients: options.missed ?? [],
+        expiringIngredientCount: options.expiring ?? 0,
+        matchPercent: options.match ?? 0,
+      };
+    }
+
+    it('searches recipes and applies availability and ownership filters', () => {
+      const fixture = TestBed.createComponent(App);
+      const app = fixture.componentInstance as any;
+      app.recipes.set([
+        recipe('omelet', 'Омлет', { used: ['Яйца', 'Сыр'], expiring: 1, match: 100 }),
+        recipe('pasta', 'Паста', { used: ['Томат'], missed: ['Сыр'], match: 50 }),
+        recipe('soup', 'Мой суп', { mine: true, liked: true, missed: ['Лук', 'Морковь'] }),
+        recipe('cake', 'Торт', { missed: ['Мука', 'Сахар', 'Масло'] }),
+      ]);
+
+      app.recipeSearch.set('сыр');
+      expect(app.recipeList().map((item: any) => item.id)).toEqual(['omelet', 'pasta']);
+      app.recipeSearch.set('');
+      app.activeRecipeTab.set('available');
+      expect(app.recipeList().map((item: any) => item.id)).toEqual(['omelet']);
+      app.activeRecipeTab.set('almost');
+      expect(app.recipeList().map((item: any) => item.id)).toEqual(['pasta', 'soup']);
+      app.activeRecipeTab.set('mine');
+      expect(app.recipeList().map((item: any) => item.id)).toEqual(['soup']);
+      app.activeRecipeTab.set('likes');
+      expect(app.recipeList().map((item: any) => item.id)).toEqual(['soup']);
+      fixture.destroy();
+    });
+
+    it('adds only server-approved missing ingredients to local shopping state', async () => {
+      const fixture = TestBed.createComponent(App);
+      const app = fixture.componentInstance as any;
+      const shoppingItem = {
+        id: 'shopping-cheese',
+        name: 'Сыр',
+        quantity: 1,
+        unit: 'шт.',
+        category: 'products',
+        checked: false,
+        createdAt: '2026-09-20T00:00:00.000Z',
+        updatedAt: '2026-09-20T00:00:00.000Z',
+      };
+      apiService.addRecipeIngredientsToShopping.mockReturnValue(
+        of({ items: [shoppingItem], addedCount: 1, skippedCount: 1 }),
+      );
+
+      await app.addMissingIngredientsToShopping('recipe-1', ['Сыр', 'Молоко']);
+
+      expect(apiService.addRecipeIngredientsToShopping).toHaveBeenCalledWith('recipe-1');
+      expect(app.shoppingItems()).toEqual([shoppingItem]);
+      expect(app.toastMessage()).toBe('Добавлено в покупки: 1');
+      fixture.destroy();
+    });
+
+    it('removes a user recipe from dishes and recipes after API deletion', async () => {
+      const fixture = TestBed.createComponent(App);
+      const app = fixture.componentInstance as any;
+      vi.spyOn(window, 'confirm').mockReturnValue(true);
+      app.recipes.set([recipe('mine-1', 'Мой суп', { mine: true })]);
+      app.userDishIdeas.set([{ id: 'mine-1', title: 'Мой суп' }]);
+
+      await app.deleteUserDish('mine-1');
+
+      expect(apiService.deleteDish).toHaveBeenCalledWith('mine-1');
+      expect(app.recipes()).toEqual([]);
+      expect(app.userDishIdeas()).toEqual([]);
+      fixture.destroy();
+    });
+  });
+
   describe('card gestures', () => {
     async function renderCard(category = 'products', expiresAt: string | null = null) {
       const fixture = TestBed.createComponent(App);
@@ -294,10 +418,18 @@ describe('App', () => {
       app.loading.set(false);
       app.onboardingOpen.set(false);
       app.activeCategory.set(category);
-      app.fridgeItems.set([{
-        id: 'swipe-1', name: 'Test item', category, quantity: 1, unit: 'шт.',
-        expiresAt, reminderDays: 1, autoAddToShopping: false,
-      }]);
+      app.fridgeItems.set([
+        {
+          id: 'swipe-1',
+          name: 'Test item',
+          category,
+          quantity: 1,
+          unit: 'шт.',
+          expiresAt,
+          reminderDays: 1,
+          autoAddToShopping: false,
+        },
+      ]);
       fixture.detectChanges();
       const card = fixture.nativeElement.querySelector('[data-swipe-id="swipe-1"]') as HTMLElement;
       expect(card).toBeTruthy();
@@ -306,8 +438,14 @@ describe('App', () => {
 
     function touch(target: Element, type: string, x: number, y: number, count = 1) {
       const event = new Event(type, { bubbles: true, cancelable: true });
-      const points = Array.from({ length: count }, (_, identifier) => ({ identifier, clientX: x, clientY: y }));
-      Object.defineProperty(event, 'touches', { value: Object.assign(points, { item: (i: number) => points[i] }) });
+      const points = Array.from({ length: count }, (_, identifier) => ({
+        identifier,
+        clientX: x,
+        clientY: y,
+      }));
+      Object.defineProperty(event, 'touches', {
+        value: Object.assign(points, { item: (i: number) => points[i] }),
+      });
       target.dispatchEvent(event);
       return event;
     }
@@ -431,7 +569,8 @@ describe('App', () => {
     for (const direction of [1, -1]) {
       it(`restores the card on a failed ${direction === 1 ? 'move' : 'delete'} and allows retry`, async () => {
         const { fixture, card, app } = await renderCard();
-        const method = direction === 1 ? apiService.moveFridgeToShopping : apiService.deleteFridgeItem;
+        const method =
+          direction === 1 ? apiService.moveFridgeToShopping : apiService.deleteFridgeItem;
         method.mockReturnValueOnce(throwError(() => new Error('offline')));
         touch(card, 'touchstart', 150, 150);
         touch(card, 'touchmove', 150 + direction * 100, 150);
@@ -461,7 +600,11 @@ describe('App', () => {
       touch(card, 'touchmove', 200, 150);
       touch(card, 'touchend', 200, 150, 0);
       await vi.waitFor(() => expect(card.isConnected).toBe(false));
-      pending.next({ fridgeItems: staleItems, shoppingItems: [], household: { id: 'household-1', name: 'Test' } });
+      pending.next({
+        fridgeItems: staleItems,
+        shoppingItems: [],
+        household: { id: 'household-1', name: 'Test' },
+      });
       pending.complete();
       await refresh;
       expect(app.fridgeItems()).toEqual([]);

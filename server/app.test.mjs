@@ -649,7 +649,10 @@ test('recipe suggestions include local dishes when fridge is empty', async () =>
   const response = await request('/api/recipes/suggestions');
   assert.equal(response.status, 200);
   const result = await response.json();
-  assert.equal(result.recipes.some((recipe) => recipe.title === 'Рисовая каша'), true);
+  assert.equal(
+    result.recipes.some((recipe) => recipe.title === 'Рисовая каша'),
+    true,
+  );
 });
 
 test('household dishes can be created and matched against fridge products', async () => {
@@ -687,7 +690,147 @@ test('household dishes can be created and matched against fridge products', asyn
   const listResponse = await request('/api/dishes');
   assert.equal(listResponse.status, 200);
   const listed = await listResponse.json();
-  assert.equal(listed.recipes.some((recipe) => recipe.title === 'Картофельное пюре'), true);
+  assert.equal(
+    listed.recipes.some((recipe) => recipe.title === 'Картофельное пюре'),
+    true,
+  );
+});
+
+test('recipes using expiring products are prioritized', async () => {
+  await prisma.dishIngredient.deleteMany();
+  await prisma.dish.deleteMany();
+  await prisma.product.deleteMany();
+  await prisma.fridgeItem.deleteMany();
+
+  const expiringDate = new Date(Date.now() + 86_400_000).toISOString().slice(0, 10);
+  const stableDate = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10);
+  await request('/api/dishes', {
+    method: 'POST',
+    body: JSON.stringify({ title: 'Салат с томатом', ingredients: ['Томат'] }),
+  });
+  await request('/api/dishes', {
+    method: 'POST',
+    body: JSON.stringify({ title: 'Салат с огурцом', ingredients: ['Огурец'] }),
+  });
+  await request('/api/fridge', {
+    method: 'POST',
+    body: JSON.stringify({
+      name: 'Томат',
+      quantity: 2,
+      unit: 'шт.',
+      expiresAt: expiringDate,
+      reminderDays: 3,
+      category: 'products',
+    }),
+  });
+  await request('/api/fridge', {
+    method: 'POST',
+    body: JSON.stringify({
+      name: 'Огурец',
+      quantity: 2,
+      unit: 'шт.',
+      expiresAt: stableDate,
+      reminderDays: 1,
+      category: 'products',
+    }),
+  });
+
+  const response = await request('/api/dishes');
+  assert.equal(response.status, 200);
+  const result = await response.json();
+  assert.equal(result.recipes[0].title, 'Салат с томатом');
+  assert.equal(result.recipes[0].expiringIngredientCount, 1);
+  assert.equal(result.recipes[1].expiringIngredientCount, 0);
+});
+
+test('missing recipe ingredients are added to shopping without duplicates', async () => {
+  await prisma.dishIngredient.deleteMany();
+  await prisma.dish.deleteMany();
+  await prisma.product.deleteMany();
+  await prisma.fridgeItem.deleteMany();
+  await prisma.shoppingItem.deleteMany();
+
+  const createResponse = await request('/api/dishes', {
+    method: 'POST',
+    body: JSON.stringify({
+      title: 'Пюре с сыром',
+      ingredients: ['Картофель', 'Молоко', 'Сыр'],
+    }),
+  });
+  const createdDish = (await createResponse.json()).recipes[0];
+  await request('/api/fridge', {
+    method: 'POST',
+    body: JSON.stringify({
+      name: 'Картофель',
+      quantity: 3,
+      unit: 'шт.',
+      expiresAt: null,
+      reminderDays: 0,
+      category: 'products',
+    }),
+  });
+  await request('/api/shopping', {
+    method: 'POST',
+    body: JSON.stringify({ name: 'молоко', quantity: 1, unit: 'л', category: 'products' }),
+  });
+
+  const firstResponse = await request(`/api/recipes/${createdDish.id}/missing-to-shopping`, {
+    method: 'POST',
+    body: '{}',
+  });
+  assert.equal(firstResponse.status, 200);
+  const first = await firstResponse.json();
+  assert.equal(first.addedCount, 1);
+  assert.equal(first.skippedCount, 1);
+  assert.deepEqual(
+    first.items.map((item) => item.name),
+    ['Сыр'],
+  );
+
+  const secondResponse = await request(`/api/recipes/${createdDish.id}/missing-to-shopping`, {
+    method: 'POST',
+    body: '{}',
+  });
+  const second = await secondResponse.json();
+  assert.equal(second.addedCount, 0);
+  assert.equal(second.skippedCount, 2);
+  assert.equal(await prisma.shoppingItem.count(), 2);
+});
+
+test('user recipes can be deleted without deleting catalog recipes', async () => {
+  await prisma.dishIngredient.deleteMany();
+  await prisma.dish.deleteMany();
+  await prisma.product.deleteMany();
+
+  const createResponse = await request('/api/dishes', {
+    method: 'POST',
+    body: JSON.stringify({ title: 'Мой суп', ingredients: ['Вода'] }),
+  });
+  const userDish = (await createResponse.json()).recipes[0];
+  await prisma.dish.create({
+    data: {
+      id: 'catalog-protected-dish',
+      title: 'Каталожный суп',
+      source: 'catalog',
+      ingredients: {
+        create: {
+          product: {
+            create: { name: 'Бульон', normalizedName: 'бульон', aliases: '[]' },
+          },
+        },
+      },
+    },
+  });
+
+  const deleteResponse = await request(`/api/dishes/${userDish.id}`, { method: 'DELETE' });
+  assert.equal(deleteResponse.status, 204);
+  assert.equal(await prisma.dish.count({ where: { id: userDish.id } }), 0);
+
+  const protectedResponse = await request('/api/dishes/catalog-protected-dish', {
+    method: 'DELETE',
+  });
+  assert.equal(protectedResponse.status, 404);
+  assert.equal(await prisma.dish.count({ where: { id: 'catalog-protected-dish' } }), 1);
 });
 
 test('recipe catalog loads Spoonacular recipes with images', async () => {
@@ -762,6 +905,7 @@ test('recipe catalog loads Spoonacular recipes with images', async () => {
       instructions: [],
       usedIngredientCount: 2,
       missedIngredientCount: 1,
+      expiringIngredientCount: 1,
       matchPercent: 67,
       usedIngredients: ['potato', 'tomato'],
       missedIngredients: ['cheese'],
@@ -772,7 +916,10 @@ test('recipe catalog loads Spoonacular recipes with images', async () => {
     restoreEnv('ADMIN_EMAILS', previousAdmins);
     assert.equal(savedResponse.status, 200);
     const saved = await savedResponse.json();
-    assert.equal(saved.recipes.some((recipe) => recipe.externalId === '715538'), true);
+    assert.equal(
+      saved.recipes.some((recipe) => recipe.externalId === '715538'),
+      true,
+    );
   } finally {
     globalThis.fetch = previousFetch;
     restoreEnv('SPOONACULAR_API_KEY', previousKey);
@@ -940,27 +1087,48 @@ test('fridge item can be created and partially consumed', async () => {
 
 for (const category of ['products', 'household', 'medicine']) {
   test(`moves ${category} from stock to shopping atomically and rejects a repeat`, async () => {
-    const input = { name: `Swipe ${category}`, quantity: 2.5, unit: 'упак.', category, expiresAt: null, reminderDays: 0 };
-    const createdResponse = await request('/api/fridge', { method: 'POST', body: JSON.stringify(input) });
+    const input = {
+      name: `Swipe ${category}`,
+      quantity: 2.5,
+      unit: 'упак.',
+      category,
+      expiresAt: null,
+      reminderDays: 0,
+    };
+    const createdResponse = await request('/api/fridge', {
+      method: 'POST',
+      body: JSON.stringify(input),
+    });
     assert.equal(createdResponse.status, 201);
     const created = await createdResponse.json();
     const route = `/api/fridge/${created.id}/move-to-shopping`;
     const movedResponse = await request(route, { method: 'POST' });
     assert.equal(movedResponse.status, 200);
     const moved = await movedResponse.json();
-    for (const field of ['name', 'quantity', 'unit', 'category']) assert.equal(moved[field], input[field]);
+    for (const field of ['name', 'quantity', 'unit', 'category'])
+      assert.equal(moved[field], input[field]);
     assert.equal(moved.checked, false);
     const repeatedResponse = await request(route, { method: 'POST' });
     assert.equal(repeatedResponse.status, 404);
     const state = await (await request('/api/state')).json();
-    assert.equal(state.fridgeItems.some((item) => item.id === created.id), false);
+    assert.equal(
+      state.fridgeItems.some((item) => item.id === created.id),
+      false,
+    );
     assert.equal(state.shoppingItems.filter((item) => item.name === input.name).length, 1);
   });
 }
 
 test('failed stock-to-shopping transaction preserves the stock item', async () => {
   const createResponse = await request('/api/fridge', {
-    method: 'POST', body: JSON.stringify({ name: 'Swipe rollback', quantity: 1, unit: 'шт.', expiresAt: null, reminderDays: 0 }),
+    method: 'POST',
+    body: JSON.stringify({
+      name: 'Swipe rollback',
+      quantity: 1,
+      unit: 'шт.',
+      expiresAt: null,
+      reminderDays: 0,
+    }),
   });
   const item = await createResponse.json();
   // Fail the second half of the transaction after the shopping insert succeeds.
@@ -970,8 +1138,14 @@ test('failed stock-to-shopping transaction preserves the stock item', async () =
     const result = await request(`/api/fridge/${item.id}/move-to-shopping`, { method: 'POST' });
     assert.equal(result.status, 500);
     const state = await (await request('/api/state')).json();
-    assert.equal(state.fridgeItems.some((current) => current.id === item.id), true);
-    assert.equal(state.shoppingItems.some((current) => current.name === item.name), false);
+    assert.equal(
+      state.fridgeItems.some((current) => current.id === item.id),
+      true,
+    );
+    assert.equal(
+      state.shoppingItems.some((current) => current.name === item.name),
+      false,
+    );
   } finally {
     await prisma.$executeRawUnsafe('DROP TRIGGER swipe_delete_failure');
   }

@@ -22,7 +22,7 @@ import {
 } from './core/models';
 
 type TabId = 'fridge' | 'shopping' | 'dishes' | 'recipes' | 'profile';
-type RecipeTab = 'mine' | 'likes' | 'all';
+type RecipeTab = 'all' | 'available' | 'almost' | 'mine' | 'likes';
 type ShoppingFilter = 'all' | ItemCategory;
 type FridgeStatusFilter = 'all' | 'expired' | 'soon' | 'no-expiry';
 type FridgeSort = 'newest' | 'oldest' | 'expiry' | 'name';
@@ -65,6 +65,8 @@ interface Recipe {
   instructions?: string[];
   usedIngredients?: string[];
   missedIngredients?: string[];
+  expiringIngredientCount?: number;
+  matchPercent?: number;
 }
 
 interface DishIdea {
@@ -79,6 +81,7 @@ interface DishIdea {
   usedIngredients?: string[];
   missedIngredients?: string[];
   instructions?: string[];
+  expiringIngredientCount?: number;
 }
 
 interface SwipeState {
@@ -197,6 +200,7 @@ export class App implements OnDestroy, OnInit {
   protected readonly shoppingSort = signal<ShoppingSort>('newest');
   protected readonly activeDishFilter = signal<DishFilter>('available');
   protected readonly activeRecipeTab = signal<RecipeTab>('all');
+  protected readonly recipeSearch = signal('');
   protected readonly profileSection = signal<ProfileSection>('menu');
   protected readonly fridgeAddOpen = signal(false);
   protected readonly fridgeMenuItem = signal<FridgeItem | null>(null);
@@ -223,11 +227,19 @@ export class App implements OnDestroy, OnInit {
   };
 
   protected readonly fridgeMenuForm = {
-    name: '', quantity: 1, unit: 'шт.' as Unit, expiresAt: '', noExpiry: false,
-    reminderDays: 1, autoAddToShopping: false,
+    name: '',
+    quantity: 1,
+    unit: 'шт.' as Unit,
+    expiresAt: '',
+    noExpiry: false,
+    reminderDays: 1,
+    autoAddToShopping: false,
   };
   protected readonly shoppingMenuForm = {
-    name: '', quantity: 1, unit: 'шт.' as Unit, category: 'products' as ItemCategory,
+    name: '',
+    quantity: 1,
+    unit: 'шт.' as Unit,
+    category: 'products' as ItemCategory,
   };
 
   protected readonly newShoppingItem = {
@@ -304,7 +316,9 @@ export class App implements OnDestroy, OnInit {
     return Boolean(user?.isAdmin || (email && DEV_ALLOWED_EMAILS.has(email)));
   });
   protected readonly activeDevSectionLabel = computed(
-    () => this.devMenu.find((item) => item.id === this.activeDevSection())?.label ?? 'Оперативная панель',
+    () =>
+      this.devMenu.find((item) => item.id === this.activeDevSection())?.label ??
+      'Оперативная панель',
   );
   protected readonly devLastUpdated = signal('');
   protected readonly devUnansweredTickets = computed(
@@ -365,12 +379,13 @@ export class App implements OnDestroy, OnInit {
       .filter((item) => item.category === this.activeCategory())
       .filter((item) => !search || this.normalizeSearch(item.name).includes(search))
       .filter((item) => {
-        if (filter === 'expired') return Boolean(item.expiresAt && this.daysUntil(item.expiresAt) < 0);
+        if (filter === 'expired')
+          return Boolean(item.expiresAt && this.daysUntil(item.expiresAt) < 0);
         if (filter === 'soon') {
           return Boolean(
             item.expiresAt &&
-              this.daysUntil(item.expiresAt) >= 0 &&
-              this.daysUntil(item.expiresAt) <= item.reminderDays,
+            this.daysUntil(item.expiresAt) >= 0 &&
+            this.daysUntil(item.expiresAt) <= item.reminderDays,
           );
         }
         if (filter === 'no-expiry') return !item.expiresAt;
@@ -412,7 +427,9 @@ export class App implements OnDestroy, OnInit {
   protected readonly shoppingFiltersActive = computed(() => Boolean(this.shoppingSearch().trim()));
   protected readonly shoppingSearchPlaceholder = computed(() => {
     const category = this.activeShoppingFilter();
-    return category === 'all' ? 'Искать во всех покупках' : `Искать в разделе «${this.categoryLabel(category)}»`;
+    return category === 'all'
+      ? 'Искать во всех покупках'
+      : `Искать в разделе «${this.categoryLabel(category)}»`;
   });
   protected readonly shoppingProductsCount = computed(
     () => this.shoppingItems().filter((item) => item.category === 'products').length,
@@ -475,15 +492,32 @@ export class App implements OnDestroy, OnInit {
   });
   protected readonly recipeList = computed(() => {
     const tab = this.activeRecipeTab();
-    return this.recipes().filter((recipe) => {
-      if (tab === 'mine') {
-        return recipe.mine;
-      }
-      if (tab === 'likes') {
-        return recipe.liked;
-      }
-      return true;
-    });
+    const search = this.normalizeSearch(this.recipeSearch());
+    return this.recipes()
+      .filter((recipe) => {
+        if (tab === 'mine') return recipe.mine;
+        if (tab === 'likes') return recipe.liked;
+        if (tab === 'available') return (recipe.missedIngredients?.length ?? 0) === 0;
+        if (tab === 'almost') {
+          const missing = recipe.missedIngredients?.length ?? 0;
+          return missing > 0 && missing <= 2;
+        }
+        return true;
+      })
+      .filter((recipe) => {
+        if (!search) return true;
+        return [
+          recipe.title,
+          ...(recipe.usedIngredients ?? []),
+          ...(recipe.missedIngredients ?? []),
+        ].some((value) => this.normalizeSearch(value).includes(search));
+      })
+      .sort(
+        (left, right) =>
+          (right.expiringIngredientCount ?? 0) - (left.expiringIngredientCount ?? 0) ||
+          (right.matchPercent ?? 0) - (left.matchPercent ?? 0) ||
+          left.title.localeCompare(right.title),
+      );
   });
   protected readonly filteredRecipeDishIdeas = computed(() => {
     const filter = this.activeDishFilter();
@@ -525,10 +559,22 @@ export class App implements OnDestroy, OnInit {
 
   ngOnInit(): void {
     // Explicit non-passive touchmove allows horizontal gestures to prevent scrolling.
-    document.addEventListener('touchstart', this.handleNativeTouchStart, { capture: true, passive: true });
-    document.addEventListener('touchmove', this.handleNativeTouchMove, { capture: true, passive: false });
-    document.addEventListener('touchend', this.handleNativeTouchEnd, { capture: true, passive: true });
-    document.addEventListener('touchcancel', this.handleNativeTouchCancel, { capture: true, passive: true });
+    document.addEventListener('touchstart', this.handleNativeTouchStart, {
+      capture: true,
+      passive: true,
+    });
+    document.addEventListener('touchmove', this.handleNativeTouchMove, {
+      capture: true,
+      passive: false,
+    });
+    document.addEventListener('touchend', this.handleNativeTouchEnd, {
+      capture: true,
+      passive: true,
+    });
+    document.addEventListener('touchcancel', this.handleNativeTouchCancel, {
+      capture: true,
+      passive: true,
+    });
     if (sessionStorage.getItem('eat-it.delete-account.after-oauth') === 'true') {
       sessionStorage.removeItem('eat-it.delete-account.after-oauth');
       window.location.replace('/?delete-account=1');
@@ -656,7 +702,7 @@ export class App implements OnDestroy, OnInit {
       void this.loadUserDishes();
     }
     if (tab === 'recipes') {
-      void this.loadRecipeCatalog();
+      void Promise.all([this.loadRecipeCatalog(), this.loadUserDishes()]);
     }
   }
 
@@ -733,26 +779,40 @@ export class App implements OnDestroy, OnInit {
   protected openFridgeMenu(item: FridgeItem): void {
     this.fridgeMenuItem.set(item);
     Object.assign(this.fridgeMenuForm, {
-      name: item.name, quantity: item.quantity, unit: item.unit,
-      expiresAt: item.expiresAt ?? '', noExpiry: !item.expiresAt,
-      reminderDays: item.reminderDays, autoAddToShopping: item.autoAddToShopping,
+      name: item.name,
+      quantity: item.quantity,
+      unit: item.unit,
+      expiresAt: item.expiresAt ?? '',
+      noExpiry: !item.expiresAt,
+      reminderDays: item.reminderDays,
+      autoAddToShopping: item.autoAddToShopping,
     });
   }
 
-  protected closeFridgeMenu(): void { this.fridgeMenuItem.set(null); }
+  protected closeFridgeMenu(): void {
+    this.fridgeMenuItem.set(null);
+  }
 
   protected async saveFridgeMenu(): Promise<void> {
     const item = this.fridgeMenuItem();
     const name = this.fridgeMenuForm.name.trim();
     const quantity = Number(this.fridgeMenuForm.quantity);
     if (!item || !name || !Number.isFinite(quantity) || quantity <= 0) return;
-    const expiresAt = item.category === 'household' || this.fridgeMenuForm.noExpiry ? null : this.fridgeMenuForm.expiresAt || null;
+    const expiresAt =
+      item.category === 'household' || this.fridgeMenuForm.noExpiry
+        ? null
+        : this.fridgeMenuForm.expiresAt || null;
     await this.runMutation(async () => {
-      const updated = await firstValueFrom(this.api.updateFridgeItem(item.id, {
-        name, quantity, unit: this.fridgeMenuForm.unit, expiresAt,
-        reminderDays: expiresAt ? Number(this.fridgeMenuForm.reminderDays) || 0 : 0,
-        autoAddToShopping: this.fridgeMenuForm.autoAddToShopping,
-      }));
+      const updated = await firstValueFrom(
+        this.api.updateFridgeItem(item.id, {
+          name,
+          quantity,
+          unit: this.fridgeMenuForm.unit,
+          expiresAt,
+          reminderDays: expiresAt ? Number(this.fridgeMenuForm.reminderDays) || 0 : 0,
+          autoAddToShopping: this.fridgeMenuForm.autoAddToShopping,
+        }),
+      );
       this.replaceFridgeItem(updated);
       this.closeFridgeMenu();
     });
@@ -770,12 +830,12 @@ export class App implements OnDestroy, OnInit {
     const rawExpiresAt =
       item.category === 'household'
         ? ''
-        : window
+        : (window
             .prompt(
               'Годен до (ДД.ММ.ГГГГ), оставьте пустым для товара без срока',
               item.expiresAt ? this.formatDate(item.expiresAt) : '',
             )
-            ?.trim() ?? '';
+            ?.trim() ?? '');
     const expiresAt = rawExpiresAt ? this.parseDisplayDate(rawExpiresAt) : null;
     if (rawExpiresAt && !expiresAt) {
       return;
@@ -806,7 +866,10 @@ export class App implements OnDestroy, OnInit {
       if (result.removed || !result.item) {
         this.fridgeItems.update((items) => items.filter((current) => current.id !== item.id));
         this.closeFridgeMenu();
-        if (item.autoAddToShopping || window.confirm(`«${item.name}» закончился. Добавить в список покупок?`)) {
+        if (
+          item.autoAddToShopping ||
+          window.confirm(`«${item.name}» закончился. Добавить в список покупок?`)
+        ) {
           const shoppingItem = await firstValueFrom(
             this.api.createShoppingItem({
               name: item.name,
@@ -874,7 +937,9 @@ export class App implements OnDestroy, OnInit {
     });
   }
 
-  protected closeShoppingMenu(): void { this.shoppingMenuItem.set(null); }
+  protected closeShoppingMenu(): void {
+    this.shoppingMenuItem.set(null);
+  }
 
   protected async saveShoppingMenu(): Promise<void> {
     const item = this.shoppingMenuItem();
@@ -882,9 +947,14 @@ export class App implements OnDestroy, OnInit {
     const quantity = Number(this.shoppingMenuForm.quantity);
     if (!item || !name || !Number.isFinite(quantity) || quantity <= 0) return;
     await this.runMutation(async () => {
-      const updated = await firstValueFrom(this.api.updateShoppingItem(item.id, {
-        name, quantity, unit: this.shoppingMenuForm.unit, category: this.shoppingMenuForm.category,
-      }));
+      const updated = await firstValueFrom(
+        this.api.updateShoppingItem(item.id, {
+          name,
+          quantity,
+          unit: this.shoppingMenuForm.unit,
+          category: this.shoppingMenuForm.category,
+        }),
+      );
       this.replaceShoppingItem(updated);
       this.closeShoppingMenu();
     });
@@ -921,9 +991,12 @@ export class App implements OnDestroy, OnInit {
     const rawExpiresAt =
       item.category === 'household'
         ? ''
-        : window
-            .prompt('Годен до (ДД.ММ.ГГГГ), оставьте пустым для товара без срока', this.formatDate(this.addDays(5)))
-            ?.trim() ?? '';
+        : (window
+            .prompt(
+              'Годен до (ДД.ММ.ГГГГ), оставьте пустым для товара без срока',
+              this.formatDate(this.addDays(5)),
+            )
+            ?.trim() ?? '');
     const expiresAt = rawExpiresAt ? this.parseDisplayDate(rawExpiresAt) : null;
     if (rawExpiresAt && !expiresAt) {
       return;
@@ -1042,6 +1115,44 @@ export class App implements OnDestroy, OnInit {
     this.activeRecipe.set(null);
   }
 
+  protected async addMissingIngredientsToShopping(
+    id: string | undefined,
+    missingIngredients: string[] | undefined,
+  ): Promise<void> {
+    if (!id || !missingIngredients?.length || this.saving()) {
+      return;
+    }
+
+    await this.runMutation(async () => {
+      const result = await firstValueFrom(this.api.addRecipeIngredientsToShopping(id));
+      this.shoppingItems.update((items) => {
+        const existingIds = new Set(items.map((item) => item.id));
+        return [...result.items.filter((item) => !existingIds.has(item.id)), ...items];
+      });
+      this.showToast(
+        result.addedCount > 0
+          ? `Добавлено в покупки: ${result.addedCount}`
+          : 'Все недостающие продукты уже в покупках',
+      );
+    });
+  }
+
+  protected async deleteUserDish(id: string | undefined): Promise<void> {
+    if (!id || this.saving() || !window.confirm('Удалить ваш рецепт?')) {
+      return;
+    }
+
+    await this.runMutation(async () => {
+      await firstValueFrom(this.api.deleteDish(id));
+      this.userDishIdeas.update((dishes) => dishes.filter((dish) => dish.id !== id));
+      this.recipes.update((recipes) => recipes.filter((recipe) => recipe.id !== id));
+      if (this.activeDish()?.id === id) this.activeDish.set(null);
+      if (this.activeRecipe()?.id === id) this.activeRecipe.set(null);
+      this.persistRecipes();
+      this.showToast('Рецепт удален');
+    });
+  }
+
   protected setProfileSection(section: ProfileSection): void {
     this.profileSection.set(section);
   }
@@ -1138,9 +1249,7 @@ export class App implements OnDestroy, OnInit {
       const result = await firstValueFrom(this.api.getRecipeSuggestions());
       const savedById = new Map(this.recipes().map((recipe) => [recipe.id, recipe]));
       this.recipeDishIdeas.set(
-        result.recipes.length
-          ? result.recipes.map((recipe) => this.toDishIdea(recipe))
-          : [],
+        result.recipes.length ? result.recipes.map((recipe) => this.toDishIdea(recipe)) : [],
       );
       this.recipes.update((recipes) => [
         ...recipes.filter((recipe) => recipe.mine),
@@ -1163,7 +1272,7 @@ export class App implements OnDestroy, OnInit {
     this.dishesError.set('');
     try {
       const result = await firstValueFrom(this.api.getDishes());
-      this.userDishIdeas.set(result.recipes.map((recipe) => this.toDishIdea(recipe)));
+      this.syncUserDishes(result.recipes);
     } catch (error) {
       this.dishesError.set(this.errorMessage(error, 'Не удалось загрузить блюда.'));
       this.userDishIdeas.set([]);
@@ -1184,9 +1293,18 @@ export class App implements OnDestroy, OnInit {
 
     await this.runMutation(async () => {
       const result = await firstValueFrom(this.api.createDish(input));
-      this.userDishIdeas.set(result.recipes.map((recipe) => this.toDishIdea(recipe)));
+      this.syncUserDishes(result.recipes);
       this.showToast('Блюдо добавлено');
     });
+  }
+
+  private syncUserDishes(recipes: RecipeSuggestion[]): void {
+    const savedById = new Map(this.recipes().map((recipe) => [recipe.id, recipe]));
+    this.userDishIdeas.set(recipes.map((recipe) => this.toDishIdea(recipe)));
+    this.recipes.update((current) => [
+      ...recipes.map((recipe) => this.toRecipe(recipe, savedById.get(recipe.id), true)),
+      ...current.filter((recipe) => !recipe.mine),
+    ]);
   }
 
   private toDishIdea(recipe: RecipeSuggestion): DishIdea {
@@ -1209,23 +1327,23 @@ export class App implements OnDestroy, OnInit {
       usedIngredients: recipe.usedIngredients,
       missedIngredients: recipe.missedIngredients,
       instructions: recipe.instructions,
+      expiringIngredientCount: recipe.expiringIngredientCount,
     };
   }
 
-  private toRecipe(recipe: RecipeSuggestion, saved?: Recipe): Recipe {
+  private toRecipe(recipe: RecipeSuggestion, saved?: Recipe, mine = false): Recipe {
     const isCatalogFallback = recipe.source === 'spoonacular-catalog';
     return {
       id: recipe.id,
       title: recipe.title,
       time: recipe.subtitle ?? 'Рецепт из базы',
-      tags:
-        isCatalogFallback
-          ? ['популярное', 'Spoonacular']
-          : recipe.missedIngredientCount > 0
-            ? [`докупить ${recipe.missedIngredientCount}`, `${recipe.matchPercent}%`]
-            : ['все есть', `${recipe.matchPercent}%`],
+      tags: isCatalogFallback
+        ? ['популярное', 'Spoonacular']
+        : recipe.missedIngredientCount > 0
+          ? [`докупить ${recipe.missedIngredientCount}`, `${recipe.matchPercent}%`]
+          : ['все есть', `${recipe.matchPercent}%`],
       liked: saved?.liked ?? false,
-      mine: false,
+      mine,
       image: recipe.image,
       source: recipe.source,
       externalId: recipe.externalId,
@@ -1233,6 +1351,8 @@ export class App implements OnDestroy, OnInit {
       instructions: recipe.instructions,
       usedIngredients: recipe.usedIngredients,
       missedIngredients: recipe.missedIngredients,
+      expiringIngredientCount: recipe.expiringIngredientCount,
+      matchPercent: recipe.matchPercent,
     };
   }
 
@@ -1421,12 +1541,12 @@ export class App implements OnDestroy, OnInit {
     this.saving.set(true);
     try {
       const updated = await Promise.all(
-        unread.map((notification) => firstValueFrom(this.api.markNotification(notification.id, true))),
+        unread.map((notification) =>
+          firstValueFrom(this.api.markNotification(notification.id, true)),
+        ),
       );
       const updatedById = new Map(updated.map((notification) => [notification.id, notification]));
-      this.notifications.update((items) =>
-        items.map((item) => updatedById.get(item.id) ?? item),
-      );
+      this.notifications.update((items) => items.map((item) => updatedById.get(item.id) ?? item));
       this.unreadNotifications.set(0);
       this.showToast('Все уведомления прочитаны');
     } catch (error) {
@@ -1454,7 +1574,14 @@ export class App implements OnDestroy, OnInit {
     if (event.pointerType === 'touch') return;
     if (event.pointerType === 'mouse' && event.button !== 0) return;
     (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
-    this.swipe.set({ id, startX: event.clientX, startY: event.clientY, touchId: null, deltaX: 0, axis: null });
+    this.swipe.set({
+      id,
+      startX: event.clientX,
+      startY: event.clientY,
+      touchId: null,
+      deltaX: 0,
+      axis: null,
+    });
   }
 
   protected beginTouchSwipe(event: TouchEvent, id: string): void {
@@ -1465,7 +1592,14 @@ export class App implements OnDestroy, OnInit {
     }
     const touch = event.touches.item(0);
     if (!touch) return;
-    this.swipe.set({ id, startX: touch.clientX, startY: touch.clientY, touchId: touch.identifier, deltaX: 0, axis: null });
+    this.swipe.set({
+      id,
+      startX: touch.clientX,
+      startY: touch.clientY,
+      touchId: touch.identifier,
+      deltaX: 0,
+      axis: null,
+    });
   }
 
   protected moveTouchSwipe(event: TouchEvent, id: string): void {
@@ -1479,7 +1613,13 @@ export class App implements OnDestroy, OnInit {
     if (!touch || touch.identifier !== swipe.touchId) return;
     const deltaX = touch.clientX - swipe.startX;
     const deltaY = touch.clientY - swipe.startY;
-    const axis = swipe.axis ?? (Math.hypot(deltaX, deltaY) > 6 ? (Math.abs(deltaX) > Math.abs(deltaY) ? 'horizontal' : 'vertical') : null);
+    const axis =
+      swipe.axis ??
+      (Math.hypot(deltaX, deltaY) > 6
+        ? Math.abs(deltaX) > Math.abs(deltaY)
+          ? 'horizontal'
+          : 'vertical'
+        : null);
     if (axis === 'vertical') {
       this.swipe.set({ ...swipe, axis });
       return;
@@ -1497,7 +1637,13 @@ export class App implements OnDestroy, OnInit {
     }
     const deltaX = event.clientX - swipe.startX;
     const deltaY = event.clientY - swipe.startY;
-    const axis = swipe.axis ?? (Math.hypot(deltaX, deltaY) > 6 ? (Math.abs(deltaX) > Math.abs(deltaY) ? 'horizontal' : 'vertical') : null);
+    const axis =
+      swipe.axis ??
+      (Math.hypot(deltaX, deltaY) > 6
+        ? Math.abs(deltaX) > Math.abs(deltaY)
+          ? 'horizontal'
+          : 'vertical'
+        : null);
     if (axis !== 'horizontal') {
       if (axis) this.swipe.set({ ...swipe, axis });
       return;
@@ -1587,7 +1733,10 @@ export class App implements OnDestroy, OnInit {
       await this.runMutation(async () => {
         if (action === 'shopping') {
           const shoppingItem = await firstValueFrom(this.api.moveFridgeToShopping(item.id));
-          this.shoppingItems.update((items) => [shoppingItem, ...items.filter((current) => current.id !== shoppingItem.id)]);
+          this.shoppingItems.update((items) => [
+            shoppingItem,
+            ...items.filter((current) => current.id !== shoppingItem.id),
+          ]);
         } else {
           await firstValueFrom(this.api.deleteFridgeItem(item.id));
         }
@@ -1762,9 +1911,13 @@ export class App implements OnDestroy, OnInit {
   private async loadNotifications(): Promise<void> {
     const result = await firstValueFrom(this.api.getNotifications());
     const cleared = new Set(this.clearedNotificationIds());
-    const notifications = result.notifications.filter((notification) => !cleared.has(notification.id));
+    const notifications = result.notifications.filter(
+      (notification) => !cleared.has(notification.id),
+    );
     this.notifications.set(notifications);
-    this.unreadNotifications.set(notifications.filter((notification) => !notification.readAt).length);
+    this.unreadNotifications.set(
+      notifications.filter((notification) => !notification.readAt).length,
+    );
   }
 
   private async loadSupportTickets(): Promise<void> {
@@ -1967,9 +2120,7 @@ export class App implements OnDestroy, OnInit {
     try {
       const registration = await navigator.serviceWorker.getRegistration();
       const subscription = await registration?.pushManager.getSubscription();
-      this.setNotificationsEnabled(
-        Notification.permission === 'granted' && Boolean(subscription),
-      );
+      this.setNotificationsEnabled(Notification.permission === 'granted' && Boolean(subscription));
     } catch {
       this.setNotificationsEnabled(false);
     }
@@ -2132,11 +2283,18 @@ export class App implements OnDestroy, OnInit {
     return this.timestamp(right.createdAt) - this.timestamp(left.createdAt);
   }
 
-  private compareShoppingItems(left: ShoppingItem, right: ShoppingItem, sort: ShoppingSort): number {
+  private compareShoppingItems(
+    left: ShoppingItem,
+    right: ShoppingItem,
+    sort: ShoppingSort,
+  ): number {
     if (sort === 'oldest') return this.timestamp(left.createdAt) - this.timestamp(right.createdAt);
     if (sort === 'name') return this.compareNames(left.name, right.name);
     if (sort === 'status') {
-      return Number(left.checked) - Number(right.checked) || this.timestamp(right.createdAt) - this.timestamp(left.createdAt);
+      return (
+        Number(left.checked) - Number(right.checked) ||
+        this.timestamp(right.createdAt) - this.timestamp(left.createdAt)
+      );
     }
     return this.timestamp(right.createdAt) - this.timestamp(left.createdAt);
   }

@@ -859,9 +859,7 @@ a.secondary-action {
   gap: 14px;
   min-height: 180px;
   padding: 18px;
-  background:
-    linear-gradient(135deg, rgba(31, 100, 73, 0.14), transparent 48%),
-    var(--surface);
+  background: linear-gradient(135deg, rgba(31, 100, 73, 0.14), transparent 48%), var(--surface);
 }
 
 .dish-image,
@@ -1042,6 +1040,30 @@ a.secondary-action {
 
 .detail-dialog {
   gap: 16px;
+}
+
+.detail-actions {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+}
+
+.recipe-priority-note,
+.expiry-recipe-label {
+  color: #9a4f16;
+  font-weight: 800;
+}
+
+.recipe-priority-note {
+  border: 1px solid rgba(185, 108, 36, 0.28);
+  border-radius: 8px;
+  background: #fff1dc;
+  padding: 10px 12px;
+  font-size: 13px;
+}
+
+.expiry-recipe-label {
+  font-size: 12px;
 }
 
 .add-dialog {
@@ -1747,7 +1769,9 @@ a.secondary-action {
   color: var(--primary);
 }
 
-.preview-swipe span:first-child { color: var(--danger); }
+.preview-swipe span:first-child {
+  color: var(--danger);
+}
 
 .preview-choice,
 .onboarding-actions {
@@ -2176,14 +2200,34 @@ a.secondary-action {
   inset: 22% 4% auto 4%;
   height: 3px;
   border-radius: 999px;
-  background: linear-gradient(90deg, transparent 0 6%, #49875e 6% 20%, transparent 20% 26%, #49875e 26% 44%, transparent 44% 50%, #49875e 50% 68%, transparent 68% 74%, #49875e 74% 100%);
+  background: linear-gradient(
+    90deg,
+    transparent 0 6%,
+    #49875e 6% 20%,
+    transparent 20% 26%,
+    #49875e 26% 44%,
+    transparent 44% 50%,
+    #49875e 50% 68%,
+    transparent 68% 74%,
+    #49875e 74% 100%
+  );
   content: '';
   transform: rotate(-8deg);
 }
 
 .dev-chart::after {
   inset: 52% 4% auto 4%;
-  background: linear-gradient(90deg, transparent 0 8%, #3b73b0 8% 26%, transparent 26% 32%, #3b73b0 32% 48%, transparent 48% 56%, #3b73b0 56% 72%, transparent 72% 78%, #3b73b0 78% 100%);
+  background: linear-gradient(
+    90deg,
+    transparent 0 8%,
+    #3b73b0 8% 26%,
+    transparent 26% 32%,
+    #3b73b0 32% 48%,
+    transparent 48% 56%,
+    #3b73b0 56% 72%,
+    transparent 72% 78%,
+    #3b73b0 78% 100%
+  );
   transform: rotate(12deg);
   opacity: 0.75;
 }

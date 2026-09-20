@@ -31,22 +31,22 @@
         <p>Проверяем сессию...</p>
       } @else {
         @if (!accountDeletionPage) {
-        <div class="auth-tabs">
-          <button
-            type="button"
-            [class.active]="authMode() === 'login'"
-            (click)="setAuthMode('login')"
-          >
-            Войти
-          </button>
-          <button
-            type="button"
-            [class.active]="authMode() === 'register'"
-            (click)="setAuthMode('register')"
-          >
-            Регистрация
-          </button>
-        </div>
+          <div class="auth-tabs">
+            <button
+              type="button"
+              [class.active]="authMode() === 'login'"
+              (click)="setAuthMode('login')"
+            >
+              Войти
+            </button>
+            <button
+              type="button"
+              [class.active]="authMode() === 'register'"
+              (click)="setAuthMode('register')"
+            >
+              Регистрация
+            </button>
+          </div>
         }
 
         <form class="auth-form" (ngSubmit)="submitAuth()">
@@ -76,7 +76,9 @@
             <input
               name="password"
               [(ngModel)]="authForm.password"
-            [autocomplete]="authMode() === 'login' || accountDeletionPage ? 'current-password' : 'new-password'"
+              [autocomplete]="
+                authMode() === 'login' || accountDeletionPage ? 'current-password' : 'new-password'
+              "
               minlength="8"
               type="password"
               required
@@ -110,7 +112,9 @@
       <div>
         <p class="eyebrow">Homie</p>
         <h1>Подтвердите удаление</h1>
-        <p class="auth-description">Будут удалены аккаунт и связанные с ним активные данные. Это действие нельзя отменить.</p>
+        <p class="auth-description">
+          Будут удалены аккаунт и связанные с ним активные данные. Это действие нельзя отменить.
+        </p>
       </div>
       @if (apiError()) {
         <p class="auth-error" role="alert">{{ apiError() }}</p>
@@ -302,10 +306,16 @@
           <button class="icon-button close-button" type="button" (click)="closeDish()">×</button>
         </div>
         <p>{{ activeDish()?.description }}</p>
-        <img class="detail-image" [src]="recipeImage(activeDish()?.title, activeDish()?.image)" alt="" />
+        <img
+          class="detail-image"
+          [src]="recipeImage(activeDish()?.title, activeDish()?.image)"
+          alt=""
+        />
         <div class="detail-stats">
           <span>{{ activeDish()?.badge }} совпадение</span>
-          <span>{{ activeDish()?.missedIngredients?.length ? 'Нужно докупить' : 'Ингредиенты дома' }}</span>
+          <span>{{
+            activeDish()?.missedIngredients?.length ? 'Нужно докупить' : 'Ингредиенты дома'
+          }}</span>
         </div>
         @if (activeDish()?.usedIngredients?.length) {
           <div class="tag-row">
@@ -321,8 +331,36 @@
             }
           </div>
         }
+        <div class="detail-actions">
+          @if (activeDish()?.missedIngredients?.length) {
+            <button
+              class="primary-action"
+              type="button"
+              [disabled]="saving()"
+              (click)="
+                addMissingIngredientsToShopping(activeDish()?.id, activeDish()?.missedIngredients)
+              "
+            >
+              Добавить недостающее в покупки
+            </button>
+          }
+          @if (activeDish()?.source === 'user') {
+            <button
+              class="danger-action"
+              type="button"
+              [disabled]="saving()"
+              (click)="deleteUserDish(activeDish()?.id)"
+            >
+              Удалить рецепт
+            </button>
+          }
+        </div>
         <div class="recipe-longread">
-          @for (step of activeDish()?.instructions?.length ? activeDish()?.instructions : cookingSteps; track step; let index = $index) {
+          @for (
+            step of activeDish()?.instructions?.length ? activeDish()?.instructions : cookingSteps;
+            track step;
+            let index = $index
+          ) {
             <article>
               <span>{{ index + 1 }}</span>
               <p>{{ step }}</p>
@@ -347,8 +385,14 @@
           </div>
           <button class="icon-button close-button" type="button" (click)="closeRecipe()">×</button>
         </div>
-        <p>{{ activeRecipe()?.time }} · {{ activeRecipe()?.mine ? 'ваш рецепт' : 'из каталога' }}</p>
-        <img class="detail-image" [src]="recipeImage(activeRecipe()?.title, activeRecipe()?.image)" alt="" />
+        <p>
+          {{ activeRecipe()?.time }} · {{ activeRecipe()?.mine ? 'ваш рецепт' : 'из каталога' }}
+        </p>
+        <img
+          class="detail-image"
+          [src]="recipeImage(activeRecipe()?.title, activeRecipe()?.image)"
+          alt=""
+        />
         <div class="tag-row">
           @for (tag of activeRecipe()?.tags ?? []; track tag) {
             <span>{{ tag }}</span>
@@ -368,8 +412,46 @@
             }
           </div>
         }
+        @if (activeRecipe()?.expiringIngredientCount) {
+          <div class="recipe-priority-note">
+            Использует продукты, у которых скоро закончится срок годности
+          </div>
+        }
+        <div class="detail-actions">
+          @if (activeRecipe()?.missedIngredients?.length) {
+            <button
+              class="primary-action"
+              type="button"
+              [disabled]="saving()"
+              (click)="
+                addMissingIngredientsToShopping(
+                  activeRecipe()?.id,
+                  activeRecipe()?.missedIngredients
+                )
+              "
+            >
+              Добавить недостающее в покупки
+            </button>
+          }
+          @if (activeRecipe()?.mine) {
+            <button
+              class="danger-action"
+              type="button"
+              [disabled]="saving()"
+              (click)="deleteUserDish(activeRecipe()?.id)"
+            >
+              Удалить рецепт
+            </button>
+          }
+        </div>
         <div class="recipe-longread">
-          @for (step of activeRecipe()?.instructions?.length ? activeRecipe()?.instructions : cookingSteps; track step; let index = $index) {
+          @for (
+            step of activeRecipe()?.instructions?.length
+              ? activeRecipe()?.instructions
+              : cookingSteps;
+            track step;
+            let index = $index
+          ) {
             <article>
               <span>{{ index + 1 }}</span>
               <p>{{ step }}</p>
@@ -413,7 +495,9 @@
             Назад
           </button>
           <button class="primary-action" type="button" (click)="nextCookingStep()">
-          {{ cookingStepIndex() + 1 === cookingSteps.length ? 'Завершить готовку' : 'Следующий шаг' }}
+            {{
+              cookingStepIndex() + 1 === cookingSteps.length ? 'Завершить готовку' : 'Следующий шаг'
+            }}
           </button>
         </div>
       </section>
@@ -432,7 +516,9 @@
             <p class="section-label">Новая позиция</p>
             <h2>Добавить в «{{ activeTabLabel() }}»</h2>
           </div>
-          <button class="icon-button close-button" type="button" (click)="closeFridgeAdd()">×</button>
+          <button class="icon-button close-button" type="button" (click)="closeFridgeAdd()">
+            ×
+          </button>
         </div>
         <form class="add-form" (ngSubmit)="addFridgeItem()">
           <label>
@@ -440,7 +526,13 @@
             <input
               name="fridge-name"
               [(ngModel)]="newFridgeItem.name"
-              [placeholder]="activeCategory() === 'household' ? 'Например, шампунь' : activeCategory() === 'medicine' ? 'Например, ибупрофен' : 'Например, молоко'"
+              [placeholder]="
+                activeCategory() === 'household'
+                  ? 'Например, шампунь'
+                  : activeCategory() === 'medicine'
+                    ? 'Например, ибупрофен'
+                    : 'Например, молоко'
+              "
               autocomplete="off"
             />
           </label>
@@ -471,29 +563,29 @@
             </label>
           }
           @if (activeCategory() !== 'household' && !newFridgeItem.noExpiry) {
-          <label>
-            Годен до
-            <input
-              name="fridge-expires"
-              [(ngModel)]="newFridgeItem.expiresAt"
-              [disabled]="activeCategory() === 'household' || newFridgeItem.noExpiry"
-              type="date"
-            />
-          </label>
-          <label>
-            Напомнить об истечении срока:
-            <select
-              name="fridge-reminder"
-              [(ngModel)]="newFridgeItem.reminderDays"
-              [disabled]="activeCategory() === 'household' || newFridgeItem.noExpiry"
-            >
-              <option [ngValue]="0">в день окончания</option>
-              <option [ngValue]="1">за 1 день</option>
-              <option [ngValue]="3">за 3 дня</option>
-              <option [ngValue]="5">за 5 дней</option>
-              <option [ngValue]="7">за 7 дней</option>
-            </select>
-          </label>
+            <label>
+              Годен до
+              <input
+                name="fridge-expires"
+                [(ngModel)]="newFridgeItem.expiresAt"
+                [disabled]="activeCategory() === 'household' || newFridgeItem.noExpiry"
+                type="date"
+              />
+            </label>
+            <label>
+              Напомнить об истечении срока:
+              <select
+                name="fridge-reminder"
+                [(ngModel)]="newFridgeItem.reminderDays"
+                [disabled]="activeCategory() === 'household' || newFridgeItem.noExpiry"
+              >
+                <option [ngValue]="0">в день окончания</option>
+                <option [ngValue]="1">за 1 день</option>
+                <option [ngValue]="3">за 3 дня</option>
+                <option [ngValue]="5">за 5 дней</option>
+                <option [ngValue]="7">за 7 дней</option>
+              </select>
+            </label>
           }
           <button class="primary-action" type="submit" [disabled]="saving()">Добавить</button>
         </form>
@@ -501,37 +593,138 @@
     }
 
     @if (fridgeMenuItem(); as item) {
-      <button class="notification-backdrop" type="button" aria-label="Закрыть меню товара" (click)="closeFridgeMenu()"></button>
+      <button
+        class="notification-backdrop"
+        type="button"
+        aria-label="Закрыть меню товара"
+        (click)="closeFridgeMenu()"
+      ></button>
       <section class="panel ticket-dialog add-dialog item-menu" role="dialog" aria-modal="true">
-        <div class="notifications-head"><div><p class="section-label">Запасы</p><h2>{{ item.name }}</h2></div><button class="icon-button close-button" type="button" (click)="closeFridgeMenu()">×</button></div>
+        <div class="notifications-head">
+          <div>
+            <p class="section-label">Запасы</p>
+            <h2>{{ item.name }}</h2>
+          </div>
+          <button class="icon-button close-button" type="button" (click)="closeFridgeMenu()">
+            ×
+          </button>
+        </div>
         <form class="add-form" (ngSubmit)="saveFridgeMenu()">
           <label>Название<input name="menu-fridge-name" [(ngModel)]="fridgeMenuForm.name" /></label>
-          <div class="add-form-row"><label>Количество<input name="menu-fridge-quantity" [(ngModel)]="fridgeMenuForm.quantity" min="0.1" step="0.1" type="number" /></label><label>Ед.<select name="menu-fridge-unit" [(ngModel)]="fridgeMenuForm.unit">@for (unit of units; track unit) {<option [value]="unit">{{ unit }}</option>}</select></label></div>
+          <div class="add-form-row">
+            <label
+              >Количество<input
+                name="menu-fridge-quantity"
+                [(ngModel)]="fridgeMenuForm.quantity"
+                min="0.1"
+                step="0.1"
+                type="number" /></label
+            ><label
+              >Ед.<select name="menu-fridge-unit" [(ngModel)]="fridgeMenuForm.unit">
+                @for (unit of units; track unit) {
+                  <option [value]="unit">{{ unit }}</option>
+                }
+              </select></label
+            >
+          </div>
           @if (item.category !== 'household') {
-            <label class="checkbox-row"><input name="menu-no-expiry" [(ngModel)]="fridgeMenuForm.noExpiry" type="checkbox" /><span>Без срока годности</span></label>
+            <label class="checkbox-row"
+              ><input
+                name="menu-no-expiry"
+                [(ngModel)]="fridgeMenuForm.noExpiry"
+                type="checkbox"
+              /><span>Без срока годности</span></label
+            >
             @if (!fridgeMenuForm.noExpiry) {
-              <label>Годен до<input name="menu-fridge-expires" [(ngModel)]="fridgeMenuForm.expiresAt" type="date" /></label>
-              <label>Напомнить<select name="menu-fridge-reminder" [(ngModel)]="fridgeMenuForm.reminderDays"><option [ngValue]="0">в день окончания</option><option [ngValue]="1">за 1 день</option><option [ngValue]="3">за 3 дня</option><option [ngValue]="7">за 7 дней</option></select></label>
+              <label
+                >Годен до<input
+                  name="menu-fridge-expires"
+                  [(ngModel)]="fridgeMenuForm.expiresAt"
+                  type="date"
+              /></label>
+              <label
+                >Напомнить<select
+                  name="menu-fridge-reminder"
+                  [(ngModel)]="fridgeMenuForm.reminderDays"
+                >
+                  <option [ngValue]="0">в день окончания</option>
+                  <option [ngValue]="1">за 1 день</option>
+                  <option [ngValue]="3">за 3 дня</option>
+                  <option [ngValue]="7">за 7 дней</option>
+                </select></label
+              >
             }
           }
-          <label class="checkbox-row"><input name="menu-auto-shopping" [(ngModel)]="fridgeMenuForm.autoAddToShopping" type="checkbox" /><span>Автоматически добавлять в покупки, когда закончится</span></label>
-          <button class="secondary-action" type="button" (click)="consumeFridgeItem(item)">Израсходовать</button>
+          <label class="checkbox-row"
+            ><input
+              name="menu-auto-shopping"
+              [(ngModel)]="fridgeMenuForm.autoAddToShopping"
+              type="checkbox"
+            /><span>Автоматически добавлять в покупки, когда закончится</span></label
+          >
+          <button class="secondary-action" type="button" (click)="consumeFridgeItem(item)">
+            Израсходовать
+          </button>
           <button class="primary-action" type="submit" [disabled]="saving()">Сохранить</button>
-          <button class="danger-action" type="button" (click)="deleteFridgeItem(item.id); closeFridgeMenu()">Удалить</button>
+          <button
+            class="danger-action"
+            type="button"
+            (click)="deleteFridgeItem(item.id); closeFridgeMenu()"
+          >
+            Удалить
+          </button>
         </form>
       </section>
     }
 
     @if (shoppingMenuItem(); as item) {
-      <button class="notification-backdrop" type="button" aria-label="Закрыть меню покупки" (click)="closeShoppingMenu()"></button>
+      <button
+        class="notification-backdrop"
+        type="button"
+        aria-label="Закрыть меню покупки"
+        (click)="closeShoppingMenu()"
+      ></button>
       <section class="panel ticket-dialog add-dialog item-menu" role="dialog" aria-modal="true">
-        <div class="notifications-head"><div><p class="section-label">Покупки</p><h2>{{ item.name }}</h2></div><button class="icon-button close-button" type="button" (click)="closeShoppingMenu()">×</button></div>
+        <div class="notifications-head">
+          <div>
+            <p class="section-label">Покупки</p>
+            <h2>{{ item.name }}</h2>
+          </div>
+          <button class="icon-button close-button" type="button" (click)="closeShoppingMenu()">
+            ×
+          </button>
+        </div>
         <form class="add-form" (ngSubmit)="saveShoppingMenu()">
-          <label>Название<input name="menu-shopping-name" [(ngModel)]="shoppingMenuForm.name" /></label>
-          <div class="add-form-row"><label>Количество<input name="menu-shopping-quantity" [(ngModel)]="shoppingMenuForm.quantity" min="0.1" step="0.1" type="number" /></label><label>Ед.<select name="menu-shopping-unit" [(ngModel)]="shoppingMenuForm.unit">@for (unit of units; track unit) {<option [value]="unit">{{ unit }}</option>}</select></label></div>
-          <label>Раздел<select name="menu-shopping-category" [(ngModel)]="shoppingMenuForm.category"><option value="products">Продукты</option><option value="household">Бытовая химия</option><option value="medicine">Аптечка</option></select></label>
+          <label
+            >Название<input name="menu-shopping-name" [(ngModel)]="shoppingMenuForm.name"
+          /></label>
+          <div class="add-form-row">
+            <label
+              >Количество<input
+                name="menu-shopping-quantity"
+                [(ngModel)]="shoppingMenuForm.quantity"
+                min="0.1"
+                step="0.1"
+                type="number" /></label
+            ><label
+              >Ед.<select name="menu-shopping-unit" [(ngModel)]="shoppingMenuForm.unit">
+                @for (unit of units; track unit) {
+                  <option [value]="unit">{{ unit }}</option>
+                }
+              </select></label
+            >
+          </div>
+          <label
+            >Раздел<select name="menu-shopping-category" [(ngModel)]="shoppingMenuForm.category">
+              <option value="products">Продукты</option>
+              <option value="household">Бытовая химия</option>
+              <option value="medicine">Аптечка</option>
+            </select></label
+          >
           <button class="primary-action" type="submit" [disabled]="saving()">Сохранить</button>
-          <button class="danger-action" type="button" (click)="deleteShoppingFromMenu()">Удалить</button>
+          <button class="danger-action" type="button" (click)="deleteShoppingFromMenu()">
+            Удалить
+          </button>
         </form>
       </section>
     }
@@ -604,8 +797,8 @@
             <p class="section-label">Dev center</p>
             <h1>Доступ к dev-части ограничен</h1>
             <p>
-              Сейчас открыта учётка {{ currentUser()?.email || 'без email' }}. Она не будет
-              трогать dev endpoints и не сломает основную сессию приложения.
+              Сейчас открыта учётка {{ currentUser()?.email || 'без email' }}. Она не будет трогать
+              dev endpoints и не сломает основную сессию приложения.
             </p>
             <div class="dev-allow-list" aria-label="Разрешённые аккаунты">
               <span>vladfinder@yandex.ru</span>
@@ -664,7 +857,10 @@
                 <strong>LIVE</strong>
                 <span>
                   <b>{{ devSummary()?.support?.openTickets }} открытых обращений в поддержку</b>
-                  <small>{{ devUnansweredTickets() }} без ответа · {{ devSummary()?.support?.newTicketsToday || 0 }} новых сегодня</small>
+                  <small
+                    >{{ devUnansweredTickets() }} без ответа ·
+                    {{ devSummary()?.support?.newTicketsToday || 0 }} новых сегодня</small
+                  >
                 </span>
                 <button type="button" (click)="setDevSection('support')">Открыть очередь</button>
               </article>
@@ -682,12 +878,16 @@
               <article class="dev-metric-card">
                 <span>Сейчас онлайн</span>
                 <strong>{{ devSummary()?.users?.online || 0 }}</strong>
-                <p><b>{{ devSummary()?.sessions?.active || 0 }}</b> активных сессий</p>
+                <p>
+                  <b>{{ devSummary()?.sessions?.active || 0 }}</b> активных сессий
+                </p>
               </article>
               <article class="dev-metric-card">
                 <span>Пользователи</span>
                 <strong>{{ devSummary()?.users?.total || 0 }}</strong>
-                <p><b>{{ devSummary()?.today?.newUsers || 0 }}</b> новых сегодня</p>
+                <p>
+                  <b>{{ devSummary()?.today?.newUsers || 0 }}</b> новых сегодня
+                </p>
               </article>
               <article class="dev-metric-card">
                 <span>Записи в приложении</span>
@@ -695,12 +895,17 @@
                   (devSummary()?.usage?.fridgeItems || 0) +
                     (devSummary()?.usage?.shoppingItems || 0)
                 }}</strong>
-                <p><b class="blue">{{ devSummary()?.usage?.expiringFridgeItems || 0 }}</b> скоро истекает</p>
+                <p>
+                  <b class="blue">{{ devSummary()?.usage?.expiringFridgeItems || 0 }}</b> скоро
+                  истекает
+                </p>
               </article>
               <article class="dev-metric-card">
                 <span>Открытые обращения</span>
                 <strong>{{ devSummary()?.support?.openTickets || 0 }}</strong>
-                <p><b class="red">{{ devSummary()?.support?.openFeedback || 0 }}</b> фидбек</p>
+                <p>
+                  <b class="red">{{ devSummary()?.support?.openFeedback || 0 }}</b> фидбек
+                </p>
               </article>
             </section>
 
@@ -722,7 +927,10 @@
                       @for (day of devSummary()?.activity?.days || []; track day.date) {
                         <div>
                           <span [style.height]="devActivityHeight(day.users)"></span>
-                          <span class="blue" [style.height]="devActivityHeight(day.sessions)"></span>
+                          <span
+                            class="blue"
+                            [style.height]="devActivityHeight(day.sessions)"
+                          ></span>
                           <small>{{ day.date.slice(5) }}</small>
                         </div>
                       }
@@ -733,14 +941,25 @@
                     <div class="dev-card-head">
                       <div>
                         <h2>Онлайн сейчас</h2>
-                        <p>Последние {{ devSummary()?.sessions?.onlineWindowMinutes || 5 }} минут</p>
+                        <p>
+                          Последние {{ devSummary()?.sessions?.onlineWindowMinutes || 5 }} минут
+                        </p>
                       </div>
                     </div>
                     <strong>{{ devSummary()?.users?.online || 0 }}</strong>
-                    <span class="dev-positive">{{ devSummary()?.sessions?.active || 0 }} сессий</span>
-                    <div class="dev-platform"><span>Всего пользователей</span><b>{{ devSummary()?.users?.total || 0 }}</b></div>
-                    <div class="dev-platform web"><span>Домов</span><b>{{ devSummary()?.households?.total || 0 }}</b></div>
-                    <div class="dev-platform ios"><span>Ожидают приглашения</span><b>{{ devSummary()?.households?.pendingInvitations || 0 }}</b></div>
+                    <span class="dev-positive"
+                      >{{ devSummary()?.sessions?.active || 0 }} сессий</span
+                    >
+                    <div class="dev-platform">
+                      <span>Всего пользователей</span><b>{{ devSummary()?.users?.total || 0 }}</b>
+                    </div>
+                    <div class="dev-platform web">
+                      <span>Домов</span><b>{{ devSummary()?.households?.total || 0 }}</b>
+                    </div>
+                    <div class="dev-platform ios">
+                      <span>Ожидают приглашения</span
+                      ><b>{{ devSummary()?.households?.pendingInvitations || 0 }}</b>
+                    </div>
                   </article>
                 </section>
 
@@ -788,11 +1007,31 @@
                         <p>Категории внутри холодильника и покупок</p>
                       </div>
                     </div>
-                    <div class="dev-health"><span></span><p>Продукты дома</p><b>{{ devSummary()?.usage?.fridgeProducts || 0 }}</b></div>
-                    <div class="dev-health"><span></span><p>Бытовая химия дома</p><b>{{ devSummary()?.usage?.fridgeHousehold || 0 }}</b></div>
-                    <div class="dev-health"><span></span><p>Продукты в покупках</p><b>{{ devSummary()?.usage?.shoppingProducts || 0 }}</b></div>
-                    <div class="dev-health"><span></span><p>Бытовая химия в покупках</p><b>{{ devSummary()?.usage?.shoppingHousehold || 0 }}</b></div>
-                    <div class="dev-health warn"><span></span><p>Куплено, но не очищено</p><b>{{ devSummary()?.usage?.checkedShoppingItems || 0 }}</b></div>
+                    <div class="dev-health">
+                      <span></span>
+                      <p>Продукты дома</p>
+                      <b>{{ devSummary()?.usage?.fridgeProducts || 0 }}</b>
+                    </div>
+                    <div class="dev-health">
+                      <span></span>
+                      <p>Бытовая химия дома</p>
+                      <b>{{ devSummary()?.usage?.fridgeHousehold || 0 }}</b>
+                    </div>
+                    <div class="dev-health">
+                      <span></span>
+                      <p>Продукты в покупках</p>
+                      <b>{{ devSummary()?.usage?.shoppingProducts || 0 }}</b>
+                    </div>
+                    <div class="dev-health">
+                      <span></span>
+                      <p>Бытовая химия в покупках</p>
+                      <b>{{ devSummary()?.usage?.shoppingHousehold || 0 }}</b>
+                    </div>
+                    <div class="dev-health warn">
+                      <span></span>
+                      <p>Куплено, но не очищено</p>
+                      <b>{{ devSummary()?.usage?.checkedShoppingItems || 0 }}</b>
+                    </div>
                   </article>
                 </section>
               }
@@ -827,9 +1066,21 @@
                         <p>Данные из текущих таблиц приложения</p>
                       </div>
                     </div>
-                    <div class="dev-health warn"><span></span><p>Непрочитанные уведомления</p><b>{{ devSummary()?.notifications?.unread || 0 }}</b></div>
-                    <div class="dev-health warn"><span></span><p>Открытый фидбек</p><b>{{ devSummary()?.support?.openFeedback || 0 }}</b></div>
-                    <div class="dev-health"><span></span><p>Закрытый фидбек</p><b>{{ devSummary()?.support?.closedFeedback || 0 }}</b></div>
+                    <div class="dev-health warn">
+                      <span></span>
+                      <p>Непрочитанные уведомления</p>
+                      <b>{{ devSummary()?.notifications?.unread || 0 }}</b>
+                    </div>
+                    <div class="dev-health warn">
+                      <span></span>
+                      <p>Открытый фидбек</p>
+                      <b>{{ devSummary()?.support?.openFeedback || 0 }}</b>
+                    </div>
+                    <div class="dev-health">
+                      <span></span>
+                      <p>Закрытый фидбек</p>
+                      <b>{{ devSummary()?.support?.closedFeedback || 0 }}</b>
+                    </div>
                   </article>
                 </section>
               }
@@ -845,7 +1096,11 @@
                     <div class="dev-ticket-list">
                       @for (recipe of devRecipes(); track recipe.id) {
                         <article>
-                          <img class="dev-recipe-thumb" [src]="recipeImage(recipe.title, recipe.image)" alt="" />
+                          <img
+                            class="dev-recipe-thumb"
+                            [src]="recipeImage(recipe.title, recipe.image)"
+                            alt=""
+                          />
                           <span>
                             <b>{{ recipe.title }}</b>
                             <small>
@@ -857,7 +1112,10 @@
                           </span>
                         </article>
                       } @empty {
-                        <div class="dev-empty">API рецепты еще не сохранялись. Откройте вкладку рецептов с продуктами в холодильнике.</div>
+                        <div class="dev-empty">
+                          API рецепты еще не сохранялись. Откройте вкладку рецептов с продуктами в
+                          холодильнике.
+                        </div>
                       }
                     </div>
                   </article>
@@ -872,7 +1130,9 @@
                         <p>В приложении пока нет сущности A/B экспериментов</p>
                       </div>
                     </div>
-                    <div class="dev-empty">Активных экспериментов нет. Здесь не показываются тестовые данные.</div>
+                    <div class="dev-empty">
+                      Активных экспериментов нет. Здесь не показываются тестовые данные.
+                    </div>
                   </article>
                 </section>
               }
@@ -916,9 +1176,13 @@
                   </div>
                 </div>
                 <div class="dev-filter-row">
-                  <button type="button" class="active">Открыто {{ devSummary()?.support?.openTickets || 0 }}</button>
+                  <button type="button" class="active">
+                    Открыто {{ devSummary()?.support?.openTickets || 0 }}
+                  </button>
                   <button type="button">Без ответа {{ devUnansweredTickets() }}</button>
-                  <button type="button">Закрыто {{ devSummary()?.support?.closedTickets || 0 }}</button>
+                  <button type="button">
+                    Закрыто {{ devSummary()?.support?.closedTickets || 0 }}
+                  </button>
                 </div>
                 <div class="dev-ticket-list">
                   @for (ticket of devTickets(); track ticket.id) {
@@ -930,10 +1194,19 @@
                     >
                       <span>
                         <small>#{{ ticket.id.slice(0, 5) }}</small>
-                        <b>{{ ticket.status === 'closed' ? 'Закрыт' : ticket.lastMessage?.authorRole === 'support' ? 'Есть ответ' : 'Без ответа' }}</b>
+                        <b>{{
+                          ticket.status === 'closed'
+                            ? 'Закрыт'
+                            : ticket.lastMessage?.authorRole === 'support'
+                              ? 'Есть ответ'
+                              : 'Без ответа'
+                        }}</b>
                       </span>
                       <strong>{{ ticket.subject }}</strong>
-                      <em>{{ ticket.user?.email || 'Пользователь' }} · {{ notificationTime(ticket.updatedAt) }}</em>
+                      <em
+                        >{{ ticket.user?.email || 'Пользователь' }} ·
+                        {{ notificationTime(ticket.updatedAt) }}</em
+                      >
                     </button>
                   } @empty {
                     <div class="dev-empty">Новых обращений нет</div>
@@ -958,11 +1231,21 @@
                 <div class="dev-feedback-list">
                   @for (item of devFeedback(); track item.id) {
                     <article [class.need-answer]="item.type === 'bug'">
-                      <span>{{ item.type }} <b>{{ item.status === 'closed' ? 'Готово' : 'Новый' }}</b></span>
+                      <span
+                        >{{ item.type }}
+                        <b>{{ item.status === 'closed' ? 'Готово' : 'Новый' }}</b></span
+                      >
                       <strong>«{{ item.body }}»</strong>
-                      <p>{{ item.user?.email || 'Пользователь' }} · {{ notificationTime(item.createdAt) }}</p>
+                      <p>
+                        {{ item.user?.email || 'Пользователь' }} ·
+                        {{ notificationTime(item.createdAt) }}
+                      </p>
                       @if (item.status !== 'closed') {
-                        <button type="button" class="dev-inline-action" (click)="closeDevFeedback(item)">
+                        <button
+                          type="button"
+                          class="dev-inline-action"
+                          (click)="closeDevFeedback(item)"
+                        >
                           Обработано
                         </button>
                       }
@@ -982,12 +1265,36 @@
                     <p>Считается по состоянию приложения</p>
                   </div>
                 </div>
-                <div class="dev-health"><span></span><p>Активные сессии</p><b>{{ devSummary()?.sessions?.active || 0 }}</b></div>
-                <div class="dev-health"><span></span><p>Онлайн за 5 минут</p><b>{{ devSummary()?.users?.online || 0 }}</b></div>
-                <div class="dev-health warn"><span></span><p>Скоро истекают продукты</p><b>{{ devSummary()?.usage?.expiringFridgeItems || 0 }}</b></div>
-                <div class="dev-health warn"><span></span><p>Непрочитанные уведомления</p><b>{{ devSummary()?.notifications?.unread || 0 }}</b></div>
-                <div class="dev-health"><span></span><p>Дома</p><b>{{ devSummary()?.households?.total || 0 }}</b></div>
-                <div class="dev-health"><span></span><p>Приглашения ожидают</p><b>{{ devSummary()?.households?.pendingInvitations || 0 }}</b></div>
+                <div class="dev-health">
+                  <span></span>
+                  <p>Активные сессии</p>
+                  <b>{{ devSummary()?.sessions?.active || 0 }}</b>
+                </div>
+                <div class="dev-health">
+                  <span></span>
+                  <p>Онлайн за 5 минут</p>
+                  <b>{{ devSummary()?.users?.online || 0 }}</b>
+                </div>
+                <div class="dev-health warn">
+                  <span></span>
+                  <p>Скоро истекают продукты</p>
+                  <b>{{ devSummary()?.usage?.expiringFridgeItems || 0 }}</b>
+                </div>
+                <div class="dev-health warn">
+                  <span></span>
+                  <p>Непрочитанные уведомления</p>
+                  <b>{{ devSummary()?.notifications?.unread || 0 }}</b>
+                </div>
+                <div class="dev-health">
+                  <span></span>
+                  <p>Дома</p>
+                  <b>{{ devSummary()?.households?.total || 0 }}</b>
+                </div>
+                <div class="dev-health">
+                  <span></span>
+                  <p>Приглашения ожидают</p>
+                  <b>{{ devSummary()?.households?.pendingInvitations || 0 }}</b>
+                </div>
               </article>
             </ng-template>
 
@@ -1044,7 +1351,12 @@
               Аптечка
             </button>
           </div>
-          <button class="primary-action add-shortcut" type="button" (click)="openFridgeAdd()" aria-label="Добавить">
+          <button
+            class="primary-action add-shortcut"
+            type="button"
+            (click)="openFridgeAdd()"
+            aria-label="Добавить"
+          >
             +
           </button>
         </div>
@@ -1065,7 +1377,11 @@
           <div class="inventory-selects">
             <label>
               <span>Фильтр</span>
-              <select name="fridge-status-filter" [ngModel]="fridgeStatusFilter()" (ngModelChange)="fridgeStatusFilter.set($event)">
+              <select
+                name="fridge-status-filter"
+                [ngModel]="fridgeStatusFilter()"
+                (ngModelChange)="fridgeStatusFilter.set($event)"
+              >
                 <option value="all">Все товары</option>
                 <option value="expired">Просроченные</option>
                 <option value="soon">Срок подходит</option>
@@ -1074,7 +1390,11 @@
             </label>
             <label>
               <span>Сортировка</span>
-              <select name="fridge-sort" [ngModel]="fridgeSort()" (ngModelChange)="fridgeSort.set($event)">
+              <select
+                name="fridge-sort"
+                [ngModel]="fridgeSort()"
+                (ngModelChange)="fridgeSort.set($event)"
+              >
                 <option value="newest">Сначала новые</option>
                 <option value="oldest">Сначала старые</option>
                 <option value="expiry">По сроку годности</option>
@@ -1110,11 +1430,23 @@
               <div class="empty-illustration">⌕</div>
               <h3>Ничего не найдено</h3>
               <p>Измените запрос или сбросьте фильтры текущего раздела.</p>
-              <button class="secondary-action compact-action" type="button" (click)="clearFridgeFilters()">Сбросить</button>
+              <button
+                class="secondary-action compact-action"
+                type="button"
+                (click)="clearFridgeFilters()"
+              >
+                Сбросить
+              </button>
             } @else {
               <div class="empty-illustration">⌂</div>
               <h3>
-                {{ activeCategory() === 'products' ? 'Добавьте первый продукт' : activeCategory() === 'medicine' ? 'Добавьте лекарство' : 'Добавьте первый товар' }}
+                {{
+                  activeCategory() === 'products'
+                    ? 'Добавьте первый продукт'
+                    : activeCategory() === 'medicine'
+                      ? 'Добавьте лекарство'
+                      : 'Добавьте первый товар'
+                }}
               </h3>
               <p>
                 {{
@@ -1135,18 +1467,46 @@
             </div>
             <div class="list fridge-list">
               @for (item of expiringSoonItems(); track item.id) {
-                <div class="fridge-swipe-shell" [class.swipe-shopping]="swipeAction(item.id) === 'shopping'" [class.swipe-delete]="swipeAction(item.id) === 'delete'" [attr.aria-busy]="committingSwipe()?.id === item.id" [style.--swipe-progress]="swipeProgress(item.id)">
+                <div
+                  class="fridge-swipe-shell"
+                  [class.swipe-shopping]="swipeAction(item.id) === 'shopping'"
+                  [class.swipe-delete]="swipeAction(item.id) === 'delete'"
+                  [attr.aria-busy]="committingSwipe()?.id === item.id"
+                  [style.--swipe-progress]="swipeProgress(item.id)"
+                >
                   <div class="swipe-reveal" aria-hidden="true">
                     {{ swipeAction(item.id) === 'shopping' ? '🛒' : '🗑' }}
                   </div>
-                  <article class="fridge-row" [attr.data-swipe-id]="item.id" [class.is-swiping]="isSwiping(item.id)" [style.transform]="swipeTransform(item.id)" (pointerdown)="beginSwipe($event, item.id)" (pointermove)="moveSwipe($event, item.id)" (pointerup)="endPointerSwipe($event, item.id)" (pointercancel)="cancelPointerSwipe($event)">
-                  <div class="item-thumb"></div>
-                  <div class="item-content">
-                    <h3>{{ item.name }}</h3>
-                    <p>{{ item.quantity }} {{ displayUnit(item.unit) }} · {{ expiryLabel(item.expiresAt) }}</p>
-                  </div>
-                    <span class="status" [ngClass]="expiryClass(item.expiresAt)">{{ expiryBadgeLabel(item.expiresAt) }}</span>
-                    <button class="menu-button" type="button" (pointerdown)="$event.stopPropagation()" (click)="openFridgeMenu(item)" aria-label="Меню товара">⋮</button>
+                  <article
+                    class="fridge-row"
+                    [attr.data-swipe-id]="item.id"
+                    [class.is-swiping]="isSwiping(item.id)"
+                    [style.transform]="swipeTransform(item.id)"
+                    (pointerdown)="beginSwipe($event, item.id)"
+                    (pointermove)="moveSwipe($event, item.id)"
+                    (pointerup)="endPointerSwipe($event, item.id)"
+                    (pointercancel)="cancelPointerSwipe($event)"
+                  >
+                    <div class="item-thumb"></div>
+                    <div class="item-content">
+                      <h3>{{ item.name }}</h3>
+                      <p>
+                        {{ item.quantity }} {{ displayUnit(item.unit) }} ·
+                        {{ expiryLabel(item.expiresAt) }}
+                      </p>
+                    </div>
+                    <span class="status" [ngClass]="expiryClass(item.expiresAt)">{{
+                      expiryBadgeLabel(item.expiresAt)
+                    }}</span>
+                    <button
+                      class="menu-button"
+                      type="button"
+                      (pointerdown)="$event.stopPropagation()"
+                      (click)="openFridgeMenu(item)"
+                      aria-label="Меню товара"
+                    >
+                      ⋮
+                    </button>
                   </article>
                 </div>
               }
@@ -1159,17 +1519,43 @@
             </div>
             <div class="list fridge-list">
               @for (item of stableFridgeItems(); track item.id) {
-                <div class="fridge-swipe-shell" [class.swipe-shopping]="swipeAction(item.id) === 'shopping'" [class.swipe-delete]="swipeAction(item.id) === 'delete'" [attr.aria-busy]="committingSwipe()?.id === item.id" [style.--swipe-progress]="swipeProgress(item.id)">
+                <div
+                  class="fridge-swipe-shell"
+                  [class.swipe-shopping]="swipeAction(item.id) === 'shopping'"
+                  [class.swipe-delete]="swipeAction(item.id) === 'delete'"
+                  [attr.aria-busy]="committingSwipe()?.id === item.id"
+                  [style.--swipe-progress]="swipeProgress(item.id)"
+                >
                   <div class="swipe-reveal" aria-hidden="true">
                     {{ swipeAction(item.id) === 'shopping' ? '🛒' : '🗑' }}
                   </div>
-                  <article class="fridge-row" [attr.data-swipe-id]="item.id" [class.is-swiping]="isSwiping(item.id)" [style.transform]="swipeTransform(item.id)" (pointerdown)="beginSwipe($event, item.id)" (pointermove)="moveSwipe($event, item.id)" (pointerup)="endPointerSwipe($event, item.id)" (pointercancel)="cancelPointerSwipe($event)">
-                  <div class="item-thumb"></div>
-                  <div class="item-content">
-                    <h3>{{ item.name }}</h3>
-                    <p>{{ item.quantity }} {{ displayUnit(item.unit) }} · {{ expiryLabel(item.expiresAt) }}</p>
-                  </div>
-                  <button class="menu-button" type="button" (pointerdown)="$event.stopPropagation()" (click)="openFridgeMenu(item)" aria-label="Меню товара">⋮</button>
+                  <article
+                    class="fridge-row"
+                    [attr.data-swipe-id]="item.id"
+                    [class.is-swiping]="isSwiping(item.id)"
+                    [style.transform]="swipeTransform(item.id)"
+                    (pointerdown)="beginSwipe($event, item.id)"
+                    (pointermove)="moveSwipe($event, item.id)"
+                    (pointerup)="endPointerSwipe($event, item.id)"
+                    (pointercancel)="cancelPointerSwipe($event)"
+                  >
+                    <div class="item-thumb"></div>
+                    <div class="item-content">
+                      <h3>{{ item.name }}</h3>
+                      <p>
+                        {{ item.quantity }} {{ displayUnit(item.unit) }} ·
+                        {{ expiryLabel(item.expiresAt) }}
+                      </p>
+                    </div>
+                    <button
+                      class="menu-button"
+                      type="button"
+                      (pointerdown)="$event.stopPropagation()"
+                      (click)="openFridgeMenu(item)"
+                      aria-label="Меню товара"
+                    >
+                      ⋮
+                    </button>
                   </article>
                 </div>
               }
@@ -1207,7 +1593,11 @@
                 <option [value]="unit">{{ unit }}</option>
               }
             </select>
-            <select name="shopping-category" [(ngModel)]="newShoppingItem.category" aria-label="Раздел">
+            <select
+              name="shopping-category"
+              [(ngModel)]="newShoppingItem.category"
+              aria-label="Раздел"
+            >
               <option value="products">Продукты</option>
               <option value="household">Бытовая химия</option>
               <option value="medicine">Аптечка</option>
@@ -1225,16 +1615,32 @@
         </div>
 
         <div class="filter-pills" role="tablist" aria-label="Фильтры покупок">
-          <button type="button" [class.active]="activeShoppingFilter() === 'all'" (click)="setShoppingFilter('all')">
+          <button
+            type="button"
+            [class.active]="activeShoppingFilter() === 'all'"
+            (click)="setShoppingFilter('all')"
+          >
             Все {{ shoppingItems().length }}
           </button>
-          <button type="button" [class.active]="activeShoppingFilter() === 'products'" (click)="setShoppingFilter('products')">
+          <button
+            type="button"
+            [class.active]="activeShoppingFilter() === 'products'"
+            (click)="setShoppingFilter('products')"
+          >
             Продукты {{ shoppingProductsCount() }}
           </button>
-          <button type="button" [class.active]="activeShoppingFilter() === 'household'" (click)="setShoppingFilter('household')">
+          <button
+            type="button"
+            [class.active]="activeShoppingFilter() === 'household'"
+            (click)="setShoppingFilter('household')"
+          >
             Бытовое {{ shoppingHouseholdCount() }}
           </button>
-          <button type="button" [class.active]="activeShoppingFilter() === 'medicine'" (click)="setShoppingFilter('medicine')">
+          <button
+            type="button"
+            [class.active]="activeShoppingFilter() === 'medicine'"
+            (click)="setShoppingFilter('medicine')"
+          >
             Аптечка {{ shoppingMedicineCount() }}
           </button>
         </div>
@@ -1255,7 +1661,11 @@
           <div class="inventory-selects">
             <label>
               <span>Сортировка</span>
-              <select name="shopping-sort" [ngModel]="shoppingSort()" (ngModelChange)="shoppingSort.set($event)">
+              <select
+                name="shopping-sort"
+                [ngModel]="shoppingSort()"
+                (ngModelChange)="shoppingSort.set($event)"
+              >
                 <option value="newest">Сначала новые</option>
                 <option value="oldest">Сначала старые</option>
                 <option value="status">Сначала активные</option>
@@ -1298,7 +1708,12 @@
                     </button>
                   }
                 </div>
-                <button class="menu-button" type="button" (click)="openShoppingMenu(item)" aria-label="Меню покупки">
+                <button
+                  class="menu-button"
+                  type="button"
+                  (click)="openShoppingMenu(item)"
+                  aria-label="Меню покупки"
+                >
                   ⋮
                 </button>
               </article>
@@ -1308,7 +1723,13 @@
                   <div class="empty-illustration">⌕</div>
                   <h3>Ничего не найдено</h3>
                   <p>Измените запрос или сбросьте фильтры покупок.</p>
-                  <button class="secondary-action compact-action" type="button" (click)="clearShoppingFilters()">Сбросить</button>
+                  <button
+                    class="secondary-action compact-action"
+                    type="button"
+                    (click)="clearShoppingFilters()"
+                  >
+                    Сбросить
+                  </button>
                 } @else {
                   <h3>Список пуст</h3>
                   <p>Покупки появятся здесь вручную или после свайпа продукта вправо.</p>
@@ -1323,13 +1744,25 @@
     @if (!devMode() && activeTab() === 'dishes') {
       <section class="screen">
         <div class="filter-pills" role="tablist" aria-label="Подбор блюд">
-          <button type="button" [class.active]="activeDishFilter() === 'available'" (click)="setDishFilter('available')">
+          <button
+            type="button"
+            [class.active]="activeDishFilter() === 'available'"
+            (click)="setDishFilter('available')"
+          >
             Все ингредиенты есть
           </button>
-          <button type="button" [class.active]="activeDishFilter() === 'almost'" (click)="setDishFilter('almost')">
+          <button
+            type="button"
+            [class.active]="activeDishFilter() === 'almost'"
+            (click)="setDishFilter('almost')"
+          >
             Нужна пара ингредиентов
           </button>
-          <button type="button" [class.active]="activeDishFilter() === 'planned'" (click)="setDishFilter('planned')">
+          <button
+            type="button"
+            [class.active]="activeDishFilter() === 'planned'"
+            (click)="setDishFilter('planned')"
+          >
             Запланировано
           </button>
         </div>
@@ -1350,7 +1783,10 @@
         } @else {
           <div class="empty-state">
             <h3>Пока нет подходящих блюд</h3>
-            <p>Добавьте свое блюдо и список ингредиентов, чтобы видеть совпадения с продуктами группы.</p>
+            <p>
+              Добавьте свое блюдо и список ингредиентов, чтобы видеть совпадения с продуктами
+              группы.
+            </p>
           </div>
         }
         @if (dishesError()) {
@@ -1381,10 +1817,37 @@
       <section class="screen">
         <label class="search-field">
           <span aria-hidden="true">⌕</span>
-          <input placeholder="Найти рецепт или ингредиент" aria-label="Найти рецепт или ингредиент" />
+          <input
+            name="recipe-search"
+            [ngModel]="recipeSearch()"
+            (ngModelChange)="recipeSearch.set($event)"
+            placeholder="Найти рецепт или ингредиент"
+            aria-label="Найти рецепт или ингредиент"
+          />
         </label>
 
         <div class="filter-pills" role="tablist" aria-label="Рецепты">
+          <button
+            type="button"
+            [class.active]="activeRecipeTab() === 'all'"
+            (click)="activeRecipeTab.set('all')"
+          >
+            Все
+          </button>
+          <button
+            type="button"
+            [class.active]="activeRecipeTab() === 'available'"
+            (click)="activeRecipeTab.set('available')"
+          >
+            Можно готовить
+          </button>
+          <button
+            type="button"
+            [class.active]="activeRecipeTab() === 'almost'"
+            (click)="activeRecipeTab.set('almost')"
+          >
+            Почти готово
+          </button>
           <button
             type="button"
             [class.active]="activeRecipeTab() === 'mine'"
@@ -1397,14 +1860,7 @@
             [class.active]="activeRecipeTab() === 'likes'"
             (click)="activeRecipeTab.set('likes')"
           >
-            Лайки
-          </button>
-          <button
-            type="button"
-            [class.active]="activeRecipeTab() === 'all'"
-            (click)="activeRecipeTab.set('all')"
-          >
-            Все
+            Сохраненные
           </button>
         </div>
 
@@ -1440,6 +1896,9 @@
                       : 'Все нужное есть дома'
                   }}
                 </p>
+                @if (recipe.expiringIngredientCount) {
+                  <p class="expiry-recipe-label">Сначала используйте скоропортящиеся продукты</p>
+                }
               </div>
               @if (hasDevAccess()) {
                 <span
@@ -1462,7 +1921,13 @@
           } @empty {
             <div class="empty-state">
               <h3>Пока пусто</h3>
-              <p>Здесь появятся рецепты из базы и рецепты, добавленные пользователем.</p>
+              <p>
+                {{
+                  recipeSearch().trim()
+                    ? 'По этому запросу ничего не найдено.'
+                    : 'Для выбранного фильтра пока нет рецептов.'
+                }}
+              </p>
             </div>
           }
         </div>
@@ -1521,200 +1986,198 @@
         }
 
         @if (profileSection() === 'support') {
-        <div class="subscreen-head">
-          <button class="back-button" type="button" (click)="setProfileSection('menu')">‹</button>
-          <div>
-            <p class="section-label">Профиль</p>
-            <h2>Поддержка</h2>
+          <div class="subscreen-head">
+            <button class="back-button" type="button" (click)="setProfileSection('menu')">‹</button>
+            <div>
+              <p class="section-label">Профиль</p>
+              <h2>Поддержка</h2>
+            </div>
           </div>
-        </div>
-        <div class="panel support-panel">
-          <div>
-            <p class="section-label">Техподдержка</p>
-            <h2>Задать вопрос</h2>
-            <p>Создайте обращение, и мы ответим в этом же диалоге.</p>
-          </div>
+          <div class="panel support-panel">
+            <div>
+              <p class="section-label">Техподдержка</p>
+              <h2>Задать вопрос</h2>
+              <p>Создайте обращение, и мы ответим в этом же диалоге.</p>
+            </div>
 
-          <form class="support-form" (ngSubmit)="createSupportTicket()">
-            <input
-              name="support-subject"
-              [(ngModel)]="supportForm.subject"
-              placeholder="Коротко о вопросе"
-              required
-            />
-            <textarea
-              name="support-message"
-              [(ngModel)]="supportForm.message"
-              placeholder="Опишите вопрос или проблему"
-              required
-            ></textarea>
-            <button class="primary-action" type="submit" [disabled]="saving()">
-              Отправить
-            </button>
-          </form>
+            <form class="support-form" (ngSubmit)="createSupportTicket()">
+              <input
+                name="support-subject"
+                [(ngModel)]="supportForm.subject"
+                placeholder="Коротко о вопросе"
+                required
+              />
+              <textarea
+                name="support-message"
+                [(ngModel)]="supportForm.message"
+                placeholder="Опишите вопрос или проблему"
+                required
+              ></textarea>
+              <button class="primary-action" type="submit" [disabled]="saving()">Отправить</button>
+            </form>
 
-          <div class="list">
-            @for (ticket of supportTickets(); track ticket.id) {
-              <article class="support-row" [class.closed]="ticket.status === 'closed'">
-                <div>
-                  <div class="support-row-head">
-                    <strong>{{ ticket.subject }}</strong>
-                    <span>{{ ticket.status === 'closed' ? 'Закрыт' : 'Открыт' }}</span>
+            <div class="list">
+              @for (ticket of supportTickets(); track ticket.id) {
+                <article class="support-row" [class.closed]="ticket.status === 'closed'">
+                  <div>
+                    <div class="support-row-head">
+                      <strong>{{ ticket.subject }}</strong>
+                      <span>{{ ticket.status === 'closed' ? 'Закрыт' : 'Открыт' }}</span>
+                    </div>
+                    <p>{{ ticket.lastMessage?.body || 'Нет сообщений' }}</p>
                   </div>
-                  <p>{{ ticket.lastMessage?.body || 'Нет сообщений' }}</p>
+                  <button
+                    class="secondary-action compact-action"
+                    type="button"
+                    (click)="openSupportTicket(ticket)"
+                  >
+                    Открыть
+                  </button>
+                </article>
+              } @empty {
+                <div class="empty-state">
+                  <h3>Обращений пока нет</h3>
+                  <p>Если возникнет вопрос, создайте первый тикет здесь.</p>
                 </div>
-                <button
-                  class="secondary-action compact-action"
-                  type="button"
-                  (click)="openSupportTicket(ticket)"
-                >
-                  Открыть
-                </button>
-              </article>
-            } @empty {
-              <div class="empty-state">
-                <h3>Обращений пока нет</h3>
-                <p>Если возникнет вопрос, создайте первый тикет здесь.</p>
-              </div>
-            }
+              }
+            </div>
           </div>
-        </div>
         }
 
         @if (profileSection() === 'notifications') {
-        <div class="subscreen-head">
-          <button class="back-button" type="button" (click)="setProfileSection('menu')">‹</button>
-          <div>
-            <p class="section-label">Профиль</p>
-            <h2>Уведомления</h2>
-          </div>
-        </div>
-        <div class="panel settings-panel">
-          <button
-            class="setting-row"
-            type="button"
-            (click)="toggleNotificationsEnabled()"
-            [disabled]="pushBusy()"
-          >
+          <div class="subscreen-head">
+            <button class="back-button" type="button" (click)="setProfileSection('menu')">‹</button>
             <div>
-              <strong>Push-уведомления</strong>
-              <p>{{ notificationStatusText() }}</p>
-            </div>
-            <span class="toggle" [class.active]="notificationsEnabled()">
-              <i></i>
-            </span>
-          </button>
-          <p class="settings-hint">
-            На iPhone уведомления доступны для Homie, добавленного на экран «Домой». Разрешение
-            запрашивается только после нажатия на переключатель.
-          </p>
-          <div class="setting-row static">
-            <div>
-              <strong>Скоро истекает срок</strong>
-              <p>По сроку, указанному у товара</p>
+              <p class="section-label">Профиль</p>
+              <h2>Уведомления</h2>
             </div>
           </div>
-          <div class="setting-row static">
-            <div>
-              <strong>Добавили в покупки</strong>
-              <p>Сразу, если это сделал другой участник семьи</p>
+          <div class="panel settings-panel">
+            <button
+              class="setting-row"
+              type="button"
+              (click)="toggleNotificationsEnabled()"
+              [disabled]="pushBusy()"
+            >
+              <div>
+                <strong>Push-уведомления</strong>
+                <p>{{ notificationStatusText() }}</p>
+              </div>
+              <span class="toggle" [class.active]="notificationsEnabled()">
+                <i></i>
+              </span>
+            </button>
+            <p class="settings-hint">
+              На iPhone уведомления доступны для Homie, добавленного на экран «Домой». Разрешение
+              запрашивается только после нажатия на переключатель.
+            </p>
+            <div class="setting-row static">
+              <div>
+                <strong>Скоро истекает срок</strong>
+                <p>По сроку, указанному у товара</p>
+              </div>
+            </div>
+            <div class="setting-row static">
+              <div>
+                <strong>Добавили в покупки</strong>
+                <p>Сразу, если это сделал другой участник семьи</p>
+              </div>
+            </div>
+            <div class="setting-row static">
+              <div>
+                <strong>Убрали из покупок</strong>
+                <p>Сразу, если это сделал другой участник семьи</p>
+              </div>
+            </div>
+            <div class="setting-row static">
+              <div>
+                <strong>Советы и идеи</strong>
+                <p>Раз в неделю</p>
+              </div>
             </div>
           </div>
-          <div class="setting-row static">
-            <div>
-              <strong>Убрали из покупок</strong>
-              <p>Сразу, если это сделал другой участник семьи</p>
-            </div>
-          </div>
-          <div class="setting-row static">
-            <div>
-              <strong>Советы и идеи</strong>
-              <p>Раз в неделю</p>
-            </div>
-          </div>
-        </div>
         }
 
         @if (profileSection() === 'feedback') {
-        <div class="subscreen-head">
-          <button class="back-button" type="button" (click)="setProfileSection('menu')">‹</button>
-          <div>
-            <p class="section-label">Профиль</p>
-            <h2>Обратная связь</h2>
+          <div class="subscreen-head">
+            <button class="back-button" type="button" (click)="setProfileSection('menu')">‹</button>
+            <div>
+              <p class="section-label">Профиль</p>
+              <h2>Обратная связь</h2>
+            </div>
           </div>
-        </div>
-        <div class="panel support-panel">
-          <div>
-            <p class="section-label">Обратная связь</p>
-            <h2>Идея или ошибка</h2>
-            <p>Отправьте предложение или баг без создания диалога поддержки.</p>
-          </div>
+          <div class="panel support-panel">
+            <div>
+              <p class="section-label">Обратная связь</p>
+              <h2>Идея или ошибка</h2>
+              <p>Отправьте предложение или баг без создания диалога поддержки.</p>
+            </div>
 
-          <form class="support-form" (ngSubmit)="sendFeedback()">
-            <select name="feedback-type" [(ngModel)]="feedbackForm.type">
-              <option value="idea">Предложение</option>
-              <option value="bug">Ошибка</option>
-              <option value="other">Другое</option>
-            </select>
-            <textarea
-              name="feedback-message"
-              [(ngModel)]="feedbackForm.message"
-              placeholder="Напишите, что улучшить или что работает неправильно"
-              required
-            ></textarea>
-            <button class="primary-action" type="submit" [disabled]="saving()">Отправить</button>
-          </form>
-        </div>
+            <form class="support-form" (ngSubmit)="sendFeedback()">
+              <select name="feedback-type" [(ngModel)]="feedbackForm.type">
+                <option value="idea">Предложение</option>
+                <option value="bug">Ошибка</option>
+                <option value="other">Другое</option>
+              </select>
+              <textarea
+                name="feedback-message"
+                [(ngModel)]="feedbackForm.message"
+                placeholder="Напишите, что улучшить или что работает неправильно"
+                required
+              ></textarea>
+              <button class="primary-action" type="submit" [disabled]="saving()">Отправить</button>
+            </form>
+          </div>
         }
 
         @if (profileSection() === 'household') {
-        <div class="subscreen-head">
-          <button class="back-button" type="button" (click)="setProfileSection('menu')">‹</button>
-          <div>
-            <p class="section-label">Профиль</p>
-            <h2>Дом и участники</h2>
+          <div class="subscreen-head">
+            <button class="back-button" type="button" (click)="setProfileSection('menu')">‹</button>
+            <div>
+              <p class="section-label">Профиль</p>
+              <h2>Дом и участники</h2>
+            </div>
           </div>
-        </div>
-        <div class="panel partner-panel">
-          <div>
-            <p class="section-label">Группа</p>
-            <h2>{{ groupTitle() }}</h2>
-            <p>{{ groupSummary() }}</p>
-          </div>
+          <div class="panel partner-panel">
+            <div>
+              <p class="section-label">Группа</p>
+              <h2>{{ groupTitle() }}</h2>
+              <p>{{ groupSummary() }}</p>
+            </div>
 
-          <form class="inline-form" (ngSubmit)="saveGroupName()">
-            <input
-              name="group-name"
-              [ngModel]="groupName()"
-              (ngModelChange)="groupName.set($event)"
-              placeholder="Название группы"
-            />
-            <button class="primary-action" type="submit" [disabled]="saving()">Сохранить</button>
-          </form>
+            <form class="inline-form" (ngSubmit)="saveGroupName()">
+              <input
+                name="group-name"
+                [ngModel]="groupName()"
+                (ngModelChange)="groupName.set($event)"
+                placeholder="Название группы"
+              />
+              <button class="primary-action" type="submit" [disabled]="saving()">Сохранить</button>
+            </form>
 
-          <div class="member-list">
-            @for (member of groupMembers(); track member.id) {
-              <div class="member-row">
-                <div class="avatar small">{{ member.displayName.slice(0, 1) }}</div>
-                <div>
-                  <strong>{{ member.displayName }}</strong>
-                  <span>{{ member.email }}</span>
+            <div class="member-list">
+              @for (member of groupMembers(); track member.id) {
+                <div class="member-row">
+                  <div class="avatar small">{{ member.displayName.slice(0, 1) }}</div>
+                  <div>
+                    <strong>{{ member.displayName }}</strong>
+                    <span>{{ member.email }}</span>
+                  </div>
                 </div>
-              </div>
-            }
-          </div>
+              }
+            </div>
 
-          <form class="inline-form" (ngSubmit)="addGroupMember()">
-            <input
-              name="member-email"
-              [ngModel]="memberEmail()"
-              (ngModelChange)="memberEmail.set($event)"
-              placeholder="email участника"
-              type="email"
-            />
-            <button class="primary-action" type="submit" [disabled]="saving()">Добавить</button>
-          </form>
-        </div>
+            <form class="inline-form" (ngSubmit)="addGroupMember()">
+              <input
+                name="member-email"
+                [ngModel]="memberEmail()"
+                (ngModelChange)="memberEmail.set($event)"
+                placeholder="email участника"
+                type="email"
+              />
+              <button class="primary-action" type="submit" [disabled]="saving()">Добавить</button>
+            </form>
+          </div>
         }
       </section>
     }
@@ -1756,9 +2219,18 @@
         <div class="onboarding-preview">
           @if (onboardingStep().kind === 'notifications') {
             <div class="onboarding-notification-list">
-              <div><span>!</span><p><strong>Срок годности</strong><small>Предупредим заранее</small></p></div>
-              <div><span>+</span><p><strong>Добавили покупку</strong><small>Сообщим остальным участникам</small></p></div>
-              <div><span>−</span><p><strong>Убрали покупку</strong><small>Список останется актуальным</small></p></div>
+              <div>
+                <span>!</span>
+                <p><strong>Срок годности</strong><small>Предупредим заранее</small></p>
+              </div>
+              <div>
+                <span>+</span>
+                <p><strong>Добавили покупку</strong><small>Сообщим остальным участникам</small></p>
+              </div>
+              <div>
+                <span>−</span>
+                <p><strong>Убрали покупку</strong><small>Список останется актуальным</small></p>
+              </div>
             </div>
           } @else if (onboardingStep().tab === 'fridge') {
             <div class="preview-row">
@@ -1770,7 +2242,9 @@
               <span class="status fresh">12.08.2026</span>
             </div>
           } @else if (onboardingStep().tab === 'shopping') {
-            <div class="preview-swipe" aria-hidden="true"><span>🗑 ←</span><strong>Йогурт</strong><span>🛒 →</span></div>
+            <div class="preview-swipe" aria-hidden="true">
+              <span>🗑 ←</span><strong>Йогурт</strong><span>🛒 →</span>
+            </div>
             <div class="preview-row">
               <span class="check-button" aria-hidden="true">✓</span>
               <strong>Молоко · 1 л</strong>
@@ -1813,10 +2287,18 @@
           <button
             class="primary-action"
             type="button"
-            (click)="onboardingStep().kind === 'notifications' ? enableNotificationsFromOnboarding() : nextOnboardingStep()"
+            (click)="
+              onboardingStep().kind === 'notifications'
+                ? enableNotificationsFromOnboarding()
+                : nextOnboardingStep()
+            "
             [disabled]="pushBusy()"
           >
-            {{ onboardingStep().kind === 'notifications' && notificationsEnabled() ? 'Начать пользоваться' : onboardingStep().action }}
+            {{
+              onboardingStep().kind === 'notifications' && notificationsEnabled()
+                ? 'Начать пользоваться'
+                : onboardingStep().action
+            }}
           </button>
         </div>
       </article>
