@@ -39,6 +39,7 @@ import {
   shoppingUpdateSchema,
   supportMessageCreateSchema,
   supportTicketCreateSchema,
+  adminSubscriptionSchema,
 } from './validation.mjs';
 
 const BODY_LIMIT = 64 * 1024;
@@ -145,6 +146,28 @@ function serializeUser(user) {
     displayName: user.displayName,
     householdId: user.householdId,
     authProvider: user.authProvider,
+  };
+}
+
+function serializeDevUser(user) {
+  const household = user.household;
+  const periodActive =
+    !household.subscriptionPeriodEnd || household.subscriptionPeriodEnd.getTime() > Date.now();
+  const isPlus =
+    household.plan === 'plus' &&
+    ['active', 'trialing'].includes(household.subscriptionStatus) &&
+    periodActive;
+  return {
+    ...serializeUser(user),
+    createdAt: user.createdAt.toISOString(),
+    householdName: household.name,
+    subscription: {
+      plan: isPlus ? 'plus' : 'free',
+      status: household.subscriptionStatus,
+      provider: household.subscriptionProvider,
+      currentPeriodEnd: household.subscriptionPeriodEnd?.toISOString() ?? null,
+      isPlus,
+    },
   };
 }
 
@@ -440,9 +463,7 @@ async function refreshDishDetails(prisma, dish) {
       title,
       subtitle: updated.subtitle || dish.subtitle,
       description,
-      instructions: instructions.length
-        ? JSON.stringify(instructions)
-        : dish.instructions,
+      instructions: instructions.length ? JSON.stringify(instructions) : dish.instructions,
       imageUrl: updated.image || dish.imageUrl,
     },
   });
@@ -1094,26 +1115,6 @@ async function getHousehold(prisma, householdId) {
     throw error;
   }
 
-  const hasTestAccess = household.users.some((user) =>
-    plusTestEmails().has(user.email.toLowerCase()),
-  );
-  if (
-    hasTestAccess &&
-    (household.plan !== 'plus' ||
-      household.subscriptionStatus !== 'active' ||
-      household.subscriptionProvider !== 'admin')
-  ) {
-    household = await prisma.household.update({
-      where: { id: householdId },
-      data: {
-        plan: 'plus',
-        subscriptionStatus: 'active',
-        subscriptionProvider: 'admin',
-        subscriptionPeriodEnd: null,
-      },
-      include: { users: { orderBy: [{ displayName: 'asc' }, { email: 'asc' }] } },
-    });
-  }
   return household;
 }
 
@@ -1357,21 +1358,10 @@ function isSecureRequest(request) {
 }
 
 const DEFAULT_ADMIN_EMAILS = ['vladfinder@yandex.ru', 'krisyagodka@gmail.com'];
-const DEFAULT_PLUS_TEST_EMAILS = ['vladfinder@yandex.ru'];
 
 function adminEmails() {
   return new Set(
     [DEFAULT_ADMIN_EMAILS.join(','), process.env.ADMIN_EMAILS ?? '']
-      .join(',')
-      .split(',')
-      .map((email) => email.trim().toLowerCase())
-      .filter(Boolean),
-  );
-}
-
-function plusTestEmails() {
-  return new Set(
-    [DEFAULT_PLUS_TEST_EMAILS.join(','), process.env.PLUS_TEST_EMAILS ?? '']
       .join(',')
       .split(',')
       .map((email) => email.trim().toLowerCase())
@@ -1984,6 +1974,58 @@ export function createApiServer(prisma, logger = console) {
         return;
       }
 
+      if (method === 'GET' && url.pathname === '/api/dev/users') {
+        requireAdmin(user);
+        const users = await prisma.user.findMany({
+          orderBy: [{ createdAt: 'desc' }],
+          take: 200,
+          include: { household: true },
+        });
+        json(response, 200, { users: users.map(serializeDevUser) });
+        return;
+      }
+
+      const devUserSubscriptionRoute = routeMatch(
+        url.pathname,
+        /^\/api\/dev\/users\/(?<id>[^/]+)\/subscription$/,
+      );
+      if (devUserSubscriptionRoute && method === 'PATCH') {
+        requireAdmin(user);
+        const input = adminSubscriptionSchema.parse(await readJson(request));
+        const target = await prisma.user.findUnique({ where: { id: devUserSubscriptionRoute.id } });
+        if (!target) {
+          const error = new Error('Пользователь не найден');
+          error.status = 404;
+          throw error;
+        }
+        const household = await prisma.household.update({
+          where: { id: target.householdId },
+          data: input.active
+            ? {
+                plan: 'plus',
+                subscriptionStatus: 'active',
+                subscriptionProvider: 'admin',
+                subscriptionPeriodEnd: input.periodEnd ? toDate(input.periodEnd) : null,
+              }
+            : {
+                plan: 'free',
+                subscriptionStatus: 'inactive',
+                subscriptionProvider: 'none',
+                subscriptionPeriodEnd: null,
+              },
+          include: { users: true },
+        });
+        const updated = await prisma.user.findUnique({
+          where: { id: target.id },
+          include: { household: true },
+        });
+        json(response, 200, {
+          user: serializeDevUser(updated),
+          household: serializeHousehold(household),
+        });
+        return;
+      }
+
       if (method === 'GET' && url.pathname === '/api/dev/summary') {
         requireAdmin(user);
         const now = new Date();
@@ -2435,11 +2477,12 @@ export function createApiServer(prisma, logger = console) {
       }
 
       if (method === 'GET' && url.pathname === '/api/notification-preferences') {
+        const plus = householdHasPlus(await getHousehold(prisma, user.householdId));
         json(response, 200, {
           notifyExpiry: user.notifyExpiry,
           notifyShopping: user.notifyShopping,
-          quietHoursStart: user.quietHoursStart,
-          quietHoursEnd: user.quietHoursEnd,
+          quietHoursStart: plus ? user.quietHoursStart : null,
+          quietHoursEnd: plus ? user.quietHoursEnd : null,
           timezone: user.timezone,
         });
         return;
@@ -2447,12 +2490,16 @@ export function createApiServer(prisma, logger = console) {
 
       if (method === 'PATCH' && url.pathname === '/api/notification-preferences') {
         const input = notificationPreferencesSchema.parse(await readJson(request));
-        const updated = await prisma.user.update({ where: { id: user.id }, data: input });
+        const plus = householdHasPlus(await getHousehold(prisma, user.householdId));
+        const updated = await prisma.user.update({
+          where: { id: user.id },
+          data: plus ? input : { ...input, quietHoursStart: null, quietHoursEnd: null },
+        });
         json(response, 200, {
           notifyExpiry: updated.notifyExpiry,
           notifyShopping: updated.notifyShopping,
-          quietHoursStart: updated.quietHoursStart,
-          quietHoursEnd: updated.quietHoursEnd,
+          quietHoursStart: plus ? updated.quietHoursStart : null,
+          quietHoursEnd: plus ? updated.quietHoursEnd : null,
           timezone: updated.timezone,
         });
         return;

@@ -120,6 +120,12 @@ export interface HouseholdSubscription {
   isPlus: boolean;
 }
 
+export interface DevUser extends AuthUser {
+  createdAt: string;
+  householdName: string;
+  subscription: HouseholdSubscription;
+}
+
 export interface AppNotification {
   id: string;
   type: 'group_invite' | 'expiry' | string;

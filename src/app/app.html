@@ -1027,16 +1027,27 @@
                   <article class="dev-card">
                     <div class="dev-card-head">
                       <div>
-                        <h2>Последние пользователи</h2>
-                        <p>Аккаунты из реальной базы приложения</p>
+                        <h2>Пользователи и подписки</h2>
+                        <p>Тариф и доступ Plus для каждого дома</p>
                       </div>
                     </div>
                     <div class="dev-user-list">
-                      @for (user of devSummary()?.users?.recent || []; track user.id) {
+                      @for (user of devUsers(); track user.id) {
                         <article>
                           <b>{{ user.displayName }}</b>
                           <span>{{ user.email }}</span>
-                          <small>{{ user.authProvider }}</small>
+                          <small>{{ user.householdName }} · {{ user.authProvider }}</small>
+                          <small>
+                            {{ user.subscription.isPlus ? 'Homie Plus' : 'Бесплатный тариф' }} ·
+                            {{ user.subscription.provider }}
+                          </small>
+                          <button
+                            class="secondary-action"
+                            type="button"
+                            (click)="toggleDevUserSubscription(user)"
+                          >
+                            {{ user.subscription.isPlus ? 'Отключить Plus' : 'Активировать Plus' }}
+                          </button>
                         </article>
                       } @empty {
                         <div class="dev-empty">Пользователей пока нет</div>
@@ -2126,9 +2137,9 @@
             </div>
             @if (hasPlus()) {
               <p>{{ subscriptionSource() }}</p>
-              <strong>Тестовый Plus уже действует для всех участников вашего дома.</strong>
+              <strong>Plus активен для всех участников вашего дома.</strong>
             } @else {
-              <p>Мы готовим запуск. Основные функции Homie останутся бесплатными.</p>
+              <p>Сейчас действует бесплатный тариф. Подписка Plus подключается отдельно.</p>
             }
           </div>
 
@@ -2137,35 +2148,42 @@
               <span>✦</span>
               <div>
                 <strong>Умные рецепты</strong>
-                <p>Подбор блюд из домашних продуктов и планирование меню на неделю.</p>
+                <p>Базовый подбор рецептов доступен всем. Планирование меню на неделю — в Plus.</p>
               </div>
             </article>
             <article>
               <span>◉</span>
               <div>
                 <strong>Гибкие уведомления</strong>
-                <p>Персональные правила сроков и удобное расписание для всей семьи.</p>
+                <p>Обычные напоминания бесплатны. Тонкие настройки и расписание — в Plus.</p>
               </div>
             </article>
             <article>
               <span>↗</span>
               <div>
                 <strong>История и аналитика</strong>
-                <p>Расход продуктов, семейная активность и оценка сэкономленных покупок.</p>
+                <p>Расширенная история расходов и аналитика появятся в Plus.</p>
               </div>
             </article>
             <article>
               <span>▣</span>
               <div>
                 <strong>Быстрое добавление</strong>
-                <p>Импорт рецептов, распознавание чеков и сканирование штрихкодов.</p>
+                <p>Импорт рецептов, чеки и штрихкоды входят в Plus и будут добавлены поэтапно.</p>
               </div>
             </article>
           </div>
 
           <div class="plus-coming-soon">
-            <strong>Подписка появится скоро</strong>
-            <p>До запуска можно пользоваться Homie как обычно. Мы заранее сообщим об условиях.</p>
+            @if (hasPlus()) {
+              <strong>Доступ Plus активен</strong>
+              <p>Все функции текущего тарифа доступны участникам вашего дома.</p>
+            } @else {
+              <strong>Подписка появится скоро</strong>
+              <p>
+                До запуска можно пользоваться бесплатным тарифом. Мы заранее сообщим об условиях.
+              </p>
+            }
           </div>
         }
 
@@ -2292,12 +2310,19 @@
             <div class="quiet-hours-row">
               <div>
                 <strong>Тихие часы</strong>
-                <p>Push не будут приходить в выбранный период</p>
+                <p>
+                  {{
+                    hasPlus()
+                      ? 'Push не будут приходить в выбранный период'
+                      : 'Доступно в Homie Plus'
+                  }}
+                </p>
               </div>
               <div class="quiet-hours-inputs">
                 <input
                   type="time"
                   aria-label="Начало тихих часов"
+                  [disabled]="!hasPlus()"
                   [ngModel]="notificationPreferences().quietHoursStart || ''"
                   (ngModelChange)="
                     updateNotificationPreferences({ quietHoursStart: $event || null })
@@ -2307,6 +2332,7 @@
                 <input
                   type="time"
                   aria-label="Конец тихих часов"
+                  [disabled]="!hasPlus()"
                   [ngModel]="notificationPreferences().quietHoursEnd || ''"
                   (ngModelChange)="updateNotificationPreferences({ quietHoursEnd: $event || null })"
                 />

@@ -10,6 +10,7 @@ import {
   AuthUser,
   DevSummary,
   DevRecipe,
+  DevUser,
   FeedbackItem,
   FridgeItem,
   Household,
@@ -325,6 +326,7 @@ export class App implements OnDestroy, OnInit {
     window.location.pathname === '/dev' || window.location.pathname === '/debug',
   );
   protected readonly devSummary = signal<DevSummary | null>(null);
+  protected readonly devUsers = signal<DevUser[]>([]);
   protected readonly devTickets = signal<SupportTicket[]>([]);
   protected readonly devFeedback = signal<FeedbackItem[]>([]);
   protected readonly devRecipes = signal<DevRecipe[]>([]);
@@ -2085,18 +2087,37 @@ export class App implements OnDestroy, OnInit {
   }
 
   private async loadDevData(): Promise<void> {
-    const [summary, tickets, feedback] = await Promise.all([
+    const [summary, tickets, feedback, users] = await Promise.all([
       firstValueFrom(this.api.getDevSummary()),
       firstValueFrom(this.api.getDevSupportTickets()),
       firstValueFrom(this.api.getDevFeedback()),
+      firstValueFrom(this.api.getDevUsers()),
     ]);
     this.devSummary.set(summary);
     this.devTickets.set(tickets.tickets);
     this.devFeedback.set(feedback.feedback);
+    this.devUsers.set(users.users);
     if (this.activeDevSection() === 'recipes') {
       await this.loadDevRecipes();
     }
     this.devLastUpdated.set(new Date().toLocaleTimeString('ru-RU'));
+  }
+
+  protected async toggleDevUserSubscription(user: DevUser): Promise<void> {
+    try {
+      const result = await firstValueFrom(
+        this.api.updateDevUserSubscription(user.id, !user.subscription.isPlus),
+      );
+      this.devUsers.update((users) =>
+        users.map((item) => (item.id === result.user.id ? result.user : item)),
+      );
+      if (result.user.householdId === this.household()?.id) {
+        this.household.set(result.household);
+      }
+      this.showToast(result.user.subscription.isPlus ? 'Plus активирован' : 'Plus отключён');
+    } catch (error) {
+      this.apiError.set(this.errorMessage(error, 'Не удалось изменить подписку.'));
+    }
   }
 
   private async loadDevRecipes(): Promise<void> {

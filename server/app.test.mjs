@@ -440,23 +440,40 @@ test('account can log in and access the current user', async () => {
   assert.equal((await meResponse.json()).user.email, 'test@example.com');
 });
 
-test('Plus test access is granted to the entire household by member email', async () => {
-  const previous = process.env.PLUS_TEST_EMAILS;
-  process.env.PLUS_TEST_EMAILS = 'test@example.com';
+test('accounts start on the free plan without implicit test access', async () => {
+  const response = await request('/api/state');
+  assert.equal(response.status, 200);
+  const state = await response.json();
+  assert.equal(state.household.subscription.isPlus, false);
+  assert.equal(state.household.subscription.plan, 'free');
+});
 
+test('admins can activate and deactivate household Plus access from a user record', async () => {
+  const previousAdmins = process.env.ADMIN_EMAILS;
+  process.env.ADMIN_EMAILS = 'test@example.com';
   try {
-    const response = await request('/api/state');
-    assert.equal(response.status, 200);
-    const state = await response.json();
-    assert.deepEqual(state.household.subscription, {
-      plan: 'plus',
-      status: 'active',
-      provider: 'admin',
-      currentPeriodEnd: null,
-      isPlus: true,
+    const usersResponse = await request('/api/dev/users');
+    assert.equal(usersResponse.status, 200);
+    const target = (await usersResponse.json()).users.find(
+      (item) => item.email === 'test@example.com',
+    );
+    assert.ok(target);
+
+    const activateResponse = await request(`/api/dev/users/${target.id}/subscription`, {
+      method: 'PATCH',
+      body: JSON.stringify({ active: true }),
     });
+    assert.equal(activateResponse.status, 200);
+    assert.equal((await activateResponse.json()).user.subscription.isPlus, true);
+
+    const deactivateResponse = await request(`/api/dev/users/${target.id}/subscription`, {
+      method: 'PATCH',
+      body: JSON.stringify({ active: false }),
+    });
+    assert.equal(deactivateResponse.status, 200);
+    assert.equal((await deactivateResponse.json()).user.subscription.isPlus, false);
   } finally {
-    restoreEnv('PLUS_TEST_EMAILS', previous);
+    restoreEnv('ADMIN_EMAILS', previousAdmins);
   }
 });
 
@@ -475,8 +492,8 @@ test('notification preferences control expiry and quiet hours', async () => {
   assert.deepEqual(await updateResponse.json(), {
     notifyExpiry: false,
     notifyShopping: true,
-    quietHoursStart: '23:00',
-    quietHoursEnd: '07:00',
+    quietHoursStart: null,
+    quietHoursEnd: null,
     timezone: 'Asia/Yekaterinburg',
   });
 
@@ -779,6 +796,10 @@ test('household dishes can be created and matched against fridge products', asyn
 });
 
 test('Plus household can plan a recipe for the week and remove it', async () => {
+  await prisma.household.update({
+    where: { id: 'legacy-household' },
+    data: { plan: 'plus', subscriptionStatus: 'active', subscriptionProvider: 'admin' },
+  });
   const dishesResponse = await request('/api/dishes');
   const dishes = await dishesResponse.json();
   const dish = dishes.recipes.find((recipe) => recipe.title === 'Картофельное пюре');

@@ -149,3 +149,8 @@ export const mealPlanCreateSchema = z.object({
   date,
   mealType: z.enum(['breakfast', 'lunch', 'dinner']).default('dinner'),
 });
+
+export const adminSubscriptionSchema = z.object({
+  active: z.boolean(),
+  periodEnd: date.nullable().optional(),
+});

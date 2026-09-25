@@ -9,6 +9,7 @@ import {
   AuthResponse,
   AuthUser,
   DevSummary,
+  DevUser,
   DevRecipe,
   FeedbackItem,
   FridgeInput,
@@ -98,6 +99,22 @@ export class ApiService {
 
   getDevSummary(): Observable<DevSummary> {
     return this.http.get<DevSummary>(`${this.baseUrl}/dev/summary`, this.options());
+  }
+
+  getDevUsers(): Observable<{ users: DevUser[] }> {
+    return this.http.get<{ users: DevUser[] }>(`${this.baseUrl}/dev/users`, this.options());
+  }
+
+  updateDevUserSubscription(
+    id: string,
+    active: boolean,
+    periodEnd?: string | null,
+  ): Observable<{ user: DevUser; household: Household }> {
+    return this.http.patch<{ user: DevUser; household: Household }>(
+      `${this.baseUrl}/dev/users/${encodeURIComponent(id)}/subscription`,
+      { active, periodEnd: periodEnd ?? null },
+      this.options(),
+    );
   }
 
   getDevSupportTickets(): Observable<{ tickets: SupportTicket[] }> {
