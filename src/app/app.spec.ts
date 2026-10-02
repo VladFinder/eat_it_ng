@@ -6,6 +6,7 @@ import { ApiService } from './core/api.service';
 
 describe('App', () => {
   let apiService: {
+    clearSessionToken?: ReturnType<typeof vi.fn>;
     me: ReturnType<typeof vi.fn>;
     getAuthProviders: ReturnType<typeof vi.fn>;
     getState: ReturnType<typeof vi.fn>;
@@ -89,6 +90,92 @@ describe('App', () => {
         },
       ],
     }).compileComponents();
+  });
+
+  it('does not grant frontend admin access from an unverified owner email', () => {
+    const fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance as any;
+    app.currentUser.set({ id: 'owner', email: 'vladfinder@yandex.ru', isAdmin: false });
+    expect(app.hasDevAccess()).toBe(false);
+    app.currentUser.set({ id: 'owner', email: 'vladfinder@yandex.ru', isAdmin: true });
+    expect(app.hasDevAccess()).toBe(true);
+    fixture.destroy();
+  });
+
+  it('keeps recipe preferences separate between accounts and ignores malformed caches', () => {
+    const fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance as any;
+    const firstKey = 'eat-it.recipes.account-first';
+    const secondKey = 'eat-it.recipes.account-second';
+    try {
+      app.currentUser.set({ id: 'account-first' });
+      app.recipes.set([{ id: 'private-recipe', title: 'Private recipe', liked: true, mine: true }]);
+      app.persistRecipes();
+      app.loadAccountPreferences('account-second');
+      expect(app.recipes()).toEqual([]);
+      app.loadAccountPreferences('account-first');
+      expect(app.recipes()[0].id).toBe('private-recipe');
+      localStorage.setItem(secondKey, '{}');
+      app.loadAccountPreferences('account-second');
+      expect(app.recipes()).toEqual([]);
+    } finally {
+      localStorage.removeItem(firstKey);
+      localStorage.removeItem(secondKey);
+      fixture.destroy();
+    }
+  });
+
+  it('clears recipes, meal plans, admin data and open dialogs on logout', () => {
+    const fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance as any;
+    apiService.clearSessionToken = vi.fn();
+    for (const field of [
+      'recipes',
+      'mealPlan',
+      'devUsers',
+      'devRecipes',
+      'recipeDishIdeas',
+      'userDishIdeas',
+    ]) {
+      app[field].set([{ id: 'private-record' }]);
+    }
+    app.activeRecipe.set({ id: 'private-record' });
+    app.fridgeAddOpen.set(true);
+    app.resetSession();
+    for (const field of [
+      'recipes',
+      'mealPlan',
+      'devUsers',
+      'devRecipes',
+      'recipeDishIdeas',
+      'userDishIdeas',
+    ]) {
+      expect(app[field]()).toEqual([]);
+    }
+    expect(app.activeRecipe()).toBeNull();
+    expect(app.fridgeAddOpen()).toBe(false);
+    fixture.destroy();
+  });
+
+  it('does not restore private data from a response arriving after logout', async () => {
+    const fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance as any;
+    apiService.clearSessionToken = vi.fn();
+    app.currentUser.set({ id: 'user-before-logout' });
+    const response = new Subject();
+    apiService.getState.mockReturnValue(response);
+    const pending = app.loadState();
+    app.resetSession();
+    response.next({
+      fridgeItems: [{ id: 'private-stock' }],
+      shoppingItems: [],
+      household: { id: 'old-home' },
+    });
+    response.complete();
+    await pending;
+    expect(app.fridgeItems()).toEqual([]);
+    expect(app.household()).toBeNull();
+    fixture.destroy();
   });
 
   it('should create the app', () => {

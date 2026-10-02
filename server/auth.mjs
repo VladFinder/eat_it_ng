@@ -46,7 +46,11 @@ export function readSessionToken(request) {
     .split(';')
     .map((part) => part.trim())
     .find((part) => part.startsWith('eat_it_session='));
-  return sessionCookie ? decodeURIComponent(sessionCookie.slice('eat_it_session='.length)) : null;
+  try {
+    return sessionCookie ? decodeURIComponent(sessionCookie.slice('eat_it_session='.length)) : null;
+  } catch {
+    return null;
+  }
 }
 
 export async function authenticate(prisma, request) {

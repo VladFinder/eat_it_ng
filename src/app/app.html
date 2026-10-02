@@ -156,12 +156,13 @@
 
     @if (!devMode() && notificationsOpen()) {
       <button
+        animate.leave="overlay-out"
         class="notification-backdrop"
         type="button"
         aria-label="Закрыть уведомления"
         (click)="closeNotifications()"
       ></button>
-      <section class="panel notifications-popover">
+      <section animate.leave="overlay-out" class="panel notifications-popover">
         <div class="notifications-head">
           <div>
             <p class="section-label">Уведомления</p>
@@ -249,12 +250,18 @@
 
     @if (!devMode() && activeSupportTicket()) {
       <button
+        animate.leave="overlay-out"
         class="notification-backdrop"
         type="button"
         aria-label="Закрыть тикет"
         (click)="closeSupportDialog()"
       ></button>
-      <section class="panel ticket-dialog" role="dialog" aria-modal="true">
+      <section
+        animate.leave="overlay-out"
+        class="panel ticket-dialog"
+        role="dialog"
+        aria-modal="true"
+      >
         <div class="notifications-head">
           <div>
             <p class="section-label">Тикет</p>
@@ -292,12 +299,18 @@
 
     @if (!devMode() && planningDish()) {
       <button
+        animate.leave="overlay-out"
         class="notification-backdrop"
         type="button"
         aria-label="Закрыть планирование"
         (click)="closeMealPlanner()"
       ></button>
-      <section class="panel ticket-dialog meal-plan-dialog" role="dialog" aria-modal="true">
+      <section
+        animate.leave="overlay-out"
+        class="panel ticket-dialog meal-plan-dialog"
+        role="dialog"
+        aria-modal="true"
+      >
         <div class="notifications-head">
           <div>
             <p class="section-label">Недельное меню</p>
@@ -335,12 +348,18 @@
 
     @if (!devMode() && activeDish()) {
       <button
+        animate.leave="overlay-out"
         class="notification-backdrop"
         type="button"
         aria-label="Закрыть блюдо"
         (click)="closeDish()"
       ></button>
-      <section class="panel ticket-dialog detail-dialog" role="dialog" aria-modal="true">
+      <section
+        animate.leave="overlay-out"
+        class="panel ticket-dialog detail-dialog"
+        role="dialog"
+        aria-modal="true"
+      >
         <div class="notifications-head">
           <div>
             <p class="section-label">{{ activeDish()?.subtitle }}</p>
@@ -418,12 +437,18 @@
 
     @if (!devMode() && activeRecipe()) {
       <button
+        animate.leave="overlay-out"
         class="notification-backdrop"
         type="button"
         aria-label="Закрыть рецепт"
         (click)="closeRecipe()"
       ></button>
-      <section class="panel ticket-dialog detail-dialog" role="dialog" aria-modal="true">
+      <section
+        animate.leave="overlay-out"
+        class="panel ticket-dialog detail-dialog"
+        role="dialog"
+        aria-modal="true"
+      >
         <div class="notifications-head">
           <div>
             <p class="section-label">Рецепт</p>
@@ -512,12 +537,18 @@
 
     @if (!devMode() && cookingDish()) {
       <button
+        animate.leave="overlay-out"
         class="notification-backdrop"
         type="button"
         aria-label="Закрыть готовку"
         (click)="closeCooking()"
       ></button>
-      <section class="panel ticket-dialog cooking-dialog" role="dialog" aria-modal="true">
+      <section
+        animate.leave="overlay-out"
+        class="panel ticket-dialog cooking-dialog"
+        role="dialog"
+        aria-modal="true"
+      >
         <div class="notifications-head">
           <div>
             <p class="section-label">{{ cookingDish()?.subtitle }}</p>
@@ -554,12 +585,18 @@
 
     @if (!devMode() && fridgeAddOpen()) {
       <button
+        animate.leave="overlay-out"
         class="notification-backdrop"
         type="button"
         aria-label="Закрыть добавление"
         (click)="closeFridgeAdd()"
       ></button>
-      <section class="panel ticket-dialog add-dialog" role="dialog" aria-modal="true">
+      <section
+        animate.leave="overlay-out"
+        class="panel ticket-dialog add-dialog"
+        role="dialog"
+        aria-modal="true"
+      >
         <div class="notifications-head">
           <div>
             <p class="section-label">Новая позиция</p>
@@ -643,12 +680,18 @@
 
     @if (fridgeMenuItem(); as item) {
       <button
+        animate.leave="overlay-out"
         class="notification-backdrop"
         type="button"
         aria-label="Закрыть меню товара"
         (click)="closeFridgeMenu()"
       ></button>
-      <section class="panel ticket-dialog add-dialog item-menu" role="dialog" aria-modal="true">
+      <section
+        animate.leave="overlay-out"
+        class="panel ticket-dialog add-dialog item-menu"
+        role="dialog"
+        aria-modal="true"
+      >
         <div class="notifications-head">
           <div>
             <p class="section-label">Запасы</p>
@@ -728,12 +771,18 @@
 
     @if (shoppingMenuItem(); as item) {
       <button
+        animate.leave="overlay-out"
         class="notification-backdrop"
         type="button"
         aria-label="Закрыть меню покупки"
         (click)="closeShoppingMenu()"
       ></button>
-      <section class="panel ticket-dialog add-dialog item-menu" role="dialog" aria-modal="true">
+      <section
+        animate.leave="overlay-out"
+        class="panel ticket-dialog add-dialog item-menu"
+        role="dialog"
+        aria-modal="true"
+      >
         <div class="notifications-head">
           <div>
             <p class="section-label">Покупки</p>
@@ -780,12 +829,18 @@
 
     @if (activeDevTicket()) {
       <button
+        animate.leave="overlay-out"
         class="notification-backdrop"
         type="button"
         aria-label="Закрыть тикет"
         (click)="closeDevTicketDialog()"
       ></button>
-      <section class="panel ticket-dialog" role="dialog" aria-modal="true">
+      <section
+        animate.leave="overlay-out"
+        class="panel ticket-dialog"
+        role="dialog"
+        aria-modal="true"
+      >
         <div class="notifications-head">
           <div>
             <p class="section-label">{{ activeDevTicket()?.user?.email }}</p>
@@ -2139,7 +2194,7 @@
               <p>{{ subscriptionSource() }}</p>
               <strong>Plus активен для всех участников вашего дома.</strong>
             } @else {
-              <p>Сейчас действует бесплатный тариф. Подписка Plus подключается отдельно.</p>
+              <p>Сейчас действует бесплатный тариф. Подписка Plus появится скоро.</p>
             }
           </div>
 
@@ -2449,6 +2504,7 @@
 
   @if (!devMode() && onboardingOpen()) {
     <section
+      animate.leave="overlay-out"
       class="onboarding-layer"
       aria-labelledby="onboarding-title"
       role="dialog"

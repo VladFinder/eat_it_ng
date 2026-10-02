@@ -6,7 +6,7 @@ export const categories = ['products', 'household', 'medicine'];
 const name = z.string().trim().min(1).max(120);
 const quantity = z.number().positive().max(1_000_000);
 const unit = z.enum(units);
-const date = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
+const date = z.iso.date();
 const reminderDays = z.number().int().min(0).max(365);
 const category = z.enum(categories);
 const email = z
@@ -54,12 +54,36 @@ export const notificationPreferencesSchema = z.object({
 });
 
 export const pushSubscriptionSchema = z.object({
-  endpoint: z.string().trim().url().max(2_000),
+  endpoint: z
+    .string()
+    .trim()
+    .url()
+    .max(2_000)
+    .refine(isTrustedPushEndpoint, 'Unsupported push endpoint'),
   keys: z.object({
     p256dh: z.string().trim().min(20).max(500),
     auth: z.string().trim().min(8).max(500),
   }),
 });
+
+export function isTrustedPushEndpoint(value) {
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === 'https:' &&
+      !url.username &&
+      !url.password &&
+      !url.port &&
+      !url.hash &&
+      (['fcm.googleapis.com', 'updates.push.services.mozilla.com', 'web.push.apple.com'].includes(
+        url.hostname,
+      ) ||
+        url.hostname.endsWith('.notify.windows.com'))
+    );
+  } catch {
+    return false;
+  }
+}
 
 export const pushUnsubscribeSchema = z.object({
   endpoint: z.string().trim().url().max(2_000),

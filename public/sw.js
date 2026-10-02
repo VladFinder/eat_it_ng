@@ -19,7 +19,13 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const targetUrl = new URL(event.notification.data?.url ?? '/', self.location.origin).href;
+  let targetUrl = new URL('/', self.location.origin).href;
+  try {
+    const candidate = new URL(event.notification.data?.url ?? '/', self.location.origin);
+    if (candidate.origin === self.location.origin) targetUrl = candidate.href;
+  } catch {
+    // Invalid payload URLs fall back to the app home.
+  }
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clients) => {
       const existing = clients.find((client) => client.url.startsWith(self.location.origin));

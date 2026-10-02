@@ -1,6 +1,7 @@
 import { createServer } from 'node:http';
 import { ZodError } from 'zod';
 import webpush from 'web-push';
+import { clientAddress, createAuthLimiter, isAllowedWriteOrigin } from './security.mjs';
 import {
   authenticate,
   clearSessionCookie,
@@ -40,6 +41,7 @@ import {
   supportMessageCreateSchema,
   supportTicketCreateSchema,
   adminSubscriptionSchema,
+  isTrustedPushEndpoint,
 } from './validation.mjs';
 
 const BODY_LIMIT = 64 * 1024;
@@ -76,6 +78,11 @@ function json(response, status, body, headers = {}) {
 }
 
 async function readJson(request) {
+  if (request.headers['content-type']?.split(';')[0].trim().toLowerCase() !== 'application/json') {
+    const error = new Error('Content-Type must be application/json');
+    error.status = 415;
+    throw error;
+  }
   let size = 0;
   const chunks = [];
 
@@ -1142,6 +1149,12 @@ async function mergeHouseholdInto(transaction, sourceHouseholdId, targetHousehol
     return;
   }
 
+  if ((await transaction.user.count({ where: { householdId: sourceHouseholdId } })) > 1) {
+    const error = new Error('Нельзя перенести общий дом без согласия остальных участников');
+    error.status = 409;
+    throw error;
+  }
+
   await transaction.fridgeItem.updateMany({
     where: { householdId: sourceHouseholdId },
     data: { householdId: targetHouseholdId },
@@ -1237,6 +1250,8 @@ async function sendPushNotification(prisma, userId, notification, logger = conso
 
   await Promise.all(
     subscriptions.map(async (subscription) => {
+      // Recheck stored subscriptions too: older records may contain arbitrary URLs.
+      if (!isTrustedPushEndpoint(subscription.endpoint)) return;
       try {
         await webpush.sendNotification(
           {
@@ -1370,7 +1385,16 @@ function adminEmails() {
 }
 
 function isAdmin(user) {
-  return adminEmails().has(user.email.toLowerCase());
+  const trustedIds = new Set(
+    (process.env.ADMIN_USER_IDS ?? '')
+      .split(',')
+      .map((id) => id.trim())
+      .filter(Boolean),
+  );
+  return (
+    trustedIds.has(user.id) ||
+    (['google', 'apple'].includes(user.authProvider) && adminEmails().has(user.email.toLowerCase()))
+  );
 }
 
 function requireAdmin(user) {
@@ -1427,7 +1451,7 @@ async function createHouseholdForUser(transaction, displayName) {
   return transaction.household.create({ data: { name: `${displayName}: дом` } });
 }
 
-async function findOrCreateOAuthUser(prisma, provider, profile) {
+export async function findOrCreateOAuthUser(prisma, provider, profile) {
   if (!profile.subject || !profile.email || !profile.emailVerified) {
     throw new Error('OAuth provider did not return a verified email');
   }
@@ -1454,6 +1478,14 @@ async function findOrCreateOAuthUser(prisma, provider, profile) {
           authProvider: provider,
           providerSubject: profile.subject,
         },
+      });
+    } else if (user.authProvider === 'password') {
+      // Password registration does not verify email ownership. A previous registrant
+      // must not retain access after the email owner signs in through a verified provider.
+      await transaction.session.deleteMany({ where: { userId: user.id } });
+      user = await transaction.user.update({
+        where: { id: user.id },
+        data: { passwordHash: null, authProvider: provider, providerSubject: profile.subject },
       });
     }
     await transaction.authIdentity.create({
@@ -1484,16 +1516,40 @@ async function findShoppingItem(prisma, id, householdId) {
 }
 
 export function createApiServer(prisma, logger = console) {
+  const limitAuth = createAuthLimiter();
   return createServer(async (request, response) => {
     const method = request.method ?? 'GET';
-    const url = new URL(request.url ?? '/', 'http://localhost');
+    let url;
 
     try {
+      url = new URL(request.url ?? '/', 'http://localhost');
       const isCapacitorRequest = applyCapacitorCors(request, response);
       if (method === 'OPTIONS' && url.pathname.startsWith('/api/') && isCapacitorRequest) {
         response.writeHead(204);
         response.end();
         return;
+      }
+
+      if (
+        ['POST', 'PATCH', 'PUT', 'DELETE'].includes(method) &&
+        url.pathname !== '/api/auth/apple/callback' &&
+        !isAllowedWriteOrigin(request, CAPACITOR_ORIGINS)
+      ) {
+        json(response, 403, { error: 'Недопустимый источник запроса' });
+        return;
+      }
+
+      if (method === 'POST' && ['/api/auth/login', '/api/auth/register'].includes(url.pathname)) {
+        const retryAfter = limitAuth(`ip:${clientAddress(request)}`, 120);
+        if (retryAfter) {
+          json(
+            response,
+            429,
+            { error: 'Слишком много попыток. Попробуйте позже.' },
+            { 'Retry-After': String(retryAfter) },
+          );
+          return;
+        }
       }
 
       if (method === 'GET' && url.pathname === '/api/health') {
@@ -1543,6 +1599,16 @@ export function createApiServer(prisma, logger = console) {
 
       if (method === 'POST' && url.pathname === '/api/auth/login') {
         const input = loginSchema.parse(await readJson(request));
+        const retryAfter = limitAuth(`email:${input.email}`, 10);
+        if (retryAfter) {
+          json(
+            response,
+            429,
+            { error: 'Слишком много попыток. Попробуйте позже.' },
+            { 'Retry-After': String(retryAfter) },
+          );
+          return;
+        }
         const user = await prisma.user.findUnique({ where: { email: input.email } });
         if (!user?.passwordHash || !(await verifyPassword(input.password, user.passwordHash))) {
           json(response, 401, { error: 'Неверный email или пароль' });
@@ -2746,7 +2812,7 @@ export function createApiServer(prisma, logger = console) {
 
       const status = Number.isInteger(error?.status) ? error.status : 500;
       if (status >= 500) {
-        logger.error(`${method} ${url.pathname}`, error);
+        logger.error(`${method} ${url?.pathname ?? '/'}`, error);
       }
       json(response, status, { error: status >= 500 ? 'Internal server error' : error.message });
     }

@@ -3,11 +3,34 @@ import { mkdirSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { after, before, test } from 'node:test';
 import { PrismaClient } from '@prisma/client';
-import { createApiServer } from './app.mjs';
+import { createApiServer, findOrCreateOAuthUser } from './app.mjs';
+import { createAuthLimiter, clientAddress } from './security.mjs';
+import { createSession } from './auth.mjs';
 
 const projectRoot = resolve(import.meta.dirname, '..');
 const databasePath = resolve(projectRoot, 'data', 'eat-it-test.db');
 process.env.DATABASE_URL = 'file:../data/eat-it-test.db';
+function clearExternalConfiguration() {
+  // Integration tests configure fake providers explicitly; never inherit live credentials.
+  for (const key of [
+    'SPOONACULAR_API_KEY',
+    'YANDEX_TRANSLATE_API_KEY',
+    'YANDEX_TRANSLATE_FOLDER_ID',
+    'VAPID_PUBLIC_KEY',
+    'VAPID_PRIVATE_KEY',
+    'GOOGLE_CLIENT_ID',
+    'GOOGLE_CLIENT_SECRET',
+    'APPLE_CLIENT_ID',
+    'APPLE_TEAM_ID',
+    'APPLE_KEY_ID',
+    'APPLE_PRIVATE_KEY',
+    'ADMIN_EMAILS',
+    'ADMIN_USER_IDS',
+    'TRUST_PROXY',
+  ]) {
+    delete process.env[key];
+  }
+}
 
 let prisma;
 let server;
@@ -19,6 +42,8 @@ before(async () => {
   rmSync(databasePath, { force: true });
 
   prisma = new PrismaClient();
+  // Prisma can load .env during construction, so clear it after creating the client.
+  clearExternalConfiguration();
   await prisma.$executeRawUnsafe(`
     CREATE TABLE "Household" (
       "id" TEXT NOT NULL PRIMARY KEY,
@@ -449,8 +474,10 @@ test('accounts start on the free plan without implicit test access', async () =>
 });
 
 test('admins can activate and deactivate household Plus access from a user record', async () => {
-  const previousAdmins = process.env.ADMIN_EMAILS;
-  process.env.ADMIN_EMAILS = 'test@example.com';
+  const previousAdmins = process.env.ADMIN_USER_IDS;
+  process.env.ADMIN_USER_IDS = (
+    await prisma.user.findUnique({ where: { email: 'test@example.com' } })
+  ).id;
   try {
     const usersResponse = await request('/api/dev/users');
     assert.equal(usersResponse.status, 200);
@@ -473,7 +500,7 @@ test('admins can activate and deactivate household Plus access from a user recor
     assert.equal(deactivateResponse.status, 200);
     assert.equal((await deactivateResponse.json()).user.subscription.isPlus, false);
   } finally {
-    restoreEnv('ADMIN_EMAILS', previousAdmins);
+    restoreEnv('ADMIN_USER_IDS', previousAdmins);
   }
 });
 
@@ -514,8 +541,10 @@ test('notification preferences control expiry and quiet hours', async () => {
 });
 
 test('support ticket can be created, answered by admin, and closed', async () => {
-  const previousAdmins = process.env.ADMIN_EMAILS;
-  process.env.ADMIN_EMAILS = 'test@example.com';
+  const previousAdmins = process.env.ADMIN_USER_IDS;
+  process.env.ADMIN_USER_IDS = (
+    await prisma.user.findUnique({ where: { email: 'test@example.com' } })
+  ).id;
 
   try {
     const createResponse = await request('/api/support/tickets', {
@@ -557,7 +586,7 @@ test('support ticket can be created, answered by admin, and closed', async () =>
     });
     assert.equal(userReplyResponse.status, 409);
   } finally {
-    restoreEnv('ADMIN_EMAILS', previousAdmins);
+    restoreEnv('ADMIN_USER_IDS', previousAdmins);
   }
 });
 
@@ -571,8 +600,10 @@ test('feedback is visible to admins only', async () => {
   const forbiddenResponse = await request('/api/dev/feedback');
   assert.equal(forbiddenResponse.status, 403);
 
-  const previousAdmins = process.env.ADMIN_EMAILS;
-  process.env.ADMIN_EMAILS = 'test@example.com';
+  const previousAdmins = process.env.ADMIN_USER_IDS;
+  process.env.ADMIN_USER_IDS = (
+    await prisma.user.findUnique({ where: { email: 'test@example.com' } })
+  ).id;
   try {
     const adminResponse = await request('/api/dev/feedback');
     assert.equal(adminResponse.status, 200);
@@ -582,35 +613,27 @@ test('feedback is visible to admins only', async () => {
       true,
     );
   } finally {
-    restoreEnv('ADMIN_EMAILS', previousAdmins);
+    restoreEnv('ADMIN_USER_IDS', previousAdmins);
   }
 });
 
-test('default dev owners can access dev endpoints without env configuration', async () => {
-  const previousAdmins = process.env.ADMIN_EMAILS;
-  delete process.env.ADMIN_EMAILS;
-
-  try {
-    const registerResponse = await request('/api/auth/register', {
-      method: 'POST',
-      body: JSON.stringify({
-        displayName: 'Влад',
-        email: 'vladfinder@yandex.ru',
-        password: 'test-password-123',
-      }),
-      skipAuth: true,
-    });
-    assert.equal(registerResponse.status, 201);
-    const owner = await registerResponse.json();
-    assert.equal(owner.user.isAdmin, true);
-
-    const summaryResponse = await fetch(`${baseUrl}/api/dev/summary`, {
-      headers: { Authorization: `Bearer ${owner.token}` },
-    });
-    assert.equal(summaryResponse.status, 200);
-  } finally {
-    restoreEnv('ADMIN_EMAILS', previousAdmins);
-  }
+test('registering an owner email does not grant admin access', async () => {
+  const response = await request('/api/auth/register', {
+    method: 'POST',
+    body: JSON.stringify({
+      displayName: 'Unverified owner',
+      email: 'vladfinder@yandex.ru',
+      password: 'test-password-123',
+    }),
+    skipAuth: true,
+  });
+  assert.equal(response.status, 201);
+  const owner = await response.json();
+  assert.equal(owner.user.isAdmin, false);
+  const summary = await request('/api/dev/summary', {
+    headers: { Authorization: `Bearer ${owner.token}` },
+  });
+  assert.equal(summary.status, 403);
 });
 
 test('state rejects unauthenticated requests', async () => {
@@ -619,7 +642,7 @@ test('state rejects unauthenticated requests', async () => {
 });
 
 test('push subscriptions can be enabled and disabled for the current device', async () => {
-  const endpoint = 'https://push.example.com/subscriptions/device-1';
+  const endpoint = 'https://fcm.googleapis.com/fcm/send/device-1';
   const createResponse = await request('/api/push/subscriptions', {
     method: 'POST',
     body: JSON.stringify({
@@ -1057,10 +1080,12 @@ test('recipe catalog loads Spoonacular recipes with images', async () => {
       usedIngredients: ['potato', 'tomato'],
       missedIngredients: ['cheese'],
     });
-    const previousAdmins = process.env.ADMIN_EMAILS;
-    process.env.ADMIN_EMAILS = 'test@example.com';
+    const previousAdmins = process.env.ADMIN_USER_IDS;
+    process.env.ADMIN_USER_IDS = (
+      await prisma.user.findUnique({ where: { email: 'test@example.com' } })
+    ).id;
     const savedResponse = await request('/api/dev/recipes');
-    restoreEnv('ADMIN_EMAILS', previousAdmins);
+    restoreEnv('ADMIN_USER_IDS', previousAdmins);
     assert.equal(savedResponse.status, 200);
     const saved = await savedResponse.json();
     assert.equal(
@@ -1537,4 +1562,228 @@ test('invalid payload is rejected', async () => {
     body: JSON.stringify({ name: '', quantity: -1, unit: 'bad', expiresAt: 'today' }),
   });
   assert.equal(response.status, 400);
+});
+
+test('a verified OAuth owner can access admin endpoints', async () => {
+  const owner = await prisma.user.create({
+    data: {
+      email: 'krisyagodka@gmail.com',
+      displayName: 'Verified owner',
+      authProvider: 'google',
+      providerSubject: 'verified-google-owner',
+      household: { create: { name: 'Owner home' } },
+    },
+  });
+  const session = await createSession(prisma, owner.id);
+  const response = await request('/api/dev/summary', {
+    headers: { Authorization: `Bearer ${session.token}` },
+  });
+  assert.equal(response.status, 200);
+});
+
+test('untrusted origins cannot mutate data even with a valid session', async () => {
+  const count = await prisma.shoppingItem.count();
+  const response = await request('/api/shopping', {
+    method: 'POST',
+    headers: { Origin: 'https://untrusted.example' },
+    body: JSON.stringify({ name: 'Forged shopping item' }),
+  });
+  assert.equal(response.status, 403);
+  assert.equal(await prisma.shoppingItem.count(), count);
+  const native = await request('/api/shopping', {
+    method: 'POST',
+    headers: { Origin: 'https://localhost' },
+    body: JSON.stringify({ name: 'Native shopping item' }),
+  });
+  assert.equal(native.status, 201);
+});
+
+test('JSON routes reject form and text bodies', async () => {
+  const response = await request('/api/shopping', {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain' },
+    body: JSON.stringify({ name: 'Forged shopping item' }),
+  });
+  assert.equal(response.status, 415);
+});
+
+test('malformed session and OAuth cookies do not cause server errors', async () => {
+  const session = await request('/api/state', {
+    skipAuth: true,
+    headers: { Cookie: 'eat_it_session=%E0%A4%A' },
+  });
+  assert.equal(session.status, 401);
+  const oauth = await request('/api/auth/google/callback?code=bad&state=bad', {
+    skipAuth: true,
+    redirect: 'manual',
+    headers: { Cookie: 'eat_it_google_state=%ZZ' },
+  });
+  assert.equal(oauth.status, 302);
+  assert.match(oauth.headers.get('location'), /auth_error=google_failed/);
+});
+
+test('push subscriptions reject internal, insecure and lookalike endpoints', async () => {
+  const count = await prisma.pushSubscription.count();
+  for (const endpoint of [
+    'http://fcm.googleapis.com/fcm/send/token',
+    'https://127.0.0.1/private',
+    'https://169.254.169.254/latest/meta-data',
+    'https://localhost/private',
+    'https://fcm.googleapis.com.evil.example/push',
+    'https://evil.example/push',
+    'https://fcm.googleapis.com:444/push',
+    'https://user:password@fcm.googleapis.com/push',
+  ]) {
+    const response = await request('/api/push/subscriptions', {
+      method: 'POST',
+      body: JSON.stringify({
+        endpoint,
+        keys: { p256dh: 'test-p256dh-key-material', auth: 'test-auth-key' },
+      }),
+    });
+    assert.equal(response.status, 400, endpoint);
+  }
+  assert.equal(await prisma.pushSubscription.count(), count);
+});
+
+test('impossible calendar dates are rejected without database writes', async () => {
+  const count = await prisma.fridgeItem.count();
+  for (const expiresAt of ['2026-02-30', '2026-13-01', '2026-00-00']) {
+    const response = await request('/api/fridge', {
+      method: 'POST',
+      body: JSON.stringify({ name: 'Invalid date', quantity: 1, unit: 'шт.', expiresAt }),
+    });
+    assert.equal(response.status, 400);
+  }
+  assert.equal(await prisma.fridgeItem.count(), count);
+});
+
+test('login throttling applies across email casing and spoofed proxy headers', async () => {
+  for (let i = 0; i < 11; i++) {
+    const response = await request('/api/auth/login', {
+      method: 'POST',
+      skipAuth: true,
+      headers: { 'X-Forwarded-For': `192.0.2.${i}` },
+      body: JSON.stringify({
+        email: i % 2 ? 'RATE-LIMIT@example.com' : 'rate-limit@example.com',
+        password: 'wrong-password',
+      }),
+    });
+    assert.equal(response.status, i < 10 ? 401 : 429);
+    if (i === 10) assert.ok(Number(response.headers.get('retry-after')) > 0);
+  }
+});
+
+test('auth rate limits expire after their window', () => {
+  const limit = createAuthLimiter();
+  assert.equal(limit('ip:test', 2, 0), 0);
+  assert.equal(limit('ip:test', 2, 1), 0);
+  assert.equal(limit('ip:test', 2, 2), 900);
+  assert.equal(limit('ip:test', 2, 900_000), 0);
+});
+
+test('proxy client addresses require explicit trust and a local connection', () => {
+  const previous = process.env.TRUST_PROXY;
+  try {
+    const request = {
+      socket: { remoteAddress: '127.0.0.1' },
+      headers: { 'x-real-ip': '192.0.2.1' },
+    };
+    delete process.env.TRUST_PROXY;
+    assert.equal(clientAddress(request), '127.0.0.1');
+    process.env.TRUST_PROXY = 'true';
+    assert.equal(clientAddress(request), '192.0.2.1');
+    request.socket.remoteAddress = '192.0.2.2';
+    assert.equal(clientAddress(request), '192.0.2.2');
+  } finally {
+    restoreEnv('TRUST_PROXY', previous);
+  }
+});
+
+test('accepting an invitation cannot transfer other household members', async () => {
+  const inviter = await prisma.user.create({
+    data: {
+      email: 'privacy-inviter@example.com',
+      displayName: 'Inviter',
+      household: { create: { name: 'Inviter home' } },
+    },
+  });
+  const source = await prisma.household.create({ data: { name: 'Private shared home' } });
+  const member = await prisma.user.create({
+    data: { email: 'privacy-member@example.com', displayName: 'Member', householdId: source.id },
+  });
+  const bystander = await prisma.user.create({
+    data: {
+      email: 'privacy-bystander@example.com',
+      displayName: 'Bystander',
+      householdId: source.id,
+    },
+  });
+  const item = await prisma.fridgeItem.create({
+    data: { householdId: source.id, name: 'Private item', quantity: 1, unit: 'шт.' },
+  });
+  const invitation = await prisma.householdInvitation.create({
+    data: { householdId: inviter.householdId, inviterId: inviter.id, inviteeId: member.id },
+  });
+  const session = await createSession(prisma, member.id);
+  const response = await request(`/api/household/invitations/${invitation.id}/accept`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${session.token}` },
+  });
+  assert.equal(response.status, 409);
+  assert.equal(
+    (await prisma.user.findUnique({ where: { id: bystander.id } })).householdId,
+    source.id,
+  );
+  assert.equal(
+    (await prisma.fridgeItem.findUnique({ where: { id: item.id } })).householdId,
+    source.id,
+  );
+  assert.equal(
+    (await prisma.householdInvitation.findUnique({ where: { id: invitation.id } })).status,
+    'pending',
+  );
+});
+
+test('verified OAuth sign-in revokes the unverified password and old sessions', async () => {
+  const response = await request('/api/auth/register', {
+    method: 'POST',
+    skipAuth: true,
+    body: JSON.stringify({
+      email: 'oauth-owner@example.com',
+      displayName: 'Old registrant',
+      password: 'old-password-123',
+    }),
+  });
+  assert.equal(response.status, 201);
+  const registrant = await response.json();
+  const owner = await findOrCreateOAuthUser(prisma, 'google', {
+    subject: 'verified-email-owner',
+    email: 'oauth-owner@example.com',
+    emailVerified: true,
+    displayName: 'Owner',
+  });
+  assert.equal(owner.id, registrant.user.id);
+  assert.equal(owner.passwordHash, null);
+  assert.equal(owner.authProvider, 'google');
+  const staleSession = await request('/api/state', {
+    headers: { Authorization: `Bearer ${registrant.token}` },
+  });
+  assert.equal(staleSession.status, 401);
+  const passwordLogin = await request('/api/auth/login', {
+    method: 'POST',
+    skipAuth: true,
+    body: JSON.stringify({ email: 'oauth-owner@example.com', password: 'old-password-123' }),
+  });
+  assert.equal(passwordLogin.status, 401);
+  assert.equal(
+    (
+      await findOrCreateOAuthUser(prisma, 'google', {
+        subject: 'verified-email-owner',
+        email: 'oauth-owner@example.com',
+        emailVerified: true,
+      })
+    ).id,
+    owner.id,
+  );
 });

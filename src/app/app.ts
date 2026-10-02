@@ -34,12 +34,7 @@ type ShoppingSort = 'newest' | 'oldest' | 'name' | 'status';
 type DishFilter = 'available' | 'almost' | 'planned';
 type AuthMode = 'login' | 'register';
 type ProfileSection =
-  | 'menu'
-  | 'subscription'
-  | 'household'
-  | 'notifications'
-  | 'support'
-  | 'feedback';
+  'menu' | 'subscription' | 'household' | 'notifications' | 'support' | 'feedback';
 type DevSection =
   | 'overview'
   | 'users'
@@ -118,8 +113,6 @@ const LEGACY_DEMO_RECIPE_TITLES = new Set([
   'Теплый салат с фасолью',
 ]);
 
-const DEV_ALLOWED_EMAILS = new Set(['vladfinder@yandex.ru', 'krisyagodka@gmail.com']);
-
 const ONBOARDING_STEPS: OnboardingStep[] = [
   {
     tab: 'fridge',
@@ -174,6 +167,7 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
 })
 export class App implements OnDestroy, OnInit {
   private readonly api = inject(ApiService);
+  private toastTimer: ReturnType<typeof window.setTimeout> | null = null;
   private refreshTimer: ReturnType<typeof window.setInterval> | null = null;
   protected readonly accountDeletionPage = new URLSearchParams(window.location.search).has(
     'delete-account',
@@ -307,9 +301,7 @@ export class App implements OnDestroy, OnInit {
     typeof Notification === 'undefined' ? 'unsupported' : Notification.permission,
   );
   protected readonly pushBusy = signal(false);
-  protected readonly clearedNotificationIds = signal(
-    this.load<string[]>(STORAGE_KEYS.clearedNotifications, []),
-  );
+  protected readonly clearedNotificationIds = signal<string[]>([]);
   protected readonly supportTickets = signal<SupportTicket[]>([]);
   protected readonly activeSupportTicket = signal<SupportTicket | null>(null);
   protected readonly supportMessages = signal<SupportMessage[]>([]);
@@ -336,8 +328,7 @@ export class App implements OnDestroy, OnInit {
   protected readonly activeDevSection = signal<DevSection>('overview');
   protected readonly hasDevAccess = computed(() => {
     const user = this.currentUser();
-    const email = user?.email?.trim().toLowerCase();
-    return Boolean(user?.isAdmin || (email && DEV_ALLOWED_EMAILS.has(email)));
+    return user?.isAdmin === true;
   });
   protected readonly activeDevSectionLabel = computed(
     () =>
@@ -381,11 +372,7 @@ export class App implements OnDestroy, OnInit {
   });
   protected readonly fridgeItems = signal<FridgeItem[]>([]);
   protected readonly shoppingItems = signal<ShoppingItem[]>([]);
-  protected readonly recipes = signal<Recipe[]>(
-    this.load<Recipe[]>(STORAGE_KEYS.recipes, []).filter(
-      (recipe) => !LEGACY_DEMO_RECIPE_TITLES.has(recipe.title),
-    ),
-  );
+  protected readonly recipes = signal<Recipe[]>([]);
   protected readonly recipeDishIdeas = signal<DishIdea[]>([]);
   protected readonly userDishIdeas = signal<DishIdea[]>([]);
   protected readonly cookingSteps = [
@@ -636,6 +623,7 @@ export class App implements OnDestroy, OnInit {
     document.removeEventListener('touchend', this.handleNativeTouchEnd, true);
     document.removeEventListener('touchcancel', this.handleNativeTouchCancel, true);
     this.stopRealtimeRefresh();
+    if (this.toastTimer !== null) window.clearTimeout(this.toastTimer);
   }
 
   protected async submitAuth(): Promise<void> {
@@ -662,6 +650,7 @@ export class App implements OnDestroy, OnInit {
             );
       this.api.setSessionToken(response.token);
       this.currentUser.set(response.user);
+      this.loadAccountPreferences(response.user.id);
       this.authForm.password = '';
       if (this.accountDeletionPage) {
         return;
@@ -1301,8 +1290,10 @@ export class App implements OnDestroy, OnInit {
 
     this.recipeSuggestionsLoading.set(true);
     this.recipeSuggestionsError.set('');
+    const userId = this.currentUser()?.id;
     try {
       const result = await firstValueFrom(this.api.getRecipes());
+      if (this.currentUser()?.id !== userId) return;
       this.recipeSuggestionsError.set(result.warning ?? '');
       const savedById = new Map(this.recipes().map((recipe) => [recipe.id, recipe]));
       this.recipeDishIdeas.set(result.recipes.map((recipe) => this.toDishIdea(recipe)));
@@ -1325,8 +1316,10 @@ export class App implements OnDestroy, OnInit {
 
     this.recipeSuggestionsLoading.set(true);
     this.recipeSuggestionsError.set('');
+    const userId = this.currentUser()?.id;
     try {
       const result = await firstValueFrom(this.api.getRecipeSuggestions());
+      if (this.currentUser()?.id !== userId) return;
       const savedById = new Map(this.recipes().map((recipe) => [recipe.id, recipe]));
       this.recipeDishIdeas.set(
         result.recipes.length ? result.recipes.map((recipe) => this.toDishIdea(recipe)) : [],
@@ -1350,8 +1343,10 @@ export class App implements OnDestroy, OnInit {
 
     this.dishesLoading.set(true);
     this.dishesError.set('');
+    const userId = this.currentUser()?.id;
     try {
       const result = await firstValueFrom(this.api.getDishes());
+      if (this.currentUser()?.id !== userId) return;
       this.syncUserDishes(result.recipes);
     } catch (error) {
       this.dishesError.set(this.errorMessage(error, 'Не удалось загрузить блюда.'));
@@ -1366,8 +1361,10 @@ export class App implements OnDestroy, OnInit {
       this.mealPlan.set([]);
       return;
     }
+    const userId = this.currentUser()?.id;
     try {
       const result = await firstValueFrom(this.api.getMealPlan());
+      if (this.currentUser()?.id !== userId) return;
       this.mealPlan.set(result.entries);
     } catch (error) {
       this.dishesError.set(this.errorMessage(error, 'Не удалось загрузить недельное меню.'));
@@ -1711,7 +1708,13 @@ export class App implements OnDestroy, OnInit {
     }
     const nextIds = Array.from(new Set([...this.clearedNotificationIds(), ...ids]));
     this.clearedNotificationIds.set(nextIds);
-    localStorage.setItem(STORAGE_KEYS.clearedNotifications, JSON.stringify(nextIds));
+    const userId = this.currentUser()?.id;
+    if (userId) {
+      localStorage.setItem(
+        `${STORAGE_KEYS.clearedNotifications}.${userId}`,
+        JSON.stringify(nextIds),
+      );
+    }
     this.notifications.set([]);
     this.unreadNotifications.set(0);
     this.showToast('Уведомления очищены');
@@ -2011,10 +2014,12 @@ export class App implements OnDestroy, OnInit {
   }
 
   private async loadState(): Promise<void> {
+    const userId = this.currentUser()?.id;
     this.loading.set(true);
     this.apiError.set('');
     try {
       const state = await firstValueFrom(this.api.getState());
+      if (this.currentUser()?.id !== userId) return;
       this.fridgeItems.set(state.fridgeItems);
       this.shoppingItems.set(state.shoppingItems);
       this.household.set(state.household);
@@ -2062,7 +2067,9 @@ export class App implements OnDestroy, OnInit {
   }
 
   private async loadNotifications(): Promise<void> {
+    const userId = this.currentUser()?.id;
     const result = await firstValueFrom(this.api.getNotifications());
+    if (this.currentUser()?.id !== userId) return;
     const cleared = new Set(this.clearedNotificationIds());
     const notifications = result.notifications.filter(
       (notification) => !cleared.has(notification.id),
@@ -2082,17 +2089,21 @@ export class App implements OnDestroy, OnInit {
   }
 
   private async loadSupportTickets(): Promise<void> {
+    const userId = this.currentUser()?.id;
     const result = await firstValueFrom(this.api.getSupportTickets());
+    if (this.currentUser()?.id !== userId) return;
     this.supportTickets.set(result.tickets);
   }
 
   private async loadDevData(): Promise<void> {
+    const userId = this.currentUser()?.id;
     const [summary, tickets, feedback, users] = await Promise.all([
       firstValueFrom(this.api.getDevSummary()),
       firstValueFrom(this.api.getDevSupportTickets()),
       firstValueFrom(this.api.getDevFeedback()),
       firstValueFrom(this.api.getDevUsers()),
     ]);
+    if (this.currentUser()?.id !== userId) return;
     this.devSummary.set(summary);
     this.devTickets.set(tickets.tickets);
     this.devFeedback.set(feedback.feedback);
@@ -2121,7 +2132,9 @@ export class App implements OnDestroy, OnInit {
   }
 
   private async loadDevRecipes(): Promise<void> {
+    const userId = this.currentUser()?.id;
     const result = await firstValueFrom(this.api.getDevRecipes());
+    if (this.currentUser()?.id !== userId) return;
     this.devRecipes.set(result.recipes);
   }
 
@@ -2183,6 +2196,7 @@ export class App implements OnDestroy, OnInit {
       }
       if (session.status === 'fulfilled') {
         this.currentUser.set(session.value.user);
+        this.loadAccountPreferences(session.value.user.id);
         if (this.accountDeletionPage) {
           return;
         }
@@ -2220,6 +2234,9 @@ export class App implements OnDestroy, OnInit {
   }
 
   private resetSession(): void {
+    this.stateRevision++;
+    this.recipes.set([]);
+    this.clearedNotificationIds.set([]);
     this.stopRealtimeRefresh();
     this.api.clearSessionToken();
     this.currentUser.set(null);
@@ -2237,6 +2254,20 @@ export class App implements OnDestroy, OnInit {
     this.supportForm.reply = '';
     this.feedbackForm.type = 'idea';
     this.feedbackForm.message = '';
+    this.devUsers.set([]);
+    this.devRecipes.set([]);
+    this.recipeDishIdeas.set([]);
+    this.userDishIdeas.set([]);
+    this.mealPlan.set([]);
+    this.activeDish.set(null);
+    this.activeRecipe.set(null);
+    this.cookingDish.set(null);
+    this.planningDish.set(null);
+    this.fridgeAddOpen.set(false);
+    this.fridgeMenuItem.set(null);
+    this.shoppingMenuItem.set(null);
+    this.toastMessage.set('');
+    this.cancelSwipe();
     this.devSummary.set(null);
     this.devTickets.set([]);
     this.devFeedback.set([]);
@@ -2543,19 +2574,41 @@ export class App implements OnDestroy, OnInit {
     }
 
     try {
-      return JSON.parse(raw) as T;
+      const parsed: unknown = JSON.parse(raw);
+      if (Array.isArray(fallback) && !Array.isArray(parsed)) return fallback;
+      return parsed as T;
     } catch {
       return fallback;
     }
   }
 
+  private loadAccountPreferences(userId: string): void {
+    this.recipes.set(
+      this.load<Recipe[]>(`${STORAGE_KEYS.recipes}.${userId}`, []).filter(
+        (recipe) =>
+          recipe &&
+          typeof recipe.id === 'string' &&
+          typeof recipe.title === 'string' &&
+          !LEGACY_DEMO_RECIPE_TITLES.has(recipe.title),
+      ),
+    );
+    this.clearedNotificationIds.set(
+      this.load<string[]>(`${STORAGE_KEYS.clearedNotifications}.${userId}`, []).filter(
+        (id) => typeof id === 'string',
+      ),
+    );
+  }
+
   private persistRecipes(): void {
-    localStorage.setItem(STORAGE_KEYS.recipes, JSON.stringify(this.recipes()));
+    const userId = this.currentUser()?.id;
+    if (userId)
+      localStorage.setItem(`${STORAGE_KEYS.recipes}.${userId}`, JSON.stringify(this.recipes()));
   }
 
   private showToast(message: string): void {
+    if (this.toastTimer !== null) window.clearTimeout(this.toastTimer);
     this.toastMessage.set(message);
-    window.setTimeout(() => {
+    this.toastTimer = window.setTimeout(() => {
       if (this.toastMessage() === message) {
         this.toastMessage.set('');
       }

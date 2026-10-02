@@ -408,7 +408,7 @@ export class ApiService {
   }
 
   private options(): { headers: HttpHeaders; withCredentials: boolean } {
-    const token = localStorage.getItem(this.tokenKey);
+    const token = Capacitor.isNativePlatform() ? localStorage.getItem(this.tokenKey) : null;
     return {
       headers: token ? new HttpHeaders({ Authorization: `Bearer ${token}` }) : new HttpHeaders(),
       withCredentials: true,

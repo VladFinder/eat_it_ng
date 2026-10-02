@@ -48,7 +48,11 @@ export function cookieValue(request, name) {
     .split(';')
     .map((value) => value.trim())
     .find((value) => value.startsWith(`${name}=`));
-  return part ? decodeURIComponent(part.slice(name.length + 1)) : null;
+  try {
+    return part ? decodeURIComponent(part.slice(name.length + 1)) : null;
+  } catch {
+    return null;
+  }
 }
 
 export function googleAuthorization() {
@@ -86,6 +90,7 @@ export async function exchangeGoogleCode(code, verifier) {
       grant_type: 'authorization_code',
       code_verifier: verifier,
     }),
+    signal: AbortSignal.timeout(10_000),
   });
   const tokens = await response.json();
   if (!response.ok || !tokens.id_token) {
@@ -154,6 +159,7 @@ export async function exchangeAppleCode(code, nonce) {
       redirect_uri: redirectUri,
       grant_type: 'authorization_code',
     }),
+    signal: AbortSignal.timeout(10_000),
   });
   const tokens = await response.json();
   if (!response.ok || !tokens.id_token) {

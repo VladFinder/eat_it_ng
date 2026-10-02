@@ -12,32 +12,38 @@
     "db:seed": "node server/seed.mjs",
     "test:server": "node --test server/app.test.mjs",
     "android:sync": "npm run build -- --configuration production && cap sync android",
-    "android:apk": "npm run android:sync && cd android && gradlew.bat assembleDebug",
-    "android:aab": "npm run android:sync && cd android && gradlew.bat bundleRelease",
+    "android:apk": "npm run android:sync && node server/android-command.mjs assembleDebug",
+    "android:aab": "npm run android:sync && node server/android-command.mjs bundleRelease",
     "watch": "ng build --watch --configuration development",
     "test": "ng test"
   },
   "private": true,
   "packageManager": "npm@10.8.2",
   "overrides": {
-    "effect": "^3.20.0"
+    "effect": "^3.20.0",
+    "@angular/build": {
+      "piscina": "^5.3.2"
+    },
+    "@prisma/config": {
+      "deepmerge-ts": "^8.0.0"
+    }
   },
   "dependencies": {
-    "@angular/cdk": "^21.2.9",
-    "@angular/common": "^21.2.0",
-    "@angular/compiler": "^21.2.0",
-    "@angular/core": "^21.2.0",
-    "@angular/forms": "^21.2.0",
-    "@angular/material": "^21.2.9",
-    "@angular/platform-browser": "^21.2.0",
-    "@angular/router": "^21.2.0",
+    "@angular/cdk": "^21.2.14",
+    "@angular/common": "^21.2.25",
+    "@angular/compiler": "^21.2.25",
+    "@angular/core": "^21.2.25",
+    "@angular/forms": "^21.2.25",
+    "@angular/material": "^21.2.14",
+    "@angular/platform-browser": "^21.2.25",
+    "@angular/router": "^21.2.25",
     "@capacitor/android": "^7.6.0",
     "@capacitor/core": "^7.6.0",
     "@ngrx/effects": "^21.1.0",
     "@ngrx/entity": "^21.1.0",
     "@ngrx/store": "^21.1.0",
     "@ngrx/store-devtools": "^21.1.0",
-    "@prisma/client": "^6.19.0",
+    "@prisma/client": "^6.19.3",
     "jose": "^6.2.3",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0",
@@ -45,14 +51,14 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@angular/build": "^21.2.9",
-    "@angular/cli": "^21.2.9",
-    "@angular/compiler-cli": "^21.2.0",
+    "@angular/build": "^21.2.24",
+    "@angular/cli": "^21.2.24",
+    "@angular/compiler-cli": "^21.2.25",
     "@capacitor/cli": "^7.6.0",
     "jsdom": "^28.0.0",
     "prettier": "^3.8.1",
-    "prisma": "^6.19.0",
+    "prisma": "^6.19.3",
     "typescript": "~5.9.2",
-    "vitest": "^4.0.8"
+    "vitest": "^4.1.11"
   }
 }

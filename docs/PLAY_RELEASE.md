@@ -10,7 +10,18 @@
 - Local Android builds require JDK 21 (or another JDK compatible with Android Gradle Plugin 8.7). A Java 8 JRE is not sufficient.
 - The AAB command fails if release signing is absent or incomplete; it will not create an uploadable-looking unsigned bundle.
 
+## Security configuration for this release
+
+- Deploy the updated API together with the app. Security fixes are in `server/`, not in the Android bundle.
+- Password registration never grants administrator access based on email. For an existing trusted password account, set `ADMIN_USER_IDS` to its database user ID. Do not infer that ID from a newly registered email. Verified Google/Apple accounts can use `ADMIN_EMAILS` (the two existing owner emails are still included).
+- On the first verified OAuth sign-in for an existing password account, the API revokes its old sessions and removes the unverified password. Subsequent sign-in uses that OAuth provider.
+- Set `TRUST_PROXY=true` only with the local nginx configuration that overwrites `X-Real-IP`. This lets authentication rate limits distinguish clients behind the proxy.
+- Push endpoints are restricted to HTTPS browser push providers. Native OAuth return handling and native push delivery still require device validation; a successful web build does not validate them.
+- Recipe preferences and dismissed notifications are stored per account. The old shared recipe cache is no longer loaded because it cannot be attributed safely to one user.
+
 ## One-time signing setup
+
+The npm APK/AAB commands work on Windows, macOS and Linux. On macOS/Linux, run manual Gradle commands as `sh gradlew` from the Android directory (for example, `cd android` then `sh gradlew signingReport`).
 
 1. Generate an upload key and keep a secure backup outside the repository:
 
@@ -54,7 +65,7 @@ PowerShell can copy the value for the first secret with:
 ## Release procedure
 
 1. Increase `versionCode` for every upload and update `versionName` in `android/app/build.gradle`.
-2. Run `npm run build`, `npm run test:server`, and `npm run android:aab`.
+2. Run `npm run build`, `npm test -- --watch=false`, `npm run test:server`, and `npm run android:aab`.
 3. Upload the signed `app-release.aab` to the internal testing track and complete Play's pre-launch report.
 4. Promote the tested artifact to production in a staged rollout.
 
