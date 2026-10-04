@@ -1841,6 +1841,54 @@
           <h2>Что приготовим?</h2>
           <p>Задайте условия, бросьте кубик — и найдите рецепт на сегодня.</p>
         </div>
+        <div class="picker-machine">
+          <div class="dice-stage" [class.rolling]="randomRolling()" [attr.aria-busy]="randomBusy()">
+            <div class="dice-halo" aria-hidden="true"></div>
+            <div class="dice-orbit" aria-hidden="true"></div>
+            <div class="dice-spark spark-one" aria-hidden="true">✦</div>
+            <div class="dice-spark spark-two" aria-hidden="true">✧</div>
+            <div class="dice-spark spark-three" aria-hidden="true">✦</div>
+            <div class="dice-shadow" aria-hidden="true"></div>
+            <div class="dice-launch" aria-hidden="true">
+              <div class="recipe-die">
+                <div class="die-face face-front"><i></i><i></i><i></i><i></i><i></i></div>
+                <div class="die-face face-back"><i></i><i></i></div>
+                <div class="die-face face-right"><i></i><i></i><i></i></div>
+                <div class="die-face face-left"><i></i><i></i><i></i><i></i></div>
+                <div class="die-face face-top"><i></i></div>
+                <div class="die-face face-bottom"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+              </div>
+            </div>
+            <p class="dice-caption" role="status">
+              {{
+                randomBusy()
+                  ? randomRolling()
+                    ? 'Кубик выбирает…'
+                    : 'Проверяем ингредиенты…'
+                  : 'Один бросок — новая идея'
+              }}
+            </p>
+          </div>
+          <button
+            class="primary-action roll-button"
+            type="button"
+            [disabled]="randomBusy() || saving()"
+            (click)="randomizeRecipe()"
+          >
+            <span aria-hidden="true">⚄</span
+            >{{
+              randomBusy() ? 'Подбираем…' : randomRecipe() ? 'Подобрать ещё' : 'Подобрать рецепт'
+            }}
+          </button>
+          @if (randomError()) {
+            <p class="picker-error" role="status">{{ randomError() }}</p>
+          }
+          @if (randomRecipe() && !randomBusy()) {
+            <button class="last-pick-button" type="button" (click)="showRandomResult()">
+              Посмотреть выпавший рецепт
+            </button>
+          }
+        </div>
         <fieldset class="picker-settings panel" [disabled]="randomBusy()">
           <legend class="visually-hidden">Настройки подбора</legend>
           <span class="picker-label">Ингредиенты</span>
@@ -1891,90 +1939,86 @@
             </select>
           </label>
         </fieldset>
-        <div class="dice-stage" [class.rolling]="randomRolling()" [attr.aria-busy]="randomBusy()">
-          <div class="dice-halo" aria-hidden="true"></div>
-          <div class="dice-shadow" aria-hidden="true"></div>
-          <div class="dice-launch" aria-hidden="true">
-            <div class="recipe-die">
-              <div class="die-face face-front"><i></i><i></i><i></i><i></i><i></i></div>
-              <div class="die-face face-back"><i></i><i></i></div>
-              <div class="die-face face-right"><i></i><i></i><i></i></div>
-              <div class="die-face face-left"><i></i><i></i><i></i><i></i></div>
-              <div class="die-face face-top"><i></i></div>
-              <div class="die-face face-bottom"><i></i><i></i><i></i><i></i><i></i><i></i></div>
-            </div>
-          </div>
-          <p class="dice-caption" role="status">
-            {{
-              randomBusy()
-                ? randomRolling()
-                  ? 'Кубик выбирает…'
-                  : 'Проверяем ингредиенты…'
-                : 'Ваш следующий вкусный случай'
-            }}
-          </p>
-        </div>
-        <button
-          class="primary-action roll-button"
-          type="button"
-          [disabled]="randomBusy() || saving()"
-          (click)="randomizeRecipe()"
-        >
-          <span aria-hidden="true">⚄</span
-          >{{ randomBusy() ? 'Подбираем…' : randomRecipe() ? 'Подобрать ещё' : 'Подобрать рецепт' }}
-        </button>
-        @if (randomError()) {
-          <div class="empty-state picker-empty" role="status">
-            <h3>Попробуем другие условия?</h3>
-            <p>{{ randomError() }}</p>
-          </div>
-        }
-        @if (randomRecipe(); as recipe) {
-          <article class="random-result" aria-labelledby="random-recipe-title" role="status">
-            <div class="random-result-image">
-              <img
-                [src]="recipeImage(recipe.title, recipe.image)"
-                (error)="useRecipeImageFallback($event)"
-                alt=""
-              />
-              <span class="random-result-label">Ваш рецепт сегодня</span>
+        @if (randomResultOpen() && randomRecipe(); as recipe) {
+          <dialog
+            #randomResultDialog
+            class="random-result-dialog"
+            aria-labelledby="random-recipe-title"
+            (cancel)="$event.preventDefault(); closeRandomResult()"
+            (close)="randomResultOpen.set(false)"
+            (click)="$event.target === $event.currentTarget && closeRandomResult()"
+          >
+            <article class="random-result">
               <button
-                class="like-button"
+                class="random-result-close"
                 type="button"
-                [attr.aria-label]="recipe.liked ? 'Убрать из избранного' : 'Добавить в избранное'"
-                [attr.aria-pressed]="recipe.liked"
-                (click)="toggleRecipeLike(recipe.id)"
+                aria-label="Закрыть результат"
+                autofocus
+                (click)="closeRandomResult()"
               >
-                {{ recipe.liked ? '♥' : '♡' }}
+                ×
               </button>
-            </div>
-            <div class="random-result-copy">
-              <p class="section-label">
-                {{ recipe.mine ? 'Рецепт вашего дома' : 'Из базы рецептов' }} · {{ recipe.time }}
-              </p>
-              <h2 id="random-recipe-title">{{ recipe.title }}</h2>
-              <span class="recipe-availability" [class.missing]="recipe.missedIngredients?.length"
-                ><span aria-hidden="true">{{ recipe.missedIngredients?.length ? '＋' : '✓' }}</span
-                >{{ recipeAvailability(recipe) }}</span
-              >
-              @if (recipe.missedIngredients?.length) {
-                <p class="random-missing">{{ (recipe.missedIngredients ?? []).join(', ') }}</p>
-              }
-              <button class="primary-action" type="button" (click)="openRecipe(recipe)">
-                Открыть рецепт <span aria-hidden="true">↗</span>
-              </button>
-              @if (recipe.missedIngredients?.length) {
+              <div class="random-result-image">
+                <img
+                  [src]="recipeImage(recipe.title, recipe.image)"
+                  (error)="useRecipeImageFallback($event)"
+                  alt=""
+                />
+                <span class="random-result-label">Ваш рецепт сегодня</span>
                 <button
-                  class="secondary-action"
+                  class="like-button"
                   type="button"
-                  [disabled]="saving()"
-                  (click)="addMissingIngredientsToShopping(recipe.id, recipe.missedIngredients)"
+                  [attr.aria-label]="recipe.liked ? 'Убрать из избранного' : 'Добавить в избранное'"
+                  [attr.aria-pressed]="recipe.liked"
+                  (click)="toggleRecipeLike(recipe.id)"
                 >
-                  Добавить недостающее в покупки
+                  {{ recipe.liked ? '♥' : '♡' }}
                 </button>
-              }
-            </div>
-          </article>
+              </div>
+              <div class="random-result-copy">
+                <p class="section-label">
+                  {{ recipe.mine ? 'Рецепт вашего дома' : 'Из базы рецептов' }} · {{ recipe.time }}
+                </p>
+                <h2 id="random-recipe-title">{{ recipe.title }}</h2>
+                <span class="recipe-availability" [class.missing]="recipe.missedIngredients?.length"
+                  ><span aria-hidden="true">{{
+                    recipe.missedIngredients?.length ? '＋' : '✓'
+                  }}</span
+                  >{{ recipeAvailability(recipe) }}</span
+                >
+                @if (recipe.missedIngredients?.length) {
+                  <p class="random-missing">{{ (recipe.missedIngredients ?? []).join(', ') }}</p>
+                }
+                <button class="primary-action" type="button" (click)="openRandomRecipe()">
+                  Открыть рецепт <span aria-hidden="true">↗</span>
+                </button>
+                @if (recipe.missedIngredients?.length) {
+                  <button
+                    class="secondary-action"
+                    type="button"
+                    [disabled]="saving()"
+                    (click)="addMissingIngredientsToShopping(recipe.id, recipe.missedIngredients)"
+                  >
+                    Добавить недостающее в покупки
+                  </button>
+                }
+                <button
+                  class="secondary-action random-again"
+                  type="button"
+                  [disabled]="saving() || randomBusy()"
+                  (click)="randomizeRecipe()"
+                >
+                  <span aria-hidden="true">⚄</span> Бросить ещё раз
+                </button>
+                @if (toastMessage()) {
+                  <p class="random-result-feedback" role="status">{{ toastMessage() }}</p>
+                }
+                @if (apiError()) {
+                  <p class="form-error" role="alert">{{ apiError() }}</p>
+                }
+              </div>
+            </article>
+          </dialog>
         }
       </section>
     }

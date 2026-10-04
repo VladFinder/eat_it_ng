@@ -457,13 +457,14 @@ describe('App', () => {
         await firstRoll;
         expect(app.randomRecipe()).toBeNull();
         expect(app.randomRolling()).toBe(true);
-        vi.advanceTimersByTime(950);
+        vi.advanceTimersByTime(1350);
         const firstId = app.randomRecipe().id;
+        expect(app.randomResultOpen()).toBe(true);
         apiService.getRecipeMatches.mockReturnValue(
           of({ recipes: [suggestion('a'), suggestion('b')] }),
         );
         await app.randomizeRecipe();
-        vi.advanceTimersByTime(950);
+        vi.advanceTimersByTime(1350);
         expect(app.randomRecipe().id).not.toBe(firstId);
         expect(app.randomBusy()).toBe(false);
       } finally {
@@ -485,7 +486,7 @@ describe('App', () => {
         apiService.getRecipeMatches.mockReturnValue(of({ recipes: [suggestion()] }));
         await app.randomizeRecipe();
         app.setTab('fridge');
-        vi.advanceTimersByTime(950);
+        vi.advanceTimersByTime(1350);
         expect(app.randomRecipe()).toBeNull();
         expect(app.randomBusy()).toBe(false);
         apiService.getRecipeMatches.mockReturnValue(throwError(() => new Error('offline')));
@@ -513,6 +514,61 @@ describe('App', () => {
         window.matchMedia = original;
         fixture.destroy();
         vi.useRealTimers();
+      }
+    });
+
+    it('opens the picked recipe in a modal, closes it and can reopen or navigate to its details', async () => {
+      const { fixture, app } = await readyApp();
+      // JSDOM does not implement the native dialog API. Browser checks cover focus and modality.
+      const prototype = HTMLDialogElement.prototype;
+      const descriptors = ['showModal', 'close'].map((name) =>
+        Object.getOwnPropertyDescriptor(prototype, name),
+      );
+      Object.defineProperties(prototype, {
+        showModal: {
+          configurable: true,
+          value(this: HTMLDialogElement) {
+            this.open = true;
+          },
+        },
+        close: {
+          configurable: true,
+          value(this: HTMLDialogElement) {
+            this.open = false;
+          },
+        },
+      });
+      try {
+        app.activeTab.set('pick');
+        app.onboardingOpen.set(false);
+        app.recipes.set([{ ...suggestion(), mine: true, liked: false, time: '20 мин.', tags: [] }]);
+        app.randomRecipeId.set('ready');
+        app.showRandomResult();
+        fixture.detectChanges();
+        await fixture.whenStable();
+        const dialog = fixture.nativeElement.querySelector(
+          '.random-result-dialog',
+        ) as HTMLDialogElement;
+        expect(dialog.open).toBe(true);
+        expect(fixture.nativeElement.querySelector('.picker-screen > .random-result')).toBeNull();
+        dialog.dispatchEvent(new Event('cancel', { cancelable: true }));
+        fixture.detectChanges();
+        expect(app.randomResultOpen()).toBe(false);
+        expect(app.randomRecipe()?.id).toBe('ready');
+        app.showRandomResult();
+        fixture.detectChanges();
+        await fixture.whenStable();
+        app.openRandomRecipe();
+        fixture.detectChanges();
+        expect(app.randomResultOpen()).toBe(false);
+        expect(app.activeRecipe()?.id).toBe('ready');
+      } finally {
+        fixture.destroy();
+        ['showModal', 'close'].forEach((name, index) => {
+          const descriptor = descriptors[index];
+          if (descriptor) Object.defineProperty(prototype, name, descriptor);
+          else Reflect.deleteProperty(prototype, name);
+        });
       }
     });
 

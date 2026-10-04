@@ -3396,50 +3396,74 @@ body:has(.notification-backdrop, .onboarding-layer) {
   font-size: 14px;
 }
 
+.picker-machine {
+  position: relative;
+  padding: 12px;
+  border: 1px solid #d6e1cc;
+  border-radius: 28px;
+  background: radial-gradient(ellipse at 50% 28%, #faffef 0, #e8efdc 48%, #e0e9d6 100%);
+  box-shadow:
+    inset 0 1px 0 #ffffff,
+    0 14px 32px rgba(42, 73, 39, 0.07);
+}
+
 .dice-stage {
   position: relative;
-  height: 206px;
-  perspective: 650px;
+  height: 220px;
+  perspective: 800px;
   isolation: isolate;
 }
 
 .dice-halo {
   position: absolute;
-  top: 4px;
-  left: 50%;
-  width: 230px;
+  top: 6px;
+  left: calc(50% - 110px);
+  width: 220px;
   height: 180px;
-  transform: translateX(-50%);
   border-radius: 50%;
-  background: radial-gradient(ellipse, rgba(31, 100, 73, 0.14), rgba(31, 100, 73, 0) 70%);
+  background: radial-gradient(ellipse, rgba(255, 255, 240, 0.95), rgba(255, 255, 240, 0) 70%);
+}
+
+.dice-orbit {
+  position: absolute;
+  top: 132px;
+  left: calc(50% - 82px);
+  width: 164px;
+  height: 48px;
+  border: 1px solid rgba(63, 107, 62, 0.2);
+  border-radius: 50%;
+  box-shadow:
+    0 0 0 13px rgba(255, 255, 255, 0.18),
+    inset 0 0 25px rgba(255, 255, 255, 0.5);
 }
 
 .dice-shadow {
   position: absolute;
-  top: 145px;
+  top: 147px;
   left: calc(50% - 40px);
   width: 80px;
-  height: 14px;
+  height: 16px;
   border-radius: 50%;
-  background: rgba(28, 26, 20, 0.12);
-  filter: blur(5px);
+  background: rgba(29, 69, 39, 0.2);
+  filter: blur(6px);
 }
 
 .dice-launch {
   position: absolute;
   top: 60px;
-  left: calc(50% - 36px);
-  width: 72px;
-  height: 72px;
+  left: calc(50% - 40px);
+  width: 80px;
+  height: 80px;
   transform-style: preserve-3d;
+  animation: die-idle 4s ease-in-out infinite;
 }
 
 .recipe-die {
   position: relative;
-  width: 72px;
-  height: 72px;
+  width: 80px;
+  height: 80px;
   transform-style: preserve-3d;
-  transform: rotateX(-22deg) rotateY(-32deg) rotateZ(12deg);
+  transform: rotateX(-24deg) rotateY(-34deg) rotateZ(10deg);
 }
 
 .die-face {
@@ -3447,43 +3471,69 @@ body:has(.notification-backdrop, .onboarding-layer) {
   inset: 0;
   display: grid;
   grid-template: repeat(3, 1fr) / repeat(3, 1fr);
-  gap: 7px;
-  padding: 13px;
-  border: 1px solid #d1ddcc;
-  border-radius: 14px;
-  background: #fffdf8;
+  gap: 6px;
+  padding: 14px;
+  border: 1px solid #cedcc4;
+  border-radius: 16px;
+  background: linear-gradient(145deg, #ffffff, #f1f4e8);
   backface-visibility: hidden;
-  box-shadow: inset 0 -4px 8px rgba(31, 100, 73, 0.08);
+  box-shadow:
+    inset 0 2px 2px #fff,
+    inset 0 -5px 9px rgba(31, 100, 73, 0.1);
 }
 
 .die-face i {
-  width: 10px;
-  height: 10px;
+  width: 11px;
+  height: 11px;
   align-self: center;
   justify-self: center;
   border-radius: 50%;
-  background: var(--primary);
-  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.18);
+  background: #245b40;
+  box-shadow:
+    inset 0 2px 3px rgba(0, 0, 0, 0.26),
+    0 1px 0 #fff;
 }
 
 .face-front {
-  transform: translateZ(36px);
+  transform: translateZ(40px);
 }
 .face-back {
-  transform: rotateY(180deg) translateZ(36px);
+  transform: rotateY(180deg) translateZ(40px);
 }
 .face-right {
-  transform: rotateY(90deg) translateZ(36px);
-  background: #e5efdf;
+  transform: rotateY(90deg) translateZ(40px);
+  background: linear-gradient(145deg, #e4eedb, #cbdcc0);
 }
 .face-left {
-  transform: rotateY(-90deg) translateZ(36px);
+  transform: rotateY(-90deg) translateZ(40px);
 }
 .face-top {
-  transform: rotateX(90deg) translateZ(36px);
+  transform: rotateX(90deg) translateZ(40px);
 }
 .face-bottom {
-  transform: rotateX(-90deg) translateZ(36px);
+  transform: rotateX(-90deg) translateZ(40px);
+}
+
+.dice-spark {
+  position: absolute;
+  color: #62835b;
+  pointer-events: none;
+}
+.spark-one {
+  top: 45px;
+  left: 19%;
+  font-size: 20px;
+}
+.spark-two {
+  top: 79px;
+  right: 14%;
+  font-size: 28px;
+  color: #9aab70;
+}
+.spark-three {
+  top: 140px;
+  left: 13%;
+  font-size: 12px;
 }
 
 .face-front i:nth-child(1),
@@ -3528,43 +3578,71 @@ body:has(.notification-backdrop, .onboarding-layer) {
 }
 
 .rolling .recipe-die {
-  animation: die-tumble 950ms var(--motion-ease) both;
+  animation: die-tumble 1350ms linear both;
 }
 .rolling .dice-launch {
-  animation: die-bounce 950ms ease-out both;
+  animation: die-bounce 1350ms cubic-bezier(0.33, 0, 0.25, 1) both;
 }
 .rolling .dice-shadow {
-  animation: die-shadow 950ms ease-out both;
+  animation: die-shadow 1350ms ease-in-out both;
+}
+.rolling .dice-orbit {
+  animation: die-impact 1350ms ease-out both;
+}
+.rolling .dice-spark {
+  animation: die-sparks 1350ms ease-out both;
+}
+
+@keyframes die-idle {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-7px);
+  }
 }
 
 @keyframes die-tumble {
   0% {
-    transform: rotateX(-22deg) rotateY(-32deg) rotateZ(12deg);
+    transform: rotateX(-24deg) rotateY(-34deg) rotateZ(10deg);
   }
-  60% {
-    transform: rotateX(570deg) rotateY(520deg) rotateZ(310deg);
+  12% {
+    transform: rotateX(-38deg) rotateY(-48deg) rotateZ(-6deg);
   }
-  85% {
-    transform: rotateX(706deg) rotateY(695deg) rotateZ(376deg);
+  48% {
+    transform: rotateX(310deg) rotateY(350deg) rotateZ(168deg);
+  }
+  74% {
+    transform: rotateX(680deg) rotateY(680deg) rotateZ(354deg);
+  }
+  87% {
+    transform: rotateX(711deg) rotateY(698deg) rotateZ(380deg);
   }
   100% {
-    transform: rotateX(698deg) rotateY(688deg) rotateZ(372deg);
+    transform: rotateX(696deg) rotateY(686deg) rotateZ(370deg);
   }
 }
 
 @keyframes die-bounce {
   0%,
   100% {
-    transform: translateY(0);
+    transform: translate3d(0, 0, 0);
   }
-  30% {
-    transform: translateY(-48px);
+  12% {
+    transform: translate3d(-4px, 8px, 0) scale(1.04, 0.95);
   }
-  70% {
-    transform: translateY(4px);
+  42% {
+    transform: translate3d(15px, -56px, 24px) scale(1.08);
   }
-  85% {
-    transform: translateY(-10px);
+  74% {
+    transform: translate3d(-3px, 9px, 0) scale(1.08, 0.92);
+  }
+  87% {
+    transform: translate3d(2px, -13px, 0);
+  }
+  96% {
+    transform: translate3d(0, 2px, 0);
   }
 }
 
@@ -3572,20 +3650,84 @@ body:has(.notification-backdrop, .onboarding-layer) {
   0%,
   100% {
     transform: scale(1);
+    opacity: 0.75;
+  }
+  42% {
+    transform: translateX(12px) scale(0.65);
+    opacity: 0.25;
+  }
+  74% {
+    transform: scale(1.25);
     opacity: 1;
   }
-  30% {
-    transform: scale(0.65);
-    opacity: 0.35;
+  87% {
+    transform: scale(0.9);
+    opacity: 0.5;
   }
-  70% {
-    transform: scale(1.15);
-    opacity: 0.9;
+}
+
+@keyframes die-impact {
+  0%,
+  60%,
+  100% {
+    transform: scale(1);
+    opacity: 1;
   }
+  74% {
+    transform: scale(0.9);
+    opacity: 1;
+  }
+  91% {
+    transform: scale(1.35);
+    opacity: 0;
+  }
+}
+
+@keyframes die-sparks {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.65;
+  }
+  35% {
+    transform: translateY(-12px) rotate(35deg) scale(0.65);
+    opacity: 0.2;
+  }
+  76% {
+    transform: translateY(-22px) rotate(-20deg) scale(1.3);
+    opacity: 1;
+  }
+}
+
+.last-pick-button {
+  display: block;
+  width: 100%;
+  min-height: 40px;
+  margin-top: 6px;
+  border: 0;
+  background: transparent;
+  color: var(--primary);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.picker-error {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 14px;
+  background: var(--surface);
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+.picker-screen:has(.random-result-dialog[open]) .dice-launch {
+  animation-play-state: paused;
 }
 
 .roll-button {
   display: flex;
+  width: 100%;
   align-items: center;
   justify-content: center;
   gap: 10px;
@@ -3595,19 +3737,68 @@ body:has(.notification-backdrop, .onboarding-layer) {
   font-size: 24px;
 }
 
-.random-result {
-  overflow: hidden;
-  scroll-margin-bottom: calc(140px + env(safe-area-inset-bottom, 0px));
-  border: 1px solid var(--border);
-  border-radius: 24px;
+.random-result-dialog {
+  position: fixed;
+  inset: 0;
+  width: min(390px, calc(100% - 32px));
+  max-width: none;
+  max-height: calc(
+    100dvh - 48px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px)
+  );
+  margin: auto;
+  padding: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid rgba(255, 255, 255, 0.75);
+  border-radius: 28px;
   background: var(--surface);
-  box-shadow: var(--shadow);
-  animation: recipe-reveal 580ms var(--motion-ease) backwards;
+  color: var(--text);
+  box-shadow: 0 32px 100px rgba(17, 37, 25, 0.32);
+}
+
+.random-result-dialog[open] {
+  animation: recipe-reveal 680ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.random-result-dialog::backdrop {
+  background: rgba(20, 38, 28, 0.48);
+  backdrop-filter: blur(7px);
+  animation: fade-in 260ms ease-out both;
+}
+
+body:has(.random-result-dialog[open]) {
+  overflow: hidden;
+}
+
+.random-result {
+  position: relative;
+  overflow: hidden;
+  border-radius: 27px;
+  background: var(--surface);
+}
+
+.random-result-close {
+  position: absolute;
+  z-index: 2;
+  top: 12px;
+  left: 12px;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  min-height: 40px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 26px;
+  line-height: 1;
 }
 
 .random-result-image {
   position: relative;
-  height: 180px;
+  height: clamp(130px, 24dvh, 190px);
 }
 
 .random-result-image img {
@@ -3660,14 +3851,50 @@ body:has(.notification-backdrop, .onboarding-layer) {
 @keyframes recipe-reveal {
   from {
     opacity: 0;
-    transform: translateY(-24px) rotate(-4deg) scale(0.94);
+    transform: perspective(900px) translateY(100px) rotateX(16deg) rotate(-7deg) scale(0.62);
   }
-  70% {
+  65% {
     opacity: 1;
-    transform: translateY(3px) rotate(0.6deg) scale(1.01);
+    transform: perspective(900px) translateY(-8px) rotateX(0) rotate(1deg) scale(1.015);
   }
   to {
     opacity: 1;
     transform: none;
+  }
+}
+
+.random-again {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
+.random-again > span {
+  font-size: 20px;
+  line-height: 1;
+}
+.random-result-feedback {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--primary-soft);
+  color: var(--primary);
+  font-size: 13px;
+}
+.random-result-copy > .primary-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+@media (max-height: 650px) {
+  .random-result-image {
+    height: 125px;
+  }
+  .random-result-copy {
+    gap: 10px;
+    padding: 16px;
+  }
+  .random-result-copy h2 {
+    font-size: 22px;
   }
 }

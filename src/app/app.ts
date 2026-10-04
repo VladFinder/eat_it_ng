@@ -4,11 +4,13 @@ import {
   afterNextRender,
   Component,
   computed,
+  ElementRef,
   inject,
   Injector,
   OnDestroy,
   OnInit,
   signal,
+  viewChild,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
@@ -231,6 +233,9 @@ export class App implements OnDestroy, OnInit {
   protected readonly maximumMissing = signal(2);
   protected readonly randomBusy = signal(false);
   protected readonly randomRolling = signal(false);
+  protected readonly randomResultOpen = signal(false);
+  private readonly randomResultDialog =
+    viewChild<ElementRef<HTMLDialogElement>>('randomResultDialog');
   protected readonly randomError = signal('');
   protected readonly randomRecipeId = signal<string | null>(null);
   protected readonly randomRecipe = computed(
@@ -1161,6 +1166,9 @@ export class App implements OnDestroy, OnInit {
 
   protected async randomizeRecipe(): Promise<void> {
     if (this.randomBusy()) return;
+    this.closeRandomResult();
+    this.toastMessage.set('');
+    this.apiError.set('');
     this.randomBusy.set(true);
     this.randomError.set('');
     this.randomRecipeId.set(null);
@@ -1192,27 +1200,41 @@ export class App implements OnDestroy, OnInit {
         } else {
           this.randomRecipeId.set(recipe.id);
           this.previousRandomRecipeId = recipe.id;
-          afterNextRender(
-            () => {
-              if (this.activeTab() === 'pick' && this.randomRecipeId() === recipe.id) {
-                document.querySelector('.random-result')?.scrollIntoView?.({
-                  behavior: reducedMotion ? 'instant' : 'smooth',
-                  block: 'nearest',
-                });
-              }
-            },
-            { injector: this.injector },
-          );
+          this.showRandomResult();
         }
         this.randomRolling.set(false);
         this.randomBusy.set(false);
         this.randomTimer = null;
       },
-      reducedMotion ? 0 : 950,
+      reducedMotion ? 0 : 1350,
     );
   }
 
+  protected showRandomResult(): void {
+    if (!this.randomRecipe()) return;
+    this.randomResultOpen.set(true);
+    afterNextRender(
+      () => {
+        const dialog = this.randomResultDialog()?.nativeElement;
+        if (this.randomResultOpen() && dialog && !dialog.open) dialog.showModal();
+      },
+      { injector: this.injector },
+    );
+  }
+
+  protected closeRandomResult(): void {
+    this.randomResultDialog()?.nativeElement.close();
+    this.randomResultOpen.set(false);
+  }
+
+  protected openRandomRecipe(): void {
+    const recipe = this.randomRecipe();
+    this.closeRandomResult();
+    if (recipe) void this.openRecipe(recipe);
+  }
+
   private cancelRecipeRoll(): void {
+    this.closeRandomResult();
     this.randomRequestId++;
     if (this.randomTimer !== null) window.clearTimeout(this.randomTimer);
     this.randomTimer = null;
