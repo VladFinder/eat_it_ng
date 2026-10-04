@@ -1103,6 +1103,7 @@ test('recipe catalog loads Spoonacular recipes with images', async () => {
 test('recipe translations are localized once and then loaded from SQLite cache', async () => {
   const previousSpoonacularKey = process.env.SPOONACULAR_API_KEY;
   const previousYandexKey = process.env.YANDEX_TRANSLATE_API_KEY;
+  const previousFolderId = process.env.YANDEX_TRANSLATE_FOLDER_ID;
   const previousFetch = globalThis.fetch;
   await prisma.translationCache.deleteMany();
   await prisma.dishIngredient.deleteMany();
@@ -1111,6 +1112,7 @@ test('recipe translations are localized once and then loaded from SQLite cache',
   await prisma.fridgeItem.deleteMany();
   process.env.SPOONACULAR_API_KEY = 'test-spoonacular-key';
   process.env.YANDEX_TRANSLATE_API_KEY = 'test-yandex-key';
+  process.env.YANDEX_TRANSLATE_FOLDER_ID = 'wrong-legacy-folder';
   let translationCalls = 0;
 
   const translations = new Map([
@@ -1128,6 +1130,7 @@ test('recipe translations are localized once and then loaded from SQLite cache',
       assert.equal(options.headers.Authorization, 'Api-Key test-yandex-key');
       const body = JSON.parse(options.body);
       assert.equal(body.targetLanguageCode, 'ru');
+      assert.equal(Object.hasOwn(body, 'folderId'), false);
       return Response.json({
         translations: body.texts.map((text) => ({ text: translations.get(text) ?? text })),
       });
@@ -1173,6 +1176,110 @@ test('recipe translations are localized once and then loaded from SQLite cache',
     globalThis.fetch = previousFetch;
     restoreEnv('SPOONACULAR_API_KEY', previousSpoonacularKey);
     restoreEnv('YANDEX_TRANSLATE_API_KEY', previousYandexKey);
+    restoreEnv('YANDEX_TRANSLATE_FOLDER_ID', previousFolderId);
+  }
+});
+
+test('saved recipes retry translation, reuse the cache and preserve household text', async () => {
+  const previousYandexKey = process.env.YANDEX_TRANSLATE_API_KEY;
+  const previousSpoonacularKey = process.env.SPOONACULAR_API_KEY;
+  const previousFetch = globalThis.fetch;
+  await prisma.translationCache.deleteMany();
+  await prisma.dishIngredient.deleteMany();
+  await prisma.dish.deleteMany();
+  await prisma.product.deleteMany();
+  const { headers } = await recipeAccount('saved-translations@example.com');
+  const product = await prisma.product.create({
+    data: { name: 'milk', normalizedName: 'milk', aliases: '[]' },
+  });
+  const dish = await prisma.dish.create({
+    data: {
+      title: 'Warm milk',
+      description: 'A simple drink.',
+      instructions: JSON.stringify(['Heat the milk.']),
+      source: 'spoonacular',
+      externalId: 'saved-translation',
+      ingredients: { create: { productId: product.id } },
+    },
+  });
+  const ownResponse = await request('/api/dishes', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      title: 'My family recipe',
+      ingredients: ['Сыр'],
+      instructions: ['Serve cold.'],
+    }),
+  });
+  assert.equal(ownResponse.status, 201);
+  delete process.env.SPOONACULAR_API_KEY;
+  delete process.env.YANDEX_TRANSLATE_API_KEY;
+  let translationCalls = 0;
+  let providerState = 'unavailable';
+  const translations = new Map([
+    ['Warm milk', 'Тёплое молоко'],
+    ['A simple drink.', 'Простой напиток.'],
+    ['Heat the milk.', 'Подогрейте молоко.'],
+    ['milk', 'молоко'],
+  ]);
+  globalThis.fetch = (url, options) => {
+    const parsed = new URL(url);
+    if (parsed.origin === baseUrl) return previousFetch(url, options);
+    assert.equal(parsed.hostname, 'translate.api.cloud.yandex.net');
+    translationCalls += 1;
+    if (providerState === 'unavailable') return Promise.resolve(new Response('', { status: 503 }));
+    const body = JSON.parse(options.body);
+    assert.equal(body.texts.includes('My family recipe'), false);
+    assert.equal(body.texts.includes('Serve cold.'), false);
+    return Promise.resolve(
+      Response.json({
+        translations: body.texts.map((text) => ({
+          text: providerState === 'empty' ? '' : (translations.get(text) ?? text),
+        })),
+      }),
+    );
+  };
+  try {
+    const original = await request('/api/recipes', { headers });
+    assert.equal((await original.json()).recipes[0].title, dish.title);
+    assert.equal(translationCalls, 0);
+    process.env.YANDEX_TRANSLATE_API_KEY = 'test-yandex-key';
+    for (const state of ['unavailable', 'empty']) {
+      providerState = state;
+      const response = await request('/api/recipes', { headers });
+      assert.equal(response.status, 200);
+      assert.equal((await response.json()).recipes[0].title, dish.title);
+      assert.equal(await prisma.translationCache.count(), 0);
+    }
+    providerState = 'ready';
+    const recovered = await request(`/api/recipes/${dish.id}`, { headers });
+    assert.equal(recovered.status, 200);
+    const { recipe } = await recovered.json();
+    assert.equal(recipe.title, 'Тёплое молоко');
+    assert.equal(recipe.description, 'Простой напиток.');
+    assert.deepEqual(recipe.instructions, ['Подогрейте молоко.']);
+    assert.deepEqual(recipe.ingredients, ['молоко']);
+    assert.deepEqual(recipe.missedIngredients, ['молоко']);
+    assert.equal(translationCalls, 3);
+    assert.equal(await prisma.translationCache.count(), 4);
+    // Cached translations remain usable even if provider credentials are removed.
+    delete process.env.YANDEX_TRANSLATE_API_KEY;
+    for (const endpoint of ['/api/recipes', '/api/recipes/suggestions', '/api/recipes/matches']) {
+      const response = await request(endpoint, { headers });
+      assert.equal(response.status, 200);
+      const { recipes } = await response.json();
+      assert.equal(recipes.find((item) => item.id === dish.id).title, 'Тёплое молоко');
+      const own = recipes.find((item) => item.source === 'user');
+      if (endpoint.endsWith('/matches')) {
+        assert.equal(own.title, 'My family recipe');
+        assert.deepEqual(own.instructions, ['Serve cold.']);
+      }
+    }
+    assert.equal(translationCalls, 3);
+  } finally {
+    globalThis.fetch = previousFetch;
+    restoreEnv('YANDEX_TRANSLATE_API_KEY', previousYandexKey);
+    restoreEnv('SPOONACULAR_API_KEY', previousSpoonacularKey);
   }
 });
 

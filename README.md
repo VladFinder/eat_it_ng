@@ -51,11 +51,19 @@ configure Yandex Translate. Translations are cached in SQLite and reused:
 
 ```dotenv
 YANDEX_TRANSLATE_API_KEY="..."
-YANDEX_TRANSLATE_FOLDER_ID="..." # optional for service-account API keys
 ```
 
+Use a service-account API key with the `yc.ai.translate.execute` scope and the
+`ai.translate.user` role on its folder. Do not send `folderId` with this authentication
+method: Yandex selects the service account's folder automatically
+([authentication documentation](https://aistudio.yandex.ru/en/docs/translate/api-ref/authentication)).
+The legacy `YANDEX_TRANSLATE_FOLDER_ID` setting is ignored.
+
 If Yandex Translate is not configured or temporarily fails, recipes remain
-available in their original language.
+available in their original language. Saved catalog recipes are translated when
+read, including recipe details and random picks; household recipes are left as entered.
+Cached translations remain available without a configured key. Failed translations
+are retried on the next request, so reimporting the catalog is unnecessary.
 
 The **Рецепты** tab combines the saved catalog, favorites, and household recipes.
 Household recipes support ingredients, preparation steps, optional time, description,

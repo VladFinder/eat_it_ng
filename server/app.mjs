@@ -444,7 +444,7 @@ async function fetchRecipeInformationBulk(apiKey, recipes) {
   });
 }
 
-async function refreshDishDetails(prisma, dish) {
+async function refreshDishDetails(prisma, dish, logger = console) {
   if (!dish.externalId || !['spoonacular', 'spoonacular-catalog'].includes(dish.source)) {
     return false;
   }
@@ -457,8 +457,9 @@ async function refreshDishDetails(prisma, dish) {
   let translations = new Map();
   try {
     translations = await translateTextsToRussian(prisma, sourceTexts);
-  } catch {
+  } catch (error) {
     // Keep the recipe usable in English if translation is temporarily unavailable.
+    logger.error('Recipe details translation failed', error);
   }
   const translate = (value) => translations.get(plainText(value)) ?? value;
   const title = translate(updated.title) || dish.title;
@@ -504,8 +505,7 @@ function serializePopularRecipe(recipe) {
 
 function yandexTranslateConfiguration() {
   return {
-    apiKey: process.env.YANDEX_TRANSLATE_API_KEY ?? '',
-    folderId: process.env.YANDEX_TRANSLATE_FOLDER_ID ?? '',
+    apiKey: (process.env.YANDEX_TRANSLATE_API_KEY ?? '').trim(),
   };
 }
 
@@ -532,7 +532,7 @@ async function translateTextsToRussian(prisma, texts) {
     new Set(texts.map((text) => plainText(text)).filter((text) => text && !/[а-яё]/i.test(text))),
   );
   const translations = new Map();
-  if (!configuration.apiKey || uniqueTexts.length === 0) return translations;
+  if (uniqueTexts.length === 0) return translations;
 
   const cached = await prisma.translationCache.findMany({
     where: {
@@ -542,6 +542,7 @@ async function translateTextsToRussian(prisma, texts) {
     },
   });
   for (const item of cached) translations.set(item.sourceText, item.translatedText);
+  if (!configuration.apiKey) return translations;
 
   const missing = uniqueTexts.filter((text) => !translations.has(text));
   for (const batch of translationBatches(missing)) {
@@ -551,7 +552,7 @@ async function translateTextsToRussian(prisma, texts) {
       format: 'PLAIN_TEXT',
       texts: batch,
       speller: true,
-      ...(configuration.folderId ? { folderId: configuration.folderId } : {}),
+      // API keys belong to service accounts: Yandex selects their folder automatically.
     };
     const response = await fetch('https://translate.api.cloud.yandex.net/translate/v2/translate', {
       method: 'POST',
@@ -561,6 +562,7 @@ async function translateTextsToRussian(prisma, texts) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(10_000),
     });
     if (!response.ok) {
       const error = new Error('Yandex Translate request failed');
@@ -573,7 +575,10 @@ async function translateTextsToRussian(prisma, texts) {
     }
     for (let index = 0; index < batch.length; index++) {
       const sourceText = batch[index];
-      const translatedText = plainText(result.translations[index]?.text) || sourceText;
+      const translatedText = plainText(result.translations[index]?.text);
+      if (!translatedText) {
+        throw new Error('Yandex Translate returned an empty translation');
+      }
       translations.set(sourceText, translatedText);
       await prisma.translationCache.upsert({
         where: {
@@ -597,25 +602,32 @@ async function translateTextsToRussian(prisma, texts) {
 }
 
 async function localizeRecipeSuggestions(prisma, recipes, logger = console) {
-  if (!yandexTranslateConfiguration().apiKey || recipes.length === 0) return recipes;
-  const texts = recipes.flatMap((recipe) => [
+  const catalogRecipes = recipes.filter((recipe) => recipe.source !== 'user');
+  if (catalogRecipes.length === 0) return recipes;
+  const texts = catalogRecipes.flatMap((recipe) => [
     recipe.title,
     recipe.description,
     ...(recipe.usedIngredients ?? []),
     ...(recipe.missedIngredients ?? []),
+    ...(recipe.ingredients ?? []),
     ...(recipe.instructions ?? []),
   ]);
   try {
     const translations = await translateTextsToRussian(prisma, texts);
     const translate = (text) => translations.get(plainText(text)) ?? text;
-    return recipes.map((recipe) => ({
-      ...recipe,
-      title: translate(recipe.title),
-      description: recipe.description ? translate(recipe.description) : recipe.description,
-      usedIngredients: recipe.usedIngredients.map(translate),
-      missedIngredients: recipe.missedIngredients.map(translate),
-      instructions: (recipe.instructions ?? []).map(translate),
-    }));
+    return recipes.map((recipe) =>
+      recipe.source === 'user'
+        ? recipe
+        : {
+            ...recipe,
+            title: translate(recipe.title),
+            description: recipe.description ? translate(recipe.description) : recipe.description,
+            usedIngredients: recipe.usedIngredients.map(translate),
+            missedIngredients: recipe.missedIngredients.map(translate),
+            ...(recipe.ingredients ? { ingredients: recipe.ingredients.map(translate) } : {}),
+            instructions: (recipe.instructions ?? []).map(translate),
+          },
+    );
   } catch (error) {
     logger.error('Recipe translation failed', error);
     return recipes;
@@ -871,7 +883,7 @@ async function saveSpoonacularSuggestions(prisma, recipes) {
   }
 }
 
-async function matchedDishSuggestions(prisma, householdId, scope = 'catalog') {
+async function matchedDishSuggestions(prisma, householdId, scope = 'catalog', logger = console) {
   const whereClause =
     scope === 'user'
       ? `WHERE d.source = 'user' AND d."householdId" = ?`
@@ -963,7 +975,8 @@ async function matchedDishSuggestions(prisma, householdId, scope = 'catalog') {
         left.title.localeCompare(right.title),
     );
   return {
-    recipes,
+    // Saved recipes must also be localized after enabling Translate or recovering from an outage.
+    recipes: await localizeRecipeSuggestions(prisma, recipes, logger),
     ingredients: fridgeIngredients,
     hasLocalCatalog: dishCount > 0,
   };
@@ -1767,7 +1780,7 @@ export function createApiServer(prisma, logger = console) {
           new Set(fridgeItems.map((item) => item.name.trim()).filter(Boolean)),
         ).slice(0, 10);
         if (!ingredients.length) {
-          const local = await matchedDishSuggestions(prisma, user.householdId, 'catalog');
+          const local = await matchedDishSuggestions(prisma, user.householdId, 'catalog', logger);
           delete local.hasLocalCatalog;
           json(response, 200, local);
           return;
@@ -1783,7 +1796,7 @@ export function createApiServer(prisma, logger = console) {
           }
         }
 
-        const local = await matchedDishSuggestions(prisma, user.householdId, 'catalog');
+        const local = await matchedDishSuggestions(prisma, user.householdId, 'catalog', logger);
         delete local.hasLocalCatalog;
         json(response, 200, local);
         return;
@@ -1811,7 +1824,7 @@ export function createApiServer(prisma, logger = console) {
 
       if (method === 'GET' && url.pathname === '/api/recipes/matches') {
         const [catalog, own] = await Promise.all([
-          matchedDishSuggestions(prisma, user.householdId, 'catalog'),
+          matchedDishSuggestions(prisma, user.householdId, 'catalog', logger),
           matchedDishSuggestions(prisma, user.householdId, 'user'),
         ]);
         json(response, 200, { recipes: [...catalog.recipes, ...own.recipes] });
@@ -1833,7 +1846,7 @@ export function createApiServer(prisma, logger = console) {
         }
         if (!dish.instructions && dish.source !== 'user') {
           try {
-            await refreshDishDetails(prisma, dish);
+            await refreshDishDetails(prisma, dish, logger);
           } catch (error) {
             logger.error(`${method} ${url.pathname}`, error);
           }
@@ -1842,6 +1855,7 @@ export function createApiServer(prisma, logger = console) {
           prisma,
           user.householdId,
           dish.source === 'user' ? 'user' : 'catalog',
+          logger,
         );
         const recipe = local.recipes.find((item) => item.id === dish.id);
         json(response, 200, { recipe: recipe ?? null });
@@ -1877,7 +1891,7 @@ export function createApiServer(prisma, logger = console) {
           }
         }
 
-        const local = await matchedDishSuggestions(prisma, user.householdId, 'catalog');
+        const local = await matchedDishSuggestions(prisma, user.householdId, 'catalog', logger);
         delete local.hasLocalCatalog;
         json(response, 200, { ...local, ...(warning ? { warning } : {}) });
         return;
