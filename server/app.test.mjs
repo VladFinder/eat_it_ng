@@ -1073,6 +1073,8 @@ test('recipe catalog loads Spoonacular recipes with images', async () => {
       subtitle: '35 мин.',
       description: 'A complete potato and tomato bake.',
       instructions: ['Bake until golden.'],
+      ingredients: ['cheese', 'potato', 'tomato'],
+      preparationMinutes: 35,
       usedIngredientCount: 2,
       missedIngredientCount: 1,
       expiringIngredientCount: 1,
@@ -1786,4 +1788,235 @@ test('verified OAuth sign-in revokes the unverified password and old sessions', 
     ).id,
     owner.id,
   );
+});
+
+async function recipeAccount(email) {
+  const user = await prisma.user.create({
+    data: { email, displayName: 'Recipe tester', household: { create: { name: 'Recipe home' } } },
+  });
+  const session = await createSession(prisma, user.id);
+  return { user, headers: { Authorization: `Bearer ${session.token}` } };
+}
+
+test('own recipes save real steps and editing preserves identifiers, quantities and meal plans', async () => {
+  const { user, headers } = await recipeAccount('recipe-editor@example.com');
+  const input = {
+    title: 'Домашняя запеканка',
+    description: 'Наш рецепт',
+    ingredients: ['Картофель', 'картофель', 'Молоко'],
+    instructions: ['Очистите картофель.', 'Запеките до готовности.'],
+    preparationMinutes: 45,
+    imageUrl: 'https://example.com/casserole.jpg',
+  };
+  const created = await request('/api/dishes', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(input),
+  });
+  assert.equal(created.status, 201);
+  const recipe = (await created.json()).recipes[0];
+  assert.deepEqual(recipe.instructions, input.instructions);
+  assert.equal(recipe.ingredients.length, 2);
+  assert.equal(recipe.preparationMinutes, 45);
+  const detail = await request(`/api/recipes/${recipe.id}`, { headers });
+  assert.equal((await detail.json()).recipe.id, recipe.id);
+  const ingredient = await prisma.dishIngredient.findFirst({ where: { dishId: recipe.id } });
+  await prisma.dishIngredient.update({
+    where: { id: ingredient.id },
+    data: { quantity: 3, unit: 'шт.' },
+  });
+  const plan = await prisma.mealPlanEntry.create({
+    data: {
+      householdId: user.householdId,
+      dishId: recipe.id,
+      date: new Date('2026-10-05T00:00:00.000Z'),
+      mealType: 'dinner',
+    },
+  });
+  const updatedInput = {
+    ...input,
+    title: 'Новая запеканка',
+    ingredients: recipe.ingredients,
+    instructions: ['Теперь другой способ.'],
+    preparationMinutes: 30,
+    imageUrl: null,
+  };
+  const updated = await request(`/api/dishes/${recipe.id}`, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify(updatedInput),
+  });
+  assert.equal(updated.status, 200);
+  const edited = (await updated.json()).recipes[0];
+  assert.equal(edited.id, recipe.id);
+  assert.equal(edited.title, updatedInput.title);
+  assert.equal(edited.image, null);
+  assert.equal(edited.preparationMinutes, 30);
+  assert.deepEqual(edited.instructions, updatedInput.instructions);
+  assert.equal(
+    (await prisma.mealPlanEntry.findUnique({ where: { id: plan.id } })).dishId,
+    recipe.id,
+  );
+  const retained = await prisma.dishIngredient.findFirst({
+    where: { dishId: recipe.id, productId: ingredient.productId },
+  });
+  assert.equal(retained.quantity, 3);
+  assert.equal(retained.unit, 'шт.');
+  const invalid = await request(`/api/dishes/${recipe.id}`, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify({ ...updatedInput, instructions: [] }),
+  });
+  assert.equal(invalid.status, 400);
+  assert.equal(
+    (await prisma.dish.findUnique({ where: { id: recipe.id } })).instructions,
+    JSON.stringify(updatedInput.instructions),
+  );
+  for (const patch of [
+    { ingredients: ['!!!'] },
+    { ingredients: Array.from({ length: 21 }, (_, index) => `Ingredient ${index}`) },
+    { instructions: ['a'.repeat(1001)] },
+    { preparationMinutes: -1 },
+    { preparationMinutes: 1.5 },
+    { imageUrl: 'javascript:alert(1)' },
+  ]) {
+    const invalidResponse = await request(`/api/dishes/${recipe.id}`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({ ...updatedInput, ...patch }),
+    });
+    assert.equal(invalidResponse.status, 400);
+  }
+});
+
+test('recipe editing, details and match lists are scoped to the household and protect the catalog', async () => {
+  const owner = await recipeAccount('recipe-owner@example.com');
+  const stranger = await recipeAccount('recipe-stranger@example.com');
+  const input = { title: 'Секретный рецепт', ingredients: ['Рис'], instructions: ['Сварите рис.'] };
+  const created = await request('/api/dishes', {
+    method: 'POST',
+    headers: owner.headers,
+    body: JSON.stringify(input),
+  });
+  const recipe = (await created.json()).recipes[0];
+  const catalog = await prisma.dish.create({
+    data: { title: 'Защищённый каталог', source: 'catalog' },
+  });
+  for (const id of [recipe.id, catalog.id]) {
+    const response = await request(`/api/dishes/${id}`, {
+      method: 'PATCH',
+      headers: stranger.headers,
+      body: JSON.stringify(input),
+    });
+    assert.equal(response.status, 404);
+  }
+  assert.equal(
+    (await request(`/api/recipes/${recipe.id}`, { headers: stranger.headers })).status,
+    404,
+  );
+  const matches = await request('/api/recipes/matches', { headers: stranger.headers });
+  assert.equal(matches.status, 200);
+  assert.equal(
+    (await matches.json()).recipes.some((item) => item.id === recipe.id),
+    false,
+  );
+  assert.equal((await prisma.dish.findUnique({ where: { id: catalog.id } })).title, catalog.title);
+});
+
+test('local matches include the whole catalog, own recipes and all stock without external requests', async () => {
+  const { user, headers } = await recipeAccount('recipe-matches@example.com');
+  const product = await prisma.product.upsert({
+    where: { normalizedName: 'pickeringredient' },
+    update: {},
+    create: { name: 'PickerIngredient', normalizedName: 'pickeringredient', aliases: '[]' },
+  });
+  const dishes = [];
+  for (let index = 0; index < 10; index++) {
+    dishes.push(
+      await prisma.dish.create({
+        data: {
+          title: `Picker catalog ${index}`,
+          source: 'catalog',
+          ingredients: { create: { productId: product.id } },
+        },
+      }),
+    );
+  }
+  await prisma.fridgeItem.create({
+    data: {
+      householdId: user.householdId,
+      name: product.name,
+      quantity: 1,
+      unit: 'шт.',
+      createdAt: new Date('2020-01-01'),
+    },
+  });
+  for (let index = 0; index < 101; index++) {
+    await prisma.fridgeItem.create({
+      data: {
+        householdId: user.householdId,
+        name: `Unrelated ${index}`,
+        quantity: 1,
+        unit: 'шт.',
+      },
+    });
+  }
+  const created = await request('/api/dishes', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      title: 'Picker own',
+      ingredients: [product.name, 'PickerMissing'],
+      instructions: ['Смешайте.'],
+    }),
+  });
+  const own = (await created.json()).recipes[0];
+  const previousKey = process.env.SPOONACULAR_API_KEY;
+  const previousFetch = globalThis.fetch;
+  process.env.SPOONACULAR_API_KEY = 'must-not-be-used';
+  globalThis.fetch = (url, options) => {
+    assert.equal(new URL(url).origin, baseUrl, 'matches must use the saved catalog');
+    return previousFetch(url, options);
+  };
+  try {
+    const response = await request('/api/recipes/matches', { headers });
+    assert.equal(response.status, 200);
+    const matches = (await response.json()).recipes;
+    for (const dish of dishes) {
+      assert.equal(matches.find((item) => item.id === dish.id)?.missedIngredientCount, 0);
+      assert.equal(
+        (await (await request(`/api/recipes/${dish.id}`, { headers })).json()).recipe.id,
+        dish.id,
+      );
+    }
+    assert.deepEqual(matches.find((item) => item.id === own.id).missedIngredients, [
+      'PickerMissing',
+    ]);
+    const stock = await request('/api/fridge', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        name: 'PickerMissing',
+        quantity: 1,
+        unit: 'шт.',
+        category: 'products',
+        expiresAt: null,
+        reminderDays: 0,
+      }),
+    });
+    assert.equal(stock.status, 201);
+    const stockItem = await stock.json();
+    const refreshed = (await (await request('/api/recipes/matches', { headers })).json()).recipes;
+    assert.equal(refreshed.find((item) => item.id === own.id).missedIngredientCount, 0);
+    assert.equal(
+      (await request(`/api/fridge/${stockItem.id}`, { method: 'DELETE', headers })).status,
+      204,
+    );
+    const afterRemoval = (await (await request('/api/recipes/matches', { headers })).json())
+      .recipes;
+    assert.equal(afterRemoval.find((item) => item.id === own.id).missedIngredientCount, 1);
+  } finally {
+    globalThis.fetch = previousFetch;
+    restoreEnv('SPOONACULAR_API_KEY', previousKey);
+  }
 });

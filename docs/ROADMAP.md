@@ -30,7 +30,9 @@ Status legend: `[x]` implemented, `[~]` in progress, `[ ]` planned.
 ## Stage 3: Recipes and recommendations - in progress
 
 - [x] Recipe details, ingredients, steps, images, and localization.
-- [x] Local and user-created recipe catalogs, including create and delete operations.
+- [x] Unified recipe catalog with household recipe creation, editing, and deletion.
+- [x] Recipe picker with stock and source filters, an animated die, and no immediate repeats.
+- [x] Available and missing ingredient labels that update when household stock changes.
 - [x] Ingredient matching against the fridge, with Spoonacular fallback.
 - [x] Recipe search and filters for availability, ownership, and saved recipes.
 - [x] Add missing ingredients to the shopping list without duplicates.

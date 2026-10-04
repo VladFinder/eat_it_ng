@@ -19,6 +19,11 @@ describe('App', () => {
     deleteFridgeItem: ReturnType<typeof vi.fn>;
     getNotifications: ReturnType<typeof vi.fn>;
     getSupportTickets: ReturnType<typeof vi.fn>;
+    getRecipeMatches: ReturnType<typeof vi.fn>;
+    createDish: ReturnType<typeof vi.fn>;
+    updateRecipe: ReturnType<typeof vi.fn>;
+    getRecipes: ReturnType<typeof vi.fn>;
+    getDishes: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(async () => {
@@ -79,6 +84,11 @@ describe('App', () => {
       deleteDish: vi.fn().mockReturnValue(of(undefined)),
       getNotifications: vi.fn().mockReturnValue(of({ notifications: [] })),
       getSupportTickets: vi.fn().mockReturnValue(of({ tickets: [] })),
+      getRecipeMatches: vi.fn().mockReturnValue(of({ recipes: [] })),
+      createDish: vi.fn().mockReturnValue(of({ recipes: [] })),
+      updateRecipe: vi.fn().mockReturnValue(of({ recipes: [] })),
+      getRecipes: vi.fn().mockReturnValue(of({ recipes: [] })),
+      getDishes: vi.fn().mockReturnValue(of({ recipes: [] })),
     };
 
     await TestBed.configureTestingModule({
@@ -402,6 +412,222 @@ describe('App', () => {
   });
 
   describe('recipe flow', () => {
+    async function readyApp() {
+      const fixture = TestBed.createComponent(App);
+      fixture.autoDetectChanges();
+      await fixture.whenStable();
+      const app = fixture.componentInstance as any;
+      await app.initializeSession();
+      app.stopRealtimeRefresh();
+      return { fixture, app };
+    }
+
+    function suggestion(id = 'ready', missing: string[] = []) {
+      return {
+        id,
+        title: 'Омлет',
+        source: 'user',
+        image: null,
+        subtitle: '20 мин.',
+        description: 'Семейный рецепт',
+        instructions: ['Разбейте яйца.', 'Приготовьте омлет.'],
+        preparationMinutes: 20,
+        ingredients: ['Яйца', ...missing],
+        usedIngredients: ['Яйца'],
+        missedIngredients: missing,
+        usedIngredientCount: 1,
+        missedIngredientCount: missing.length,
+        expiringIngredientCount: 0,
+        matchPercent: missing.length ? 50 : 100,
+      };
+    }
+
+    it('refreshes stock before rolling, blocks double clicks and avoids immediate repeats', async () => {
+      const { fixture, app } = await readyApp();
+      vi.useFakeTimers();
+      const response = new Subject<{ recipes: ReturnType<typeof suggestion>[] }>();
+      apiService.getRecipeMatches.mockReturnValueOnce(response);
+      try {
+        const firstRoll = app.randomizeRecipe();
+        await app.randomizeRecipe();
+        expect(apiService.getRecipeMatches).toHaveBeenCalledTimes(1);
+        expect(app.randomBusy()).toBe(true);
+        response.next({ recipes: [suggestion('a'), suggestion('b')] });
+        response.complete();
+        await firstRoll;
+        expect(app.randomRecipe()).toBeNull();
+        expect(app.randomRolling()).toBe(true);
+        vi.advanceTimersByTime(950);
+        const firstId = app.randomRecipe().id;
+        apiService.getRecipeMatches.mockReturnValue(
+          of({ recipes: [suggestion('a'), suggestion('b')] }),
+        );
+        await app.randomizeRecipe();
+        vi.advanceTimersByTime(950);
+        expect(app.randomRecipe().id).not.toBe(firstId);
+        expect(app.randomBusy()).toBe(false);
+      } finally {
+        fixture.destroy();
+        vi.useRealTimers();
+      }
+    });
+
+    it('shows no result on empty conditions or connection failure and cancels a roll on navigation', async () => {
+      const { fixture, app } = await readyApp();
+      vi.useFakeTimers();
+      try {
+        apiService.getRecipeMatches.mockReturnValue(
+          of({ recipes: [suggestion('missing', ['Сыр'])] }),
+        );
+        await app.randomizeRecipe();
+        expect(app.randomRecipe()).toBeNull();
+        expect(app.randomError()).toContain('Нет подходящих');
+        apiService.getRecipeMatches.mockReturnValue(of({ recipes: [suggestion()] }));
+        await app.randomizeRecipe();
+        app.setTab('fridge');
+        vi.advanceTimersByTime(950);
+        expect(app.randomRecipe()).toBeNull();
+        expect(app.randomBusy()).toBe(false);
+        apiService.getRecipeMatches.mockReturnValue(throwError(() => new Error('offline')));
+        await app.randomizeRecipe();
+        expect(app.randomError()).toContain('подключение');
+        expect(app.randomRolling()).toBe(false);
+      } finally {
+        fixture.destroy();
+        vi.useRealTimers();
+      }
+    });
+
+    it('respects reduced motion without delaying the result', async () => {
+      const { fixture, app } = await readyApp();
+      vi.useFakeTimers();
+      const original = window.matchMedia;
+      window.matchMedia = vi.fn().mockReturnValue({ matches: true });
+      try {
+        apiService.getRecipeMatches.mockReturnValue(of({ recipes: [suggestion()] }));
+        await app.randomizeRecipe();
+        vi.advanceTimersByTime(0);
+        expect(app.randomRecipe()?.id).toBe('ready');
+        expect(app.randomBusy()).toBe(false);
+      } finally {
+        window.matchMedia = original;
+        fixture.destroy();
+        vi.useRealTimers();
+      }
+    });
+
+    it('rejects an old match response after inventory changes and refreshes an open recipe', async () => {
+      const fixture = TestBed.createComponent(App);
+      const app = fixture.componentInstance as any;
+      const old = new Subject<{ recipes: ReturnType<typeof suggestion>[] }>();
+      apiService.getRecipeMatches.mockReturnValueOnce(old);
+      app.recipes.set([{ ...suggestion(), liked: true, mine: true }]);
+      app.activeRecipe.set(app.recipes()[0]);
+      const pending = app.refreshRecipeMatches();
+      app.stateRevision++;
+      apiService.getRecipeMatches.mockReturnValue(
+        of({ recipes: [suggestion('ready', ['Молоко'])] }),
+      );
+      expect(await app.refreshRecipeMatches()).toBe(true);
+      old.next({ recipes: [suggestion()] });
+      old.complete();
+      expect(await pending).toBe(false);
+      expect(app.activeRecipe().missedIngredients).toEqual(['Молоко']);
+      expect(app.recipes()[0].liked).toBe(true);
+      fixture.destroy();
+    });
+
+    it('creates and edits real instructions, keeps raw ingredients and allows clearing an image', async () => {
+      const fixture = TestBed.createComponent(App);
+      const app = fixture.componentInstance as any;
+      app.currentUser.set({ id: 'user-1' });
+      apiService.createDish.mockReturnValue(of({ recipes: [suggestion()] }));
+      app.openRecipeEditor();
+      Object.assign(app.recipeForm, {
+        title: ' Омлет ',
+        ingredients: 'Яйца\nМолоко',
+        instructions: 'Разбейте яйца.\nПриготовьте омлет.',
+        preparationMinutes: 20,
+      });
+      await app.saveRecipe();
+      expect(apiService.createDish).toHaveBeenCalledWith(
+        expect.objectContaining({
+          title: 'Омлет',
+          ingredients: ['Яйца', 'Молоко'],
+          preparationMinutes: 20,
+          instructions: ['Разбейте яйца.', 'Приготовьте омлет.'],
+          imageUrl: null,
+        }),
+      );
+      expect(app.recipes()[0].mine).toBe(true);
+      expect(app.recipes()[0].preparationMinutes).toBe(20);
+      app.openRecipeEditor({ ...app.recipes()[0], usedIngredients: ['Яйца 2 шт.'] });
+      expect(app.recipeForm.ingredients).toBe('Яйца');
+      app.recipeForm.imageUrl = '';
+      apiService.updateRecipe.mockReturnValue(of({ recipes: [suggestion()] }));
+      await app.saveRecipe();
+      expect(apiService.updateRecipe).toHaveBeenCalledWith(
+        'ready',
+        expect.objectContaining({ imageUrl: null }),
+      );
+      fixture.destroy();
+    });
+
+    it('does not let a slow catalog request restore old ingredient availability after a mutation', async () => {
+      const { fixture, app } = await readyApp();
+      const old = new Subject<{ recipes: ReturnType<typeof suggestion>[] }>();
+      apiService.getRecipes.mockReturnValue(old);
+      const pending = app.loadRecipeCatalog();
+      app.stateRevision++;
+      apiService.getRecipeMatches.mockReturnValue(of({ recipes: [suggestion('ready', ['Сыр'])] }));
+      old.next({ recipes: [suggestion()] });
+      old.complete();
+      await pending;
+      expect(app.recipes()[0].missedIngredients).toEqual(['Сыр']);
+      fixture.destroy();
+    });
+
+    it('does not open an editor for catalog recipes or submit a recipe without steps', async () => {
+      const fixture = TestBed.createComponent(App);
+      const app = fixture.componentInstance as any;
+      app.openRecipeEditor({ ...suggestion(), mine: false });
+      expect(app.recipeEditorOpen()).toBe(false);
+      app.openRecipeEditor();
+      Object.assign(app.recipeForm, { title: 'Омлет', ingredients: 'Яйца', instructions: '' });
+      await app.saveRecipe();
+      expect(apiService.createDish).not.toHaveBeenCalled();
+      expect(app.recipeEditorError()).toContain('шаги');
+      fixture.destroy();
+    });
+
+    it('renders ingredient labels for available and missing products and replaces the dishes tab', async () => {
+      const fixture = TestBed.createComponent(App);
+      fixture.autoDetectChanges();
+      await fixture.whenStable();
+      const app = fixture.componentInstance as any;
+      app.stopRealtimeRefresh();
+      app.loading.set(false);
+      app.onboardingOpen.set(false);
+      app.currentUser.set({ id: 'user-1', displayName: 'Тест', householdId: 'household-1' });
+      app.activeTab.set('recipes');
+      app.activeRecipe.set({
+        ...suggestion('ready', ['Молоко']),
+        mine: true,
+        tags: [],
+        time: '20 мин.',
+      });
+      fixture.detectChanges();
+      expect(
+        fixture.nativeElement.querySelector('.recipe-ingredient.available').textContent,
+      ).toContain('Яйца');
+      expect(
+        fixture.nativeElement.querySelector('.recipe-ingredient.missing').textContent,
+      ).toContain('Молоко');
+      expect(app.tabs.map((tab: { id: string }) => tab.id)).toContain('pick');
+      expect(app.tabs.map((tab: { id: string }) => tab.id)).not.toContain('dishes');
+      fixture.destroy();
+    });
+
     function recipe(
       id: string,
       title: string,

@@ -21,6 +21,7 @@ import {
   NotificationPreferences,
   RecipeShoppingResult,
   RecipeSuggestion,
+  RecipeInput,
   ShoppingInput,
   ShoppingItem,
   SupportMessage,
@@ -222,15 +223,27 @@ export class ApiService {
     );
   }
 
-  createDish(input: {
-    title: string;
-    description?: string;
-    imageUrl?: string;
-    ingredients: string[];
-  }): Observable<{ recipes: RecipeSuggestion[]; ingredients: string[] }> {
+  createDish(
+    input: RecipeInput,
+  ): Observable<{ recipes: RecipeSuggestion[]; ingredients: string[] }> {
     return this.http.post<{ recipes: RecipeSuggestion[]; ingredients: string[] }>(
       `${this.baseUrl}/dishes`,
       input,
+      this.options(),
+    );
+  }
+
+  updateRecipe(id: string, input: RecipeInput): Observable<{ recipes: RecipeSuggestion[] }> {
+    return this.http.patch<{ recipes: RecipeSuggestion[] }>(
+      `${this.baseUrl}/dishes/${encodeURIComponent(id)}`,
+      input,
+      this.options(),
+    );
+  }
+
+  getRecipeMatches(): Observable<{ recipes: RecipeSuggestion[] }> {
+    return this.http.get<{ recipes: RecipeSuggestion[] }>(
+      `${this.baseUrl}/recipes/matches`,
       this.options(),
     );
   }

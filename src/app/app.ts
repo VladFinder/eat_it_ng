@@ -1,8 +1,23 @@
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
-import { Component, computed, inject, OnDestroy, OnInit, signal } from '@angular/core';
+import {
+  afterNextRender,
+  Component,
+  computed,
+  inject,
+  Injector,
+  OnDestroy,
+  OnInit,
+  signal,
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { firstValueFrom } from 'rxjs';
+import {
+  eligibleRecipes,
+  pickRecipe,
+  RecipePickMode,
+  RecipePickSource,
+} from './core/recipe-picker';
 import { ApiService } from './core/api.service';
 import {
   AppNotification,
@@ -25,13 +40,12 @@ import {
   Unit,
 } from './core/models';
 
-type TabId = 'fridge' | 'shopping' | 'dishes' | 'recipes' | 'profile';
-type RecipeTab = 'all' | 'available' | 'almost' | 'mine' | 'likes';
+type TabId = 'fridge' | 'shopping' | 'pick' | 'recipes' | 'profile';
+type RecipeTab = 'all' | 'available' | 'almost' | 'mine' | 'likes' | 'planned';
 type ShoppingFilter = 'all' | ItemCategory;
 type FridgeStatusFilter = 'all' | 'expired' | 'soon' | 'no-expiry';
 type FridgeSort = 'newest' | 'oldest' | 'expiry' | 'name';
 type ShoppingSort = 'newest' | 'oldest' | 'name' | 'status';
-type DishFilter = 'available' | 'almost' | 'planned';
 type AuthMode = 'login' | 'register';
 type ProfileSection =
   'menu' | 'subscription' | 'household' | 'notifications' | 'support' | 'feedback';
@@ -68,6 +82,8 @@ interface Recipe {
   externalId?: string | null;
   description?: string | null;
   instructions?: string[];
+  ingredients?: string[];
+  preparationMinutes?: number | null;
   usedIngredients?: string[];
   missedIngredients?: string[];
   expiringIngredientCount?: number;
@@ -129,17 +145,17 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
     action: 'Далее',
   },
   {
-    tab: 'dishes',
+    tab: 'pick',
     label: 'Шаг 3 из 6',
-    title: 'Раздел "Блюда" поможет решить, что приготовить',
-    body: 'Этот раздел будет подбирать идеи из того, что уже лежит дома, чтобы меньше выбрасывать и быстрее выбирать ужин.',
+    title: 'Бросьте кубик — выберите, что приготовить',
+    body: 'В разделе «Подобрать» выбирайте рецепты из того, что есть дома, или разрешите докупить пару ингредиентов. Бросьте кубик — и получите случайный подходящий рецепт.',
     action: 'Показать рецепты',
   },
   {
     tab: 'recipes',
     label: 'Шаг 4 из 6',
     title: 'Рецепты сохраняют удачные идеи',
-    body: 'Здесь будут ваши рецепты, лайки и общая подборка. Сохраняйте то, что хочется повторить.',
+    body: 'Здесь собраны рецепты из базы, избранное и рецепты вашего дома. Добавляйте свои рецепты. Зелёным отмечено, что уже есть, красным — что нужно докупить.',
     action: 'Показать профиль',
   },
   {
@@ -167,6 +183,12 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
 })
 export class App implements OnDestroy, OnInit {
   private readonly api = inject(ApiService);
+  private readonly injector = inject(Injector);
+  private randomTimer: ReturnType<typeof window.setTimeout> | null = null;
+  private randomRequestId = 0;
+  private previousRandomRecipeId: string | null = null;
+  private recipeMatchesPending: Promise<boolean> | null = null;
+  private recipeMatchesKey = '';
   private toastTimer: ReturnType<typeof window.setTimeout> | null = null;
   private refreshTimer: ReturnType<typeof window.setInterval> | null = null;
   protected readonly accountDeletionPage = new URLSearchParams(window.location.search).has(
@@ -176,7 +198,7 @@ export class App implements OnDestroy, OnInit {
   protected readonly tabs: { id: TabId; label: string; icon: string }[] = [
     { id: 'fridge', label: 'Запасы', icon: 'fridge' },
     { id: 'shopping', label: 'Покупки', icon: 'cart' },
-    { id: 'dishes', label: 'Блюда', icon: 'spark' },
+    { id: 'pick', label: 'Подобрать', icon: 'dice' },
     { id: 'recipes', label: 'Рецепты', icon: 'book' },
     { id: 'profile', label: 'Профиль', icon: 'user' },
   ];
@@ -202,22 +224,43 @@ export class App implements OnDestroy, OnInit {
   protected readonly fridgeSort = signal<FridgeSort>('newest');
   protected readonly shoppingSearch = signal('');
   protected readonly shoppingSort = signal<ShoppingSort>('newest');
-  protected readonly activeDishFilter = signal<DishFilter>('available');
   protected readonly activeRecipeTab = signal<RecipeTab>('all');
   protected readonly recipeSearch = signal('');
+  protected readonly pickMode = signal<RecipePickMode>('available');
+  protected readonly pickSource = signal<RecipePickSource>('all');
+  protected readonly maximumMissing = signal(2);
+  protected readonly randomBusy = signal(false);
+  protected readonly randomRolling = signal(false);
+  protected readonly randomError = signal('');
+  protected readonly randomRecipeId = signal<string | null>(null);
+  protected readonly randomRecipe = computed(
+    () => this.recipes().find((recipe) => recipe.id === this.randomRecipeId()) ?? null,
+  );
+  protected readonly pickCandidates = computed(() =>
+    eligibleRecipes(this.recipes(), this.pickMode(), this.pickSource(), this.maximumMissing()),
+  );
+  protected readonly recipeEditorOpen = signal(false);
+  protected readonly recipeEditorId = signal<string | null>(null);
+  protected readonly recipeEditorError = signal('');
+  protected readonly recipeForm = {
+    title: '',
+    description: '',
+    imageUrl: '',
+    ingredients: '',
+    instructions: '',
+    preparationMinutes: null as number | null,
+  };
   protected readonly profileSection = signal<ProfileSection>('menu');
   protected readonly fridgeAddOpen = signal(false);
   protected readonly fridgeMenuItem = signal<FridgeItem | null>(null);
   protected readonly shoppingMenuItem = signal<ShoppingItem | null>(null);
-  protected readonly activeDish = signal<DishIdea | null>(null);
   protected readonly activeRecipe = signal<Recipe | null>(null);
   protected readonly recipeSuggestionsLoading = signal(false);
   protected readonly recipeSuggestionsError = signal('');
+  protected readonly recipeMatchesError = signal('');
   protected readonly dishesLoading = signal(false);
   protected readonly dishesError = signal('');
-  protected readonly cookingDish = signal<DishIdea | null>(null);
   protected readonly planningDish = signal<{ id: string; title: string } | null>(null);
-  protected readonly cookingStepIndex = signal(0);
   protected readonly toastMessage = signal('');
   protected readonly today = new Date().toISOString().slice(0, 10);
   protected readonly mealPlanForm = {
@@ -375,12 +418,6 @@ export class App implements OnDestroy, OnInit {
   protected readonly recipes = signal<Recipe[]>([]);
   protected readonly recipeDishIdeas = signal<DishIdea[]>([]);
   protected readonly userDishIdeas = signal<DishIdea[]>([]);
-  protected readonly cookingSteps = [
-    'Подготовьте ингредиенты и рабочую поверхность.',
-    'Нарежьте овощи и разогрейте сковороду.',
-    'Смешайте основу блюда и доведите до готовности.',
-    'Разложите по тарелкам и отметьте использованные продукты.',
-  ];
 
   protected readonly visibleFridgeItems = computed(() => {
     const search = this.normalizeSearch(this.fridgeSearch());
@@ -503,8 +540,8 @@ export class App implements OnDestroy, OnInit {
     if (this.activeTab() === 'shopping') {
       return 'Общий список для дома';
     }
-    if (this.activeTab() === 'dishes') {
-      return 'Что приготовить из того, что есть';
+    if (this.activeTab() === 'pick') {
+      return 'Бросьте кубик — найдите идею для ужина';
     }
     if (this.activeTab() === 'recipes') {
       return 'Сохраняйте любимое и создавайте свое';
@@ -518,7 +555,10 @@ export class App implements OnDestroy, OnInit {
       .filter((recipe) => {
         if (tab === 'mine') return recipe.mine;
         if (tab === 'likes') return recipe.liked;
-        if (tab === 'available') return (recipe.missedIngredients?.length ?? 0) === 0;
+        if (tab === 'available')
+          return (
+            this.recipeIngredientTotal(recipe) > 0 && (recipe.missedIngredients?.length ?? 0) === 0
+          );
         if (tab === 'almost') {
           const missing = recipe.missedIngredients?.length ?? 0;
           return missing > 0 && missing <= 2;
@@ -539,19 +579,6 @@ export class App implements OnDestroy, OnInit {
           (right.matchPercent ?? 0) - (left.matchPercent ?? 0) ||
           left.title.localeCompare(right.title),
       );
-  });
-  protected readonly filteredRecipeDishIdeas = computed(() => {
-    const filter = this.activeDishFilter();
-    return this.userDishIdeas().filter((dish) => {
-      const missingCount = dish.missedIngredients?.length ?? 0;
-      if (filter === 'available') {
-        return missingCount === 0;
-      }
-      if (filter === 'almost') {
-        return missingCount > 0;
-      }
-      return false;
-    });
   });
   protected readonly mealPlanDays = computed(() =>
     Array.from({ length: 7 }, (_, index) => {
@@ -624,6 +651,7 @@ export class App implements OnDestroy, OnInit {
     document.removeEventListener('touchcancel', this.handleNativeTouchCancel, true);
     this.stopRealtimeRefresh();
     if (this.toastTimer !== null) window.clearTimeout(this.toastTimer);
+    this.cancelRecipeRoll();
   }
 
   protected async submitAuth(): Promise<void> {
@@ -734,11 +762,10 @@ export class App implements OnDestroy, OnInit {
     if (tab !== 'profile') {
       this.profileSection.set('menu');
     }
-    if (tab === 'dishes') {
-      void Promise.all([this.loadUserDishes(), this.loadMealPlan()]);
-    }
+    if (tab !== 'pick') this.cancelRecipeRoll();
+    if (tab === 'pick') void this.refreshRecipeMatches();
     if (tab === 'recipes') {
-      void Promise.all([this.loadRecipeCatalog(), this.loadUserDishes()]);
+      void Promise.all([this.loadRecipeCatalog(), this.loadUserDishes(), this.loadMealPlan()]);
     }
   }
 
@@ -764,11 +791,6 @@ export class App implements OnDestroy, OnInit {
 
   protected setShoppingFilter(filter: ShoppingFilter): void {
     this.activeShoppingFilter.set(filter);
-  }
-
-  protected setDishFilter(filter: DishFilter): void {
-    this.activeDishFilter.set(filter);
-    if (filter === 'planned') void this.loadMealPlan();
   }
 
   protected setDevSection(section: DevSection): void {
@@ -1121,40 +1143,214 @@ export class App implements OnDestroy, OnInit {
     this.persistRecipes();
   }
 
-  protected openDish(dish: DishIdea): void {
-    this.activeDish.set(dish);
+  protected recipeIngredientTotal(recipe: Recipe | null | undefined): number {
+    return (recipe?.usedIngredients?.length ?? 0) + (recipe?.missedIngredients?.length ?? 0);
   }
 
-  protected closeDish(): void {
-    this.activeDish.set(null);
+  protected recipeAvailability(recipe: Recipe | null | undefined): string {
+    if (!this.recipeIngredientTotal(recipe)) return 'Ингредиенты уточняются';
+    const missing = recipe?.missedIngredients?.length ?? 0;
+    return missing ? `Докупить: ${missing}` : 'Всё есть дома';
   }
 
-  protected startCooking(dish = this.activeDish()): void {
-    if (!dish) {
+  protected changePickSettings(): void {
+    this.cancelRecipeRoll();
+    this.randomRecipeId.set(null);
+    this.randomError.set('');
+  }
+
+  protected async randomizeRecipe(): Promise<void> {
+    if (this.randomBusy()) return;
+    this.randomBusy.set(true);
+    this.randomError.set('');
+    this.randomRecipeId.set(null);
+    const requestId = ++this.randomRequestId;
+    const refreshed = await this.refreshRecipeMatches();
+    if (requestId !== this.randomRequestId) return;
+    if (!refreshed) {
+      this.randomBusy.set(false);
+      this.randomError.set(
+        'Не удалось проверить рецепты. Проверьте подключение и попробуйте ещё раз.',
+      );
       return;
     }
-    this.activeDish.set(null);
-    this.cookingDish.set(dish);
-    this.cookingStepIndex.set(0);
-  }
-
-  protected closeCooking(): void {
-    this.cookingDish.set(null);
-    this.cookingStepIndex.set(0);
-  }
-
-  protected previousCookingStep(): void {
-    this.cookingStepIndex.update((index) => Math.max(index - 1, 0));
-  }
-
-  protected nextCookingStep(): void {
-    const next = this.cookingStepIndex() + 1;
-    if (next >= this.cookingSteps.length) {
-      this.showToast('Готовка завершена');
-      this.closeCooking();
+    const recipe = pickRecipe(this.pickCandidates(), this.previousRandomRecipeId);
+    this.randomRecipeId.set(null);
+    if (!recipe) {
+      this.randomBusy.set(false);
+      this.randomError.set('Нет подходящих рецептов. Измените условия или источник рецептов.');
       return;
     }
-    this.cookingStepIndex.set(next);
+    this.randomRolling.set(true);
+    const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+    this.randomTimer = window.setTimeout(
+      () => {
+        if (requestId !== this.randomRequestId) return;
+        // Stock may have changed while the die was rolling. Do not show an ineligible result.
+        if (!this.pickCandidates().some((candidate) => candidate.id === recipe.id)) {
+          this.randomError.set('Запасы изменились. Подберите рецепт ещё раз.');
+        } else {
+          this.randomRecipeId.set(recipe.id);
+          this.previousRandomRecipeId = recipe.id;
+          afterNextRender(
+            () => {
+              if (this.activeTab() === 'pick' && this.randomRecipeId() === recipe.id) {
+                document.querySelector('.random-result')?.scrollIntoView?.({
+                  behavior: reducedMotion ? 'instant' : 'smooth',
+                  block: 'nearest',
+                });
+              }
+            },
+            { injector: this.injector },
+          );
+        }
+        this.randomRolling.set(false);
+        this.randomBusy.set(false);
+        this.randomTimer = null;
+      },
+      reducedMotion ? 0 : 950,
+    );
+  }
+
+  private cancelRecipeRoll(): void {
+    this.randomRequestId++;
+    if (this.randomTimer !== null) window.clearTimeout(this.randomTimer);
+    this.randomTimer = null;
+    this.randomBusy.set(false);
+    this.randomRolling.set(false);
+  }
+
+  protected openRecipeEditor(recipe?: Recipe): void {
+    if (recipe && !recipe.mine) return;
+    this.recipeEditorId.set(recipe?.id ?? null);
+    this.recipeEditorError.set('');
+    Object.assign(this.recipeForm, {
+      title: recipe?.title ?? '',
+      description: recipe?.description ?? '',
+      imageUrl: recipe?.image ?? '',
+      ingredients: (
+        recipe?.ingredients ?? [
+          ...(recipe?.usedIngredients ?? []),
+          ...(recipe?.missedIngredients ?? []),
+        ]
+      ).join('\n'),
+      instructions: (recipe?.instructions ?? []).join('\n'),
+      preparationMinutes: recipe?.preparationMinutes ?? null,
+    });
+    this.activeRecipe.set(null);
+    this.recipeEditorOpen.set(true);
+  }
+
+  protected closeRecipeEditor(): void {
+    if (!this.saving()) this.recipeEditorOpen.set(false);
+  }
+
+  protected async saveRecipe(): Promise<void> {
+    if (this.saving()) return;
+    const ingredients = this.recipeForm.ingredients
+      .split(/[\n,]+/)
+      .map((value) => value.trim())
+      .filter(Boolean);
+    const instructions = this.recipeForm.instructions
+      .split(/\n+/)
+      .map((value) => value.trim())
+      .filter(Boolean);
+    if (!this.recipeForm.title.trim() || !ingredients.length || !instructions.length) {
+      this.recipeEditorError.set('Добавьте название, ингредиенты и шаги приготовления.');
+      return;
+    }
+    if (
+      ingredients.length > 20 ||
+      ingredients.some((value) => value.length > 120) ||
+      instructions.length > 30 ||
+      instructions.some((value) => value.length > 1000)
+    ) {
+      this.recipeEditorError.set(
+        'До 20 ингредиентов по 120 символов и до 30 шагов по 1000 символов.',
+      );
+      return;
+    }
+    this.saving.set(true);
+    this.stateRevision++;
+    this.recipeEditorError.set('');
+    const userId = this.currentUser()?.id;
+    const id = this.recipeEditorId();
+    const householdId = this.household()?.id;
+    const input = {
+      title: this.recipeForm.title.trim(),
+      description: this.recipeForm.description.trim(),
+      imageUrl: this.recipeForm.imageUrl.trim() || null,
+      ingredients,
+      instructions,
+      preparationMinutes: this.recipeForm.preparationMinutes ?? null,
+    };
+    try {
+      const result = await firstValueFrom(
+        id ? this.api.updateRecipe(id, input) : this.api.createDish(input),
+      );
+      if (this.currentUser()?.id !== userId || this.household()?.id !== householdId) return;
+      this.syncUserDishes(result.recipes);
+      this.persistRecipes();
+      this.recipeEditorOpen.set(false);
+      this.showToast(id ? 'Рецепт обновлён' : 'Рецепт добавлен');
+    } catch (error) {
+      this.recipeEditorError.set(
+        this.errorMessage(error, 'Не удалось сохранить рецепт. Проверьте поля и подключение.'),
+      );
+    } finally {
+      this.saving.set(false);
+    }
+  }
+
+  protected async refreshRecipeMatches(): Promise<boolean> {
+    const userId = this.currentUser()?.id;
+    const householdId = this.household()?.id;
+    const revision = this.stateRevision;
+    const stock = JSON.stringify(this.fridgeItems());
+    const key = JSON.stringify([userId, householdId, revision, stock]);
+    if (this.recipeMatchesPending && this.recipeMatchesKey === key)
+      return this.recipeMatchesPending;
+    this.recipeMatchesKey = key;
+    const pending = (async () => {
+      try {
+        const result = await firstValueFrom(this.api.getRecipeMatches());
+        if (
+          this.currentUser()?.id !== userId ||
+          this.household()?.id !== householdId ||
+          this.stateRevision !== revision ||
+          JSON.stringify(this.fridgeItems()) !== stock
+        )
+          return false;
+        const savedById = new Map(this.recipes().map((recipe) => [recipe.id, recipe]));
+        this.recipes.set(
+          result.recipes.map((recipe) =>
+            this.toRecipe(recipe, savedById.get(recipe.id), recipe.source === 'user'),
+          ),
+        );
+        this.updateActiveRecipe();
+        this.recipeMatchesError.set('');
+        return true;
+      } catch {
+        if (this.currentUser()?.id === userId && this.household()?.id === householdId) {
+          this.recipeMatchesError.set(
+            'Не удалось обновить наличие ингредиентов. Проверьте подключение.',
+          );
+        }
+        return false;
+      }
+    })();
+    this.recipeMatchesPending = pending;
+    try {
+      return await pending;
+    } finally {
+      if (this.recipeMatchesPending === pending) this.recipeMatchesPending = null;
+    }
+  }
+
+  private updateActiveRecipe(): void {
+    const active = this.activeRecipe();
+    if (active)
+      this.activeRecipe.set(this.recipes().find((recipe) => recipe.id === active.id) ?? null);
   }
 
   protected async openRecipe(recipe: Recipe): Promise<void> {
@@ -1215,7 +1411,7 @@ export class App implements OnDestroy, OnInit {
       await firstValueFrom(this.api.deleteDish(id));
       this.userDishIdeas.update((dishes) => dishes.filter((dish) => dish.id !== id));
       this.recipes.update((recipes) => recipes.filter((recipe) => recipe.id !== id));
-      if (this.activeDish()?.id === id) this.activeDish.set(null);
+      this.mealPlan.update((entries) => entries.filter((entry) => entry.dish.id !== id));
       if (this.activeRecipe()?.id === id) this.activeRecipe.set(null);
       this.persistRecipes();
       this.showToast('Рецепт удален');
@@ -1234,24 +1430,6 @@ export class App implements OnDestroy, OnInit {
 
   protected closeFridgeAdd(): void {
     this.fridgeAddOpen.set(false);
-  }
-
-  protected createDish(): void {
-    const title = window.prompt('Название блюда')?.trim();
-    if (!title) {
-      return;
-    }
-    const ingredients = window
-      .prompt('Ингредиенты через запятую', '')
-      ?.split(',')
-      .map((ingredient) => ingredient.trim())
-      .filter(Boolean);
-    if (!ingredients?.length) {
-      return;
-    }
-    const imageUrl = window.prompt('Ссылка на картинку блюда', '')?.trim() || undefined;
-
-    void this.createUserDish({ title, imageUrl, ingredients });
   }
 
   protected defaultRecipeImage(): string {
@@ -1291,9 +1469,15 @@ export class App implements OnDestroy, OnInit {
     this.recipeSuggestionsLoading.set(true);
     this.recipeSuggestionsError.set('');
     const userId = this.currentUser()?.id;
+    const revision = this.stateRevision;
+    const stock = JSON.stringify(this.fridgeItems());
     try {
       const result = await firstValueFrom(this.api.getRecipes());
       if (this.currentUser()?.id !== userId) return;
+      if (revision !== this.stateRevision || stock !== JSON.stringify(this.fridgeItems())) {
+        await this.refreshRecipeMatches();
+        return;
+      }
       this.recipeSuggestionsError.set(result.warning ?? '');
       const savedById = new Map(this.recipes().map((recipe) => [recipe.id, recipe]));
       this.recipeDishIdeas.set(result.recipes.map((recipe) => this.toDishIdea(recipe)));
@@ -1301,6 +1485,7 @@ export class App implements OnDestroy, OnInit {
         ...recipes.filter((recipe) => recipe.mine),
         ...result.recipes.map((recipe) => this.toRecipe(recipe, savedById.get(recipe.id))),
       ]);
+      this.updateActiveRecipe();
     } catch (error) {
       this.recipeSuggestionsError.set(this.errorMessage(error, 'Не удалось загрузить рецепты.'));
       this.recipeDishIdeas.set([]);
@@ -1328,8 +1513,9 @@ export class App implements OnDestroy, OnInit {
         ...recipes.filter((recipe) => recipe.mine),
         ...result.recipes.map((recipe) => this.toRecipe(recipe, savedById.get(recipe.id))),
       ]);
+      this.updateActiveRecipe();
     } catch (error) {
-      this.recipeSuggestionsError.set(this.errorMessage(error, 'Не удалось загрузить блюда.'));
+      this.recipeSuggestionsError.set(this.errorMessage(error, 'Не удалось загрузить рецепты.'));
       this.recipeDishIdeas.set([]);
     } finally {
       this.recipeSuggestionsLoading.set(false);
@@ -1344,12 +1530,23 @@ export class App implements OnDestroy, OnInit {
     this.dishesLoading.set(true);
     this.dishesError.set('');
     const userId = this.currentUser()?.id;
+    const revision = this.stateRevision;
+    const householdId = this.household()?.id;
+    const stock = JSON.stringify(this.fridgeItems());
     try {
       const result = await firstValueFrom(this.api.getDishes());
       if (this.currentUser()?.id !== userId) return;
+      if (
+        householdId !== this.household()?.id ||
+        revision !== this.stateRevision ||
+        stock !== JSON.stringify(this.fridgeItems())
+      ) {
+        await this.refreshRecipeMatches();
+        return;
+      }
       this.syncUserDishes(result.recipes);
     } catch (error) {
-      this.dishesError.set(this.errorMessage(error, 'Не удалось загрузить блюда.'));
+      this.dishesError.set(this.errorMessage(error, 'Не удалось загрузить свои рецепты.'));
       this.userDishIdeas.set([]);
     } finally {
       this.dishesLoading.set(false);
@@ -1373,7 +1570,6 @@ export class App implements OnDestroy, OnInit {
 
   protected openMealPlanner(dish: { id?: string; title: string }): void {
     if (!this.hasPlus()) {
-      this.activeDish.set(null);
       this.activeRecipe.set(null);
       this.activeTab.set('profile');
       this.profileSection.set('subscription');
@@ -1426,23 +1622,6 @@ export class App implements OnDestroy, OnInit {
     return 'Ужин';
   }
 
-  private async createUserDish(input: {
-    title: string;
-    description?: string;
-    imageUrl?: string;
-    ingredients: string[];
-  }): Promise<void> {
-    if (this.saving()) {
-      return;
-    }
-
-    await this.runMutation(async () => {
-      const result = await firstValueFrom(this.api.createDish(input));
-      this.syncUserDishes(result.recipes);
-      this.showToast('Блюдо добавлено');
-    });
-  }
-
   private syncUserDishes(recipes: RecipeSuggestion[]): void {
     const savedById = new Map(this.recipes().map((recipe) => [recipe.id, recipe]));
     this.userDishIdeas.set(recipes.map((recipe) => this.toDishIdea(recipe)));
@@ -1450,6 +1629,24 @@ export class App implements OnDestroy, OnInit {
       ...recipes.map((recipe) => this.toRecipe(recipe, savedById.get(recipe.id), true)),
       ...current.filter((recipe) => !recipe.mine),
     ]);
+    this.updateActiveRecipe();
+    const recipesById = new Map(recipes.map((recipe) => [recipe.id, recipe]));
+    this.mealPlan.update((entries) =>
+      entries.map((entry) => {
+        const recipe = recipesById.get(entry.dish.id);
+        return recipe
+          ? {
+              ...entry,
+              dish: {
+                ...entry.dish,
+                title: recipe.title,
+                image: recipe.image,
+                subtitle: recipe.subtitle ?? null,
+              },
+            }
+          : entry;
+      }),
+    );
   }
 
   private toDishIdea(recipe: RecipeSuggestion): DishIdea {
@@ -1496,6 +1693,8 @@ export class App implements OnDestroy, OnInit {
       instructions: recipe.instructions,
       usedIngredients: recipe.usedIngredients,
       missedIngredients: recipe.missedIngredients,
+      ingredients: recipe.ingredients,
+      preparationMinutes: recipe.preparationMinutes,
       expiringIngredientCount: recipe.expiringIngredientCount,
       matchPercent: recipe.matchPercent,
     };
@@ -2020,10 +2219,12 @@ export class App implements OnDestroy, OnInit {
     try {
       const state = await firstValueFrom(this.api.getState());
       if (this.currentUser()?.id !== userId) return;
+      const stockChanged = JSON.stringify(this.fridgeItems()) !== JSON.stringify(state.fridgeItems);
       this.fridgeItems.set(state.fridgeItems);
       this.shoppingItems.set(state.shoppingItems);
       this.household.set(state.household);
       this.groupName.set(state.household.name);
+      if (stockChanged && this.recipes().length) await this.refreshRecipeMatches();
       await Promise.all([
         this.loadNotifications(),
         this.loadSupportTickets(),
@@ -2055,10 +2256,12 @@ export class App implements OnDestroy, OnInit {
       const state = await firstValueFrom(this.api.getState());
       // A response started before a mutation must not resurrect a moved/deleted card.
       if (this.saving() || revision !== this.stateRevision) return;
+      const stockChanged = JSON.stringify(this.fridgeItems()) !== JSON.stringify(state.fridgeItems);
       this.fridgeItems.set(state.fridgeItems);
       this.shoppingItems.set(state.shoppingItems);
       this.household.set(state.household);
       this.groupName.set(state.household.name);
+      if (stockChanged && this.recipes().length) await this.refreshRecipeMatches();
       await Promise.all([this.loadNotifications(), this.loadSupportTickets()]);
       this.apiError.set('');
     } catch {
@@ -2164,6 +2367,7 @@ export class App implements OnDestroy, OnInit {
     this.apiError.set('');
     try {
       await action();
+      if (this.recipes().length) await this.refreshRecipeMatches();
     } catch (error) {
       this.apiError.set(this.errorMessage(error, 'Изменение не сохранено. Повторите попытку.'));
     } finally {
@@ -2235,6 +2439,8 @@ export class App implements OnDestroy, OnInit {
 
   private resetSession(): void {
     this.stateRevision++;
+    this.recipeMatchesPending = null;
+    this.recipeMatchesError.set('');
     this.recipes.set([]);
     this.clearedNotificationIds.set([]);
     this.stopRealtimeRefresh();
@@ -2259,10 +2465,12 @@ export class App implements OnDestroy, OnInit {
     this.recipeDishIdeas.set([]);
     this.userDishIdeas.set([]);
     this.mealPlan.set([]);
-    this.activeDish.set(null);
     this.activeRecipe.set(null);
-    this.cookingDish.set(null);
     this.planningDish.set(null);
+    this.recipeEditorOpen.set(false);
+    this.cancelRecipeRoll();
+    this.randomRecipeId.set(null);
+    this.previousRandomRecipeId = null;
     this.fridgeAddOpen.set(false);
     this.fridgeMenuItem.set(null);
     this.shoppingMenuItem.set(null);

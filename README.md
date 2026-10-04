@@ -57,6 +57,19 @@ YANDEX_TRANSLATE_FOLDER_ID="..." # optional for service-account API keys
 If Yandex Translate is not configured or temporarily fails, recipes remain
 available in their original language.
 
+The **Рецепты** tab combines the saved catalog, favorites, and household recipes.
+Household recipes support ingredients, preparation steps, optional time, description,
+and image URL. Available ingredients have green labels; missing ingredients have red labels.
+Weekly meal plans remain available to households with existing Plus access.
+
+The **Подобрать** tab replaces the old dishes tab. It picks a random saved recipe
+using only available ingredients or allowing up to 1, 2, or 3 missing ingredients,
+with optional favorites or household filters. The animated die respects reduced motion.
+Ingredient matching uses `GET /api/recipes/matches` without external recipe API calls;
+editing uses `PATCH /api/dishes/:id` and preserves recipe IDs and meal plan references.
+Deploy the updated API together with the web/Android client. These changes require no
+database migration. Public subscription purchasing remains marked **Скоро**.
+
 Web Push requires one VAPID key pair. Generate it once:
 
 ```bash

@@ -164,8 +164,20 @@ export const feedbackCreateSchema = z.object({
 export const dishCreateSchema = z.object({
   title: name,
   description: z.string().trim().max(600).optional(),
-  imageUrl: z.string().trim().url().max(1000).optional(),
-  ingredients: z.array(name).min(1).max(20),
+  imageUrl: z
+    .string()
+    .trim()
+    .url()
+    .max(1000)
+    .refine((value) => /^https?:\/\//i.test(value), 'Нужна ссылка http или https')
+    .nullable()
+    .optional(),
+  ingredients: z
+    .array(name.refine((value) => /[\p{L}\p{N}]/u.test(value)))
+    .min(1)
+    .max(20),
+  instructions: z.array(z.string().trim().min(1).max(1000)).min(1).max(30).optional(),
+  preparationMinutes: z.number().int().min(1).max(1440).nullable().optional(),
 });
 
 export const mealPlanCreateSchema = z.object({

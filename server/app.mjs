@@ -778,6 +778,10 @@ function serializeLocalDishSuggestion(dish, ingredients) {
     subtitle: dish.subtitle,
     description: dish.description,
     instructions: parseJsonArray(dish.instructions),
+    ingredients: requiredIngredients.map((ingredient) => ingredient.product.name),
+    preparationMinutes: /^\d+ мин/.test(dish.subtitle ?? '')
+      ? Number.parseInt(dish.subtitle, 10)
+      : null,
     usedIngredientCount: usedIngredients.length,
     missedIngredientCount: missedIngredients.length,
     expiringIngredientCount,
@@ -876,7 +880,6 @@ async function matchedDishSuggestions(prisma, householdId, scope = 'catalog') {
     prisma.fridgeItem.findMany({
       where: { householdId, category: 'products' },
       orderBy: [{ expiresAt: 'asc' }, { createdAt: 'desc' }],
-      take: 100,
     }),
     scope === 'user'
       ? prisma.dish.count({ where: { source: 'user', householdId } })
@@ -958,8 +961,7 @@ async function matchedDishSuggestions(prisma, householdId, scope = 'catalog') {
         right.matchPercent - left.matchPercent ||
         left.missedIngredientCount - right.missedIngredientCount ||
         left.title.localeCompare(right.title),
-    )
-    .slice(0, 8);
+    );
   return {
     recipes,
     ingredients: fridgeIngredients,
@@ -967,24 +969,49 @@ async function matchedDishSuggestions(prisma, householdId, scope = 'catalog') {
   };
 }
 
-async function createUserDish(prisma, user, input) {
+async function saveUserRecipe(prisma, user, input, id) {
   return prisma.$transaction(async (transaction) => {
-    const dish = await transaction.dish.create({
-      data: {
-        householdId: user.householdId,
-        title: input.title,
-        subtitle: `${input.ingredients.length} ингредиент${ingredientEnding(input.ingredients.length)}`,
-        description: input.description ?? 'Блюдо вашей группы.',
-        imageUrl: input.imageUrl ?? null,
-        instructions: JSON.stringify([
-          'Подготовьте ингредиенты.',
-          'Приготовьте блюдо привычным способом.',
-        ]),
-        source: 'user',
-      },
-    });
+    const existing = id
+      ? await transaction.dish.findFirst({
+          where: { id, householdId: user.householdId, source: 'user' },
+          include: { ingredients: true },
+        })
+      : null;
+    if (id && !existing) {
+      const error = new Error('Рецепт не найден');
+      error.status = 404;
+      throw error;
+    }
+    const names = [
+      ...new Map(
+        input.ingredients.map((ingredient) => [normalizeProductName(ingredient), ingredient]),
+      ).values(),
+    ];
+    const data = {
+      householdId: user.householdId,
+      title: input.title,
+      subtitle:
+        input.preparationMinutes === undefined && existing
+          ? existing.subtitle
+          : input.preparationMinutes
+            ? `${input.preparationMinutes} мин.`
+            : `${names.length} ингредиент${ingredientEnding(names.length)}`,
+      description: input.description ?? existing?.description ?? '',
+      imageUrl: input.imageUrl === undefined ? (existing?.imageUrl ?? null) : input.imageUrl,
+      instructions: JSON.stringify(
+        input.instructions ??
+          (existing?.instructions
+            ? parseJsonArray(existing.instructions)
+            : ['Подготовьте ингредиенты.', 'Приготовьте блюдо привычным способом.']),
+      ),
+      source: 'user',
+    };
+    const dish = existing
+      ? await transaction.dish.update({ where: { id: existing.id }, data })
+      : await transaction.dish.create({ data });
+    if (existing) await transaction.dishIngredient.deleteMany({ where: { dishId: dish.id } });
 
-    for (const ingredient of input.ingredients) {
+    for (const ingredient of names) {
       const normalizedName = normalizeProductName(ingredient);
       const product = await transaction.product.upsert({
         where: { normalizedName },
@@ -999,6 +1026,9 @@ async function createUserDish(prisma, user, input) {
         data: {
           dishId: dish.id,
           productId: product.id,
+          quantity:
+            existing?.ingredients.find((item) => item.productId === product.id)?.quantity ?? null,
+          unit: existing?.ingredients.find((item) => item.productId === product.id)?.unit ?? null,
         },
       });
     }
@@ -1779,6 +1809,15 @@ export function createApiServer(prisma, logger = console) {
         return;
       }
 
+      if (method === 'GET' && url.pathname === '/api/recipes/matches') {
+        const [catalog, own] = await Promise.all([
+          matchedDishSuggestions(prisma, user.householdId, 'catalog'),
+          matchedDishSuggestions(prisma, user.householdId, 'user'),
+        ]);
+        json(response, 200, { recipes: [...catalog.recipes, ...own.recipes] });
+        return;
+      }
+
       const recipeDetailsRoute = routeMatch(url.pathname, /^\/api\/recipes\/(?<id>[^/]+)$/);
       if (recipeDetailsRoute && method === 'GET') {
         const dish = await prisma.dish.findFirst({
@@ -1799,7 +1838,11 @@ export function createApiServer(prisma, logger = console) {
             logger.error(`${method} ${url.pathname}`, error);
           }
         }
-        const local = await matchedDishSuggestions(prisma, user.householdId, 'catalog');
+        const local = await matchedDishSuggestions(
+          prisma,
+          user.householdId,
+          dish.source === 'user' ? 'user' : 'catalog',
+        );
         const recipe = local.recipes.find((item) => item.id === dish.id);
         json(response, 200, { recipe: recipe ?? null });
         return;
@@ -1849,7 +1892,7 @@ export function createApiServer(prisma, logger = console) {
 
       if (method === 'POST' && url.pathname === '/api/dishes') {
         const input = dishCreateSchema.parse(await readJson(request));
-        await createUserDish(prisma, user, input);
+        await saveUserRecipe(prisma, user, input);
         const local = await matchedDishSuggestions(prisma, user.householdId, 'user');
         delete local.hasLocalCatalog;
         json(response, 201, local);
@@ -1857,6 +1900,15 @@ export function createApiServer(prisma, logger = console) {
       }
 
       const dishRoute = routeMatch(url.pathname, /^\/api\/dishes\/(?<id>[^/]+)$/);
+      if (dishRoute && method === 'PATCH') {
+        const input = dishCreateSchema.parse(await readJson(request));
+        await saveUserRecipe(prisma, user, input, dishRoute.id);
+        const local = await matchedDishSuggestions(prisma, user.householdId, 'user');
+        delete local.hasLocalCatalog;
+        json(response, 200, local);
+        return;
+      }
+
       if (dishRoute && method === 'DELETE') {
         const result = await prisma.dish.deleteMany({
           where: {

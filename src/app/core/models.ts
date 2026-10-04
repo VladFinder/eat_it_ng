@@ -53,12 +53,23 @@ export interface RecipeSuggestion {
   subtitle?: string | null;
   description?: string | null;
   instructions?: string[];
+  ingredients?: string[];
+  preparationMinutes?: number | null;
   usedIngredientCount: number;
   missedIngredientCount: number;
   expiringIngredientCount: number;
   matchPercent: number;
   usedIngredients: string[];
   missedIngredients: string[];
+}
+
+export interface RecipeInput {
+  title: string;
+  ingredients: string[];
+  instructions: string[];
+  description?: string;
+  imageUrl?: string | null;
+  preparationMinutes?: number | null;
 }
 
 export interface RecipeShoppingResult {

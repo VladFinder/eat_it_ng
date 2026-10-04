@@ -346,92 +346,112 @@
       </section>
     }
 
-    @if (!devMode() && activeDish()) {
+    @if (!devMode() && recipeEditorOpen()) {
       <button
         animate.leave="overlay-out"
         class="notification-backdrop"
         type="button"
-        aria-label="Закрыть блюдо"
-        (click)="closeDish()"
+        aria-label="Закрыть редактор рецепта"
+        [disabled]="saving()"
+        (click)="closeRecipeEditor()"
       ></button>
       <section
         animate.leave="overlay-out"
-        class="panel ticket-dialog detail-dialog"
+        class="panel ticket-dialog recipe-editor"
         role="dialog"
         aria-modal="true"
+        aria-labelledby="recipe-editor-title"
+        (keydown.escape)="closeRecipeEditor()"
       >
         <div class="notifications-head">
           <div>
-            <p class="section-label">{{ activeDish()?.subtitle }}</p>
-            <h2>{{ activeDish()?.title }}</h2>
+            <p class="section-label">Рецепт вашего дома</p>
+            <h2 id="recipe-editor-title">
+              {{ recipeEditorId() ? 'Редактировать рецепт' : 'Новый рецепт' }}
+            </h2>
           </div>
-          <button class="icon-button close-button" type="button" (click)="closeDish()">×</button>
-        </div>
-        <p>{{ activeDish()?.description }}</p>
-        <img
-          class="detail-image"
-          [src]="recipeImage(activeDish()?.title, activeDish()?.image)"
-          alt=""
-        />
-        <div class="detail-stats">
-          <span>{{ activeDish()?.badge }} совпадение</span>
-          <span>{{
-            activeDish()?.missedIngredients?.length ? 'Нужно докупить' : 'Ингредиенты дома'
-          }}</span>
-        </div>
-        @if (activeDish()?.usedIngredients?.length) {
-          <div class="tag-row">
-            @for (ingredient of activeDish()?.usedIngredients ?? []; track ingredient) {
-              <span>{{ ingredient }}</span>
-            }
-          </div>
-        }
-        @if (activeDish()?.missedIngredients?.length) {
-          <div class="tag-row">
-            @for (ingredient of activeDish()?.missedIngredients ?? []; track ingredient) {
-              <span>{{ ingredient }}</span>
-            }
-          </div>
-        }
-        <div class="detail-actions">
-          <button class="secondary-action" type="button" (click)="openMealPlanner(activeDish()!)">
-            {{ hasPlus() ? 'Запланировать' : 'Запланировать с Plus' }}
+          <button
+            class="icon-button close-button"
+            type="button"
+            aria-label="Закрыть"
+            [disabled]="saving()"
+            (click)="closeRecipeEditor()"
+          >
+            ×
           </button>
-          @if (activeDish()?.missedIngredients?.length) {
+        </div>
+        <form #editorForm="ngForm" class="recipe-editor-form" (ngSubmit)="saveRecipe()">
+          <fieldset [disabled]="saving()">
+            <label
+              >Название<input
+                name="recipe-title"
+                [(ngModel)]="recipeForm.title"
+                required
+                maxlength="120"
+                placeholder="Например, семейная паста"
+            /></label>
+            <label
+              >Ингредиенты<textarea
+                name="recipe-ingredients"
+                [(ngModel)]="recipeForm.ingredients"
+                required
+                maxlength="2500"
+                rows="4"
+                placeholder="Каждый ингредиент с новой строки"
+              ></textarea
+              ><small>До 20 ингредиентов. Указывайте названия продуктов.</small></label
+            >
+            <label
+              >Как приготовить<textarea
+                name="recipe-instructions"
+                [(ngModel)]="recipeForm.instructions"
+                required
+                maxlength="30000"
+                rows="5"
+                placeholder="Каждый шаг с новой строки"
+              ></textarea
+              ><small>До 30 шагов приготовления.</small></label
+            >
+            <label
+              >Время, минут <small>Необязательно</small
+              ><input
+                name="recipe-time"
+                type="number"
+                min="1"
+                max="1440"
+                step="1"
+                [(ngModel)]="recipeForm.preparationMinutes"
+            /></label>
+            <label
+              >Описание <small>Необязательно</small
+              ><textarea
+                name="recipe-description"
+                [(ngModel)]="recipeForm.description"
+                maxlength="600"
+                rows="2"
+              ></textarea>
+            </label>
+            <label
+              >Ссылка на изображение <small>Необязательно</small
+              ><input
+                name="recipe-image"
+                type="url"
+                [(ngModel)]="recipeForm.imageUrl"
+                maxlength="1000"
+                placeholder="https://…"
+            /></label>
+            @if (recipeEditorError()) {
+              <p class="form-error" role="alert">{{ recipeEditorError() }}</p>
+            }
             <button
               class="primary-action"
-              type="button"
-              [disabled]="saving()"
-              (click)="
-                addMissingIngredientsToShopping(activeDish()?.id, activeDish()?.missedIngredients)
-              "
+              type="submit"
+              [disabled]="saving() || editorForm.invalid"
             >
-              Добавить недостающее в покупки
+              {{ saving() ? 'Сохраняем…' : 'Сохранить рецепт' }}
             </button>
-          }
-          @if (activeDish()?.source === 'user') {
-            <button
-              class="danger-action"
-              type="button"
-              [disabled]="saving()"
-              (click)="deleteUserDish(activeDish()?.id)"
-            >
-              Удалить рецепт
-            </button>
-          }
-        </div>
-        <div class="recipe-longread">
-          @for (
-            step of activeDish()?.instructions?.length ? activeDish()?.instructions : cookingSteps;
-            track step;
-            let index = $index
-          ) {
-            <article>
-              <span>{{ index + 1 }}</span>
-              <p>{{ step }}</p>
-            </article>
-          }
-        </div>
+          </fieldset>
+        </form>
       </section>
     }
 
@@ -464,25 +484,27 @@
           [src]="recipeImage(activeRecipe()?.title, activeRecipe()?.image)"
           alt=""
         />
-        <div class="tag-row">
-          @for (tag of activeRecipe()?.tags ?? []; track tag) {
-            <span>{{ tag }}</span>
+        @if (activeRecipe()?.description) {
+          <p>{{ activeRecipe()?.description }}</p>
+        }
+        <div class="ingredients-summary">
+          Есть {{ activeRecipe()?.usedIngredients?.length ?? 0 }} из
+          {{ recipeIngredientTotal(activeRecipe()) }} ингредиентов
+        </div>
+        <div class="recipe-ingredients">
+          @for (ingredient of activeRecipe()?.usedIngredients ?? []; track ingredient) {
+            <div class="recipe-ingredient available">
+              <span aria-hidden="true">✓</span><strong>{{ ingredient }}</strong
+              ><small>Есть дома</small>
+            </div>
+          }
+          @for (ingredient of activeRecipe()?.missedIngredients ?? []; track ingredient) {
+            <div class="recipe-ingredient missing">
+              <span aria-hidden="true">＋</span><strong>{{ ingredient }}</strong
+              ><small>Нужно докупить</small>
+            </div>
           }
         </div>
-        @if (activeRecipe()?.usedIngredients?.length) {
-          <div class="tag-row">
-            @for (ingredient of activeRecipe()?.usedIngredients ?? []; track ingredient) {
-              <span>{{ ingredient }}</span>
-            }
-          </div>
-        }
-        @if (activeRecipe()?.missedIngredients?.length) {
-          <div class="tag-row">
-            @for (ingredient of activeRecipe()?.missedIngredients ?? []; track ingredient) {
-              <span>{{ ingredient }}</span>
-            }
-          </div>
-        }
         @if (activeRecipe()?.expiringIngredientCount) {
           <div class="recipe-priority-note">
             Использует продукты, у которых скоро закончится срок годности
@@ -509,6 +531,14 @@
           }
           @if (activeRecipe()?.mine) {
             <button
+              class="secondary-action"
+              type="button"
+              [disabled]="saving()"
+              (click)="openRecipeEditor(activeRecipe()!)"
+            >
+              Редактировать рецепт
+            </button>
+            <button
               class="danger-action"
               type="button"
               [disabled]="saving()"
@@ -519,66 +549,14 @@
           }
         </div>
         <div class="recipe-longread">
-          @for (
-            step of activeRecipe()?.instructions?.length
-              ? activeRecipe()?.instructions
-              : cookingSteps;
-            track step;
-            let index = $index
-          ) {
+          @for (step of activeRecipe()?.instructions ?? []; track $index; let index = $index) {
             <article>
               <span>{{ index + 1 }}</span>
               <p>{{ step }}</p>
             </article>
+          } @empty {
+            <p>Шаги приготовления пока не добавлены.</p>
           }
-        </div>
-      </section>
-    }
-
-    @if (!devMode() && cookingDish()) {
-      <button
-        animate.leave="overlay-out"
-        class="notification-backdrop"
-        type="button"
-        aria-label="Закрыть готовку"
-        (click)="closeCooking()"
-      ></button>
-      <section
-        animate.leave="overlay-out"
-        class="panel ticket-dialog cooking-dialog"
-        role="dialog"
-        aria-modal="true"
-      >
-        <div class="notifications-head">
-          <div>
-            <p class="section-label">{{ cookingDish()?.subtitle }}</p>
-            <h2>{{ cookingDish()?.title }}</h2>
-          </div>
-          <button class="icon-button close-button" type="button" (click)="closeCooking()">×</button>
-        </div>
-        <div class="cooking-progress" aria-hidden="true">
-          @for (step of cookingSteps; track step; let index = $index) {
-            <span [class.active]="index <= cookingStepIndex()"></span>
-          }
-        </div>
-        <article class="cooking-step-card">
-          <span>Шаг {{ cookingStepIndex() + 1 }} из {{ cookingSteps.length }}</span>
-          <p>{{ cookingSteps[cookingStepIndex()] }}</p>
-        </article>
-        <div class="cooking-actions">
-          <button
-            class="secondary-action"
-            type="button"
-            (click)="previousCookingStep()"
-            [disabled]="cookingStepIndex() === 0"
-          >
-            Назад
-          </button>
-          <button class="primary-action" type="button" (click)="nextCookingStep()">
-            {{
-              cookingStepIndex() + 1 === cookingSteps.length ? 'Завершить готовку' : 'Следующий шаг'
-            }}
-          </button>
         </div>
       </section>
     }
@@ -1856,134 +1834,160 @@
       </section>
     }
 
-    @if (!devMode() && activeTab() === 'dishes') {
-      <section class="screen">
-        <div class="filter-pills" role="tablist" aria-label="Подбор блюд">
-          <button
-            type="button"
-            [class.active]="activeDishFilter() === 'available'"
-            (click)="setDishFilter('available')"
-          >
-            Все ингредиенты есть
-          </button>
-          <button
-            type="button"
-            [class.active]="activeDishFilter() === 'almost'"
-            (click)="setDishFilter('almost')"
-          >
-            Нужна пара ингредиентов
-          </button>
-          <button
-            type="button"
-            [class.active]="activeDishFilter() === 'planned'"
-            (click)="setDishFilter('planned')"
-          >
-            Запланировано
-          </button>
+    @if (!devMode() && activeTab() === 'pick') {
+      <section class="screen picker-screen">
+        <div class="picker-intro">
+          <span class="section-label">Оставьте выбор случаю</span>
+          <h2>Что приготовим?</h2>
+          <p>Задайте условия, бросьте кубик — и найдите рецепт на сегодня.</p>
         </div>
-        @if (activeDishFilter() === 'planned') {
-          @if (hasPlus()) {
-            <div class="meal-plan-week">
-              @for (day of mealPlanDays(); track day.value) {
-                <section class="meal-plan-day">
-                  <header>
-                    <strong>{{ day.weekday }}</strong>
-                    <span>{{ day.label }}</span>
-                  </header>
-                  @for (entry of day.entries; track entry.id) {
-                    <article class="planned-meal">
-                      <img [src]="recipeImage(entry.dish.title, entry.dish.image)" alt="" />
-                      <div>
-                        <span>{{ mealTypeLabel(entry.mealType) }}</span>
-                        <strong>{{ entry.dish.title }}</strong>
-                      </div>
-                      <button
-                        class="icon-button"
-                        type="button"
-                        aria-label="Убрать блюдо из меню"
-                        [disabled]="saving()"
-                        (click)="deletePlannedMeal(entry)"
-                      >
-                        ×
-                      </button>
-                    </article>
-                  } @empty {
-                    <button
-                      class="meal-plan-empty"
-                      type="button"
-                      (click)="setDishFilter('available')"
-                    >
-                      + Выбрать блюдо
-                    </button>
-                  }
-                </section>
+        <fieldset class="picker-settings panel" [disabled]="randomBusy()">
+          <legend class="visually-hidden">Настройки подбора</legend>
+          <span class="picker-label">Ингредиенты</span>
+          <div class="picker-options">
+            <button
+              type="button"
+              [class.active]="pickMode() === 'available'"
+              [attr.aria-pressed]="pickMode() === 'available'"
+              (click)="pickMode.set('available'); changePickSettings()"
+            >
+              <span aria-hidden="true">✓</span><strong>Из того, что есть</strong
+              ><small>Все ингредиенты дома</small>
+            </button>
+            <button
+              type="button"
+              [class.active]="pickMode() === 'almost'"
+              [attr.aria-pressed]="pickMode() === 'almost'"
+              (click)="pickMode.set('almost'); changePickSettings()"
+            >
+              <span aria-hidden="true">＋</span><strong>Немного докупить</strong
+              ><small>Можно сходить за парой продуктов</small>
+            </button>
+          </div>
+          @if (pickMode() === 'almost') {
+            <label class="picker-select"
+              >Докупить не больше
+              <select
+                name="maximum-missing"
+                [ngModel]="maximumMissing()"
+                (ngModelChange)="maximumMissing.set($event); changePickSettings()"
+              >
+                <option [ngValue]="1">1 ингредиента</option>
+                <option [ngValue]="2">2 ингредиентов</option>
+                <option [ngValue]="3">3 ингредиентов</option>
+              </select>
+            </label>
+          }
+          <label class="picker-select"
+            >Откуда выбираем
+            <select
+              name="pick-source"
+              [ngModel]="pickSource()"
+              (ngModelChange)="pickSource.set($event); changePickSettings()"
+            >
+              <option value="all">Все рецепты</option>
+              <option value="likes">Избранное</option>
+              <option value="mine">Мои рецепты</option>
+            </select>
+          </label>
+        </fieldset>
+        <div class="dice-stage" [class.rolling]="randomRolling()" [attr.aria-busy]="randomBusy()">
+          <div class="dice-halo" aria-hidden="true"></div>
+          <div class="dice-shadow" aria-hidden="true"></div>
+          <div class="dice-launch" aria-hidden="true">
+            <div class="recipe-die">
+              <div class="die-face face-front"><i></i><i></i><i></i><i></i><i></i></div>
+              <div class="die-face face-back"><i></i><i></i></div>
+              <div class="die-face face-right"><i></i><i></i><i></i></div>
+              <div class="die-face face-left"><i></i><i></i><i></i><i></i></div>
+              <div class="die-face face-top"><i></i></div>
+              <div class="die-face face-bottom"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+            </div>
+          </div>
+          <p class="dice-caption" role="status">
+            {{
+              randomBusy()
+                ? randomRolling()
+                  ? 'Кубик выбирает…'
+                  : 'Проверяем ингредиенты…'
+                : 'Ваш следующий вкусный случай'
+            }}
+          </p>
+        </div>
+        <button
+          class="primary-action roll-button"
+          type="button"
+          [disabled]="randomBusy() || saving()"
+          (click)="randomizeRecipe()"
+        >
+          <span aria-hidden="true">⚄</span
+          >{{ randomBusy() ? 'Подбираем…' : randomRecipe() ? 'Подобрать ещё' : 'Подобрать рецепт' }}
+        </button>
+        @if (randomError()) {
+          <div class="empty-state picker-empty" role="status">
+            <h3>Попробуем другие условия?</h3>
+            <p>{{ randomError() }}</p>
+          </div>
+        }
+        @if (randomRecipe(); as recipe) {
+          <article class="random-result" aria-labelledby="random-recipe-title" role="status">
+            <div class="random-result-image">
+              <img
+                [src]="recipeImage(recipe.title, recipe.image)"
+                (error)="useRecipeImageFallback($event)"
+                alt=""
+              />
+              <span class="random-result-label">Ваш рецепт сегодня</span>
+              <button
+                class="like-button"
+                type="button"
+                [attr.aria-label]="recipe.liked ? 'Убрать из избранного' : 'Добавить в избранное'"
+                [attr.aria-pressed]="recipe.liked"
+                (click)="toggleRecipeLike(recipe.id)"
+              >
+                {{ recipe.liked ? '♥' : '♡' }}
+              </button>
+            </div>
+            <div class="random-result-copy">
+              <p class="section-label">
+                {{ recipe.mine ? 'Рецепт вашего дома' : 'Из базы рецептов' }} · {{ recipe.time }}
+              </p>
+              <h2 id="random-recipe-title">{{ recipe.title }}</h2>
+              <span class="recipe-availability" [class.missing]="recipe.missedIngredients?.length"
+                ><span aria-hidden="true">{{ recipe.missedIngredients?.length ? '＋' : '✓' }}</span
+                >{{ recipeAvailability(recipe) }}</span
+              >
+              @if (recipe.missedIngredients?.length) {
+                <p class="random-missing">{{ (recipe.missedIngredients ?? []).join(', ') }}</p>
+              }
+              <button class="primary-action" type="button" (click)="openRecipe(recipe)">
+                Открыть рецепт <span aria-hidden="true">↗</span>
+              </button>
+              @if (recipe.missedIngredients?.length) {
+                <button
+                  class="secondary-action"
+                  type="button"
+                  [disabled]="saving()"
+                  (click)="addMissingIngredientsToShopping(recipe.id, recipe.missedIngredients)"
+                >
+                  Добавить недостающее в покупки
+                </button>
               }
             </div>
-          } @else {
-            <button
-              class="plus-teaser"
-              type="button"
-              (click)="setTab('profile'); setProfileSection('subscription')"
-            >
-              <span class="plus-teaser-icon">★</span>
-              <span class="plus-teaser-copy">
-                <strong>Недельное меню доступно в Homie Plus</strong>
-                <span>Планируйте завтраки, обеды и ужины для всей семьи.</span>
-              </span>
-              <span class="row-chevron">›</span>
-            </button>
-          }
-        } @else {
-          @let mainDish = filteredRecipeDishIdeas()[0];
-          @if (dishesLoading()) {
-            <div class="empty-state">
-              <h3>Подбираем блюда</h3>
-              <p>Смотрим блюда вашей группы.</p>
-            </div>
-          } @else if (mainDish) {
-            <button class="dish-card action-card" type="button" (click)="openDish(mainDish)">
-              <img class="dish-image" [src]="recipeImage(mainDish.title, mainDish.image)" alt="" />
-              <p class="section-label">{{ mainDish.subtitle }}</p>
-              <h2>{{ mainDish.title }}</h2>
-              <p>{{ mainDish.description }}</p>
-              <span class="primary-action compact-action">Открыть блюдо</span>
-            </button>
-          } @else {
-            <div class="empty-state">
-              <h3>Пока нет подходящих блюд</h3>
-              <p>
-                Добавьте свое блюдо и список ингредиентов, чтобы видеть совпадения с продуктами
-                группы.
-              </p>
-            </div>
-          }
-          @if (dishesError()) {
-            <p class="form-error">{{ dishesError() }}</p>
-          }
-          <div class="section-heading compact-heading">
-            <h2>Блюда группы</h2>
-          </div>
-          <div class="list">
-            @for (dish of filteredRecipeDishIdeas().slice(1); track dish.id ?? dish.title) {
-              <button class="fridge-row action-card" type="button" (click)="openDish(dish)">
-                <img class="item-thumb" [src]="recipeImage(dish.title, dish.image)" alt="" />
-                <div class="item-content">
-                  <h3>{{ dish.title }}</h3>
-                  <p>{{ dish.subtitle }}</p>
-                </div>
-                <span class="status fresh">{{ dish.badge }}</span>
-              </button>
-            }
-          </div>
-          <button class="primary-action create-recipe-button" type="button" (click)="createDish()">
-            + Добавить блюдо
-          </button>
+          </article>
         }
       </section>
     }
 
     @if (!devMode() && activeTab() === 'recipes') {
       <section class="screen">
+        <button
+          class="secondary-action create-recipe-button"
+          type="button"
+          (click)="openRecipeEditor()"
+        >
+          ＋ Добавить свой рецепт
+        </button>
         <label class="search-field">
           <span aria-hidden="true">⌕</span>
           <input
@@ -2033,73 +2037,142 @@
           </button>
         </div>
 
-        @if (recipeSuggestionsLoading()) {
-          <div class="recipe-notice" role="status">Загружаем рецепты из Spoonacular…</div>
+        @if (hasPlus()) {
+          <button
+            class="secondary-action"
+            type="button"
+            (click)="activeRecipeTab.set(activeRecipeTab() === 'planned' ? 'all' : 'planned')"
+          >
+            {{ activeRecipeTab() === 'planned' ? 'Вернуться к рецептам' : 'Недельное меню' }}
+          </button>
+        }
+        @if (recipeSuggestionsLoading() || dishesLoading()) {
+          <div class="recipe-notice" role="status">Загружаем рецепты…</div>
         }
         @if (recipeSuggestionsError()) {
           <div class="recipe-notice warning" role="status">{{ recipeSuggestionsError() }}</div>
         }
+        @if (dishesError()) {
+          <div class="recipe-notice warning" role="status">{{ dishesError() }}</div>
+        }
+        @if (recipeMatchesError()) {
+          <div class="recipe-notice warning" role="status">{{ recipeMatchesError() }}</div>
+        }
 
-        <div class="recipe-grid">
-          @for (recipe of recipeList(); track recipe.id) {
-            <article
-              class="recipe-card action-card"
-              role="button"
-              tabindex="0"
-              (click)="openRecipe(recipe)"
-              (keydown.enter)="openRecipe(recipe)"
+        @if (activeRecipeTab() === 'planned') {
+          @if (hasPlus()) {
+            <div class="meal-plan-week">
+              @for (day of mealPlanDays(); track day.value) {
+                <section class="meal-plan-day">
+                  <header>
+                    <strong>{{ day.weekday }}</strong>
+                    <span>{{ day.label }}</span>
+                  </header>
+                  @for (entry of day.entries; track entry.id) {
+                    <article class="planned-meal">
+                      <img [src]="recipeImage(entry.dish.title, entry.dish.image)" alt="" />
+                      <div>
+                        <span>{{ mealTypeLabel(entry.mealType) }}</span>
+                        <strong>{{ entry.dish.title }}</strong>
+                      </div>
+                      <button
+                        class="icon-button"
+                        type="button"
+                        aria-label="Убрать блюдо из меню"
+                        [disabled]="saving()"
+                        (click)="deletePlannedMeal(entry)"
+                      >
+                        ×
+                      </button>
+                    </article>
+                  } @empty {
+                    <button
+                      class="meal-plan-empty"
+                      type="button"
+                      (click)="activeRecipeTab.set('all')"
+                    >
+                      + Выбрать блюдо
+                    </button>
+                  }
+                </section>
+              }
+            </div>
+          } @else {
+            <button
+              class="plus-teaser"
+              type="button"
+              (click)="setTab('profile'); setProfileSection('subscription')"
             >
-              <img
-                class="recipe-thumb"
-                [src]="recipeImage(recipe.title, recipe.image)"
-                (error)="useRecipeImageFallback($event)"
-                alt=""
-              />
-              <div class="item-content">
-                <h3>{{ recipe.title }}</h3>
-                <p>{{ recipe.time }}</p>
+              <span class="plus-teaser-icon">★</span>
+              <span class="plus-teaser-copy">
+                <strong>Недельное меню доступно в Homie Plus</strong>
+                <span>Планируйте завтраки, обеды и ужины для всей семьи.</span>
+              </span>
+              <span class="row-chevron">›</span>
+            </button>
+          }
+        } @else {
+          <div class="recipe-grid">
+            @for (recipe of recipeList(); track recipe.id) {
+              <article
+                class="recipe-card action-card"
+                role="button"
+                tabindex="0"
+                (click)="openRecipe(recipe)"
+                (keydown.enter)="openRecipe(recipe)"
+                (keydown.space)="$event.preventDefault(); openRecipe(recipe)"
+              >
+                <img
+                  class="recipe-thumb"
+                  [src]="recipeImage(recipe.title, recipe.image)"
+                  (error)="useRecipeImageFallback($event)"
+                  alt=""
+                />
+                <div class="item-content">
+                  <h3>{{ recipe.title }}</h3>
+                  <p>{{ recipe.time }}{{ recipe.mine ? ' · Ваш рецепт' : '' }}</p>
+                  <span
+                    class="recipe-availability"
+                    [class.missing]="recipe.missedIngredients?.length"
+                    >{{ recipeAvailability(recipe) }}</span
+                  >
+                  @if (recipe.expiringIngredientCount) {
+                    <p class="expiry-recipe-label">Сначала используйте скоропортящиеся продукты</p>
+                  }
+                </div>
+                @if (hasDevAccess()) {
+                  <span
+                    class="source-dot"
+                    [class.spoonacular]="recipeSourceClass(recipe.source) === 'spoonacular'"
+                    [class.local]="recipeSourceClass(recipe.source) === 'local'"
+                  >
+                    {{ recipeSourceLabel(recipe.source) }}
+                  </span>
+                }
+                <button
+                  class="like-button"
+                  type="button"
+                  [attr.aria-label]="recipe.liked ? 'Убрать из избранного' : 'Добавить в избранное'"
+                  [attr.aria-pressed]="recipe.liked"
+                  (click)="$event.stopPropagation(); toggleRecipeLike(recipe.id)"
+                >
+                  {{ recipe.liked ? '♥' : '♡' }}
+                </button>
+              </article>
+            } @empty {
+              <div class="empty-state">
+                <h3>Пока пусто</h3>
                 <p>
                   {{
-                    recipe.missedIngredients?.length
-                      ? 'Докупить: ' + (recipe.missedIngredients ?? []).join(', ')
-                      : 'Все нужное есть дома'
+                    recipeSearch().trim()
+                      ? 'По этому запросу ничего не найдено.'
+                      : 'Для выбранного фильтра пока нет рецептов.'
                   }}
                 </p>
-                @if (recipe.expiringIngredientCount) {
-                  <p class="expiry-recipe-label">Сначала используйте скоропортящиеся продукты</p>
-                }
               </div>
-              @if (hasDevAccess()) {
-                <span
-                  class="source-dot"
-                  [class.spoonacular]="recipeSourceClass(recipe.source) === 'spoonacular'"
-                  [class.local]="recipeSourceClass(recipe.source) === 'local'"
-                >
-                  {{ recipeSourceLabel(recipe.source) }}
-                </span>
-              }
-              <span class="status fresh">{{ recipe.tags[recipe.tags.length - 1] }}</span>
-              <button
-                class="like-button"
-                type="button"
-                (click)="$event.stopPropagation(); toggleRecipeLike(recipe.id)"
-              >
-                {{ recipe.liked ? '♥' : '♡' }}
-              </button>
-            </article>
-          } @empty {
-            <div class="empty-state">
-              <h3>Пока пусто</h3>
-              <p>
-                {{
-                  recipeSearch().trim()
-                    ? 'По этому запросу ничего не найдено.'
-                    : 'Для выбранного фильтра пока нет рецептов.'
-                }}
-              </p>
-            </div>
-          }
-        </div>
+            }
+          </div>
+        }
       </section>
     }
 
@@ -2491,7 +2564,7 @@
     <nav class="bottom-nav" aria-label="Главная навигация">
       @for (tab of tabs; track tab.id) {
         <button type="button" [class.active]="activeTab() === tab.id" (click)="setTab(tab.id)">
-          <span class="nav-icon" [attr.data-icon]="tab.icon"></span>
+          <span class="nav-icon" [attr.data-icon]="tab.icon" aria-hidden="true"></span>
           <span>{{ tab.label }}</span>
         </button>
       }
@@ -2558,10 +2631,10 @@
               <span class="check-button empty" aria-hidden="true"></span>
               <strong>Хлеб · 1 шт.</strong>
             </div>
-          } @else if (onboardingStep().tab === 'dishes') {
+          } @else if (onboardingStep().tab === 'pick') {
             <div class="preview-choice">
-              <button type="button">Не хочу</button>
-              <button type="button">Вкусно</button>
+              <span class="preview-dice" aria-hidden="true">⚄</span>
+              <strong>Бросьте кубик — найдите рецепт</strong>
             </div>
           } @else if (onboardingStep().tab === 'recipes') {
             <div class="tag-row">
