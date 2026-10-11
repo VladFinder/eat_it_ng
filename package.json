@@ -10,6 +10,7 @@
     "db:migrate": "node server/prisma-command.mjs migrate deploy",
     "push:generate-keys": "web-push generate-vapid-keys",
     "db:seed": "node server/seed.mjs",
+    "admin:grant": "node server/admin-access.mjs",
     "test:server": "node --test server/app.test.mjs",
     "android:sync": "npm run build -- --configuration production && cap sync android",
     "android:apk": "npm run android:sync && node server/android-command.mjs assembleDebug",

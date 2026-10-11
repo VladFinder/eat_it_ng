@@ -582,6 +582,7 @@ async function translateTexts(prisma, texts, sourceLanguage = 'en', targetLangua
     if (!Array.isArray(result?.translations) || result.translations.length !== batch.length) {
       throw new Error('Yandex Translate returned an invalid response');
     }
+    const writes = [];
     for (let index = 0; index < batch.length; index++) {
       const sourceText = batch[index];
       const translatedText = plainText(result.translations[index]?.text);
@@ -589,23 +590,26 @@ async function translateTexts(prisma, texts, sourceLanguage = 'en', targetLangua
         throw new Error('Yandex Translate returned an empty translation');
       }
       translations.set(sourceText, translatedText);
-      await prisma.translationCache.upsert({
-        where: {
-          sourceLanguage_targetLanguage_sourceText: {
+      writes.push(
+        prisma.translationCache.upsert({
+          where: {
+            sourceLanguage_targetLanguage_sourceText: {
+              sourceLanguage,
+              targetLanguage,
+              sourceText,
+            },
+          },
+          update: { translatedText },
+          create: {
             sourceLanguage,
             targetLanguage,
             sourceText,
+            translatedText,
           },
-        },
-        update: { translatedText },
-        create: {
-          sourceLanguage,
-          targetLanguage,
-          sourceText,
-          translatedText,
-        },
-      });
+        }),
+      );
     }
+    await prisma.$transaction(writes);
   }
   return translations;
 }
@@ -615,7 +619,40 @@ function needsRussianTranslation(value) {
 }
 
 const catalogTranslationWork = new WeakMap();
-function ensureCatalogLocalized(prisma, ids = null, logger = console) {
+function pendingCatalogTranslationWhere(ids) {
+  return {
+    householdId: null,
+    source: { in: ['spoonacular', 'spoonacular-catalog'] },
+    ...(ids ? { id: { in: ids } } : {}),
+    OR: [
+      { translationStatus: 'original' },
+      { ingredients: { some: { product: { translationStatus: 'original' } } } },
+    ],
+  };
+}
+
+async function ensureCatalogLocalized(prisma, ids = null, logger = console) {
+  // Ready pages must never wait for another reader's slow translation request.
+  const candidates = await prisma.dish.findMany({
+    where: pendingCatalogTranslationWhere(ids),
+    select: {
+      translationStatus: true,
+      ingredients: {
+        where: { product: { translationStatus: 'original' } },
+        select: { product: { select: { name: true, originalName: true } } },
+      },
+    },
+  });
+  if (
+    !candidates.some(
+      (dish) =>
+        dish.translationStatus === 'original' ||
+        dish.ingredients.some(({ product }) =>
+          needsRussianTranslation(product.originalName ?? product.name),
+        ),
+    )
+  )
+    return;
   const previous = catalogTranslationWork.get(prisma) ?? Promise.resolve();
   const pending = previous
     .catch(() => {})
@@ -628,11 +665,7 @@ function ensureCatalogLocalized(prisma, ids = null, logger = console) {
 
 async function persistCatalogTranslations(prisma, ids, logger) {
   const dishes = await prisma.dish.findMany({
-    where: {
-      householdId: null,
-      source: { in: ['spoonacular', 'spoonacular-catalog'] },
-      ...(ids ? { id: { in: ids } } : {}),
-    },
+    where: pendingCatalogTranslationWhere(ids),
     include: { ingredients: { include: { product: true } } },
   });
   const pending = dishes.filter((dish) => dish.translationStatus === 'original');
@@ -663,45 +696,51 @@ async function persistCatalogTranslations(prisma, ids, logger) {
   const translate = (text) => translations.get(plainText(text)) ?? text;
   const complete = (values) =>
     values.every((text) => !needsRussianTranslation(text) || translations.has(plainText(text)));
+  const writes = [];
   for (const dish of pending) {
     const title = dish.originalTitle ?? dish.title;
     const description = dish.originalDescription ?? dish.description;
     const instructions = parseJsonArray(dish.originalInstructions ?? dish.instructions);
     if (!complete([title, description, ...instructions])) continue;
     // A manual edit made while Yandex was responding always wins.
-    await prisma.dish.updateMany({
-      where: { id: dish.id, translationStatus: 'original', updatedAt: dish.updatedAt },
-      data: {
-        originalTitle: title,
-        originalDescription: description,
-        originalInstructions: JSON.stringify(instructions),
-        title: translate(title),
-        description: translate(description),
-        instructions: JSON.stringify(instructions.map(translate)),
-        translationStatus: 'machine',
-      },
-    });
+    writes.push(
+      prisma.dish.updateMany({
+        where: { id: dish.id, translationStatus: 'original', updatedAt: dish.updatedAt },
+        data: {
+          originalTitle: title,
+          originalDescription: description,
+          originalInstructions: JSON.stringify(instructions),
+          title: translate(title),
+          description: translate(description),
+          instructions: JSON.stringify(instructions.map(translate)),
+          translationStatus: 'machine',
+        },
+      }),
+    );
   }
   for (const product of products) {
     const original = product.originalName ?? product.name;
     if (!complete([original])) continue;
     const name = translate(original);
-    await prisma.product.updateMany({
-      where: { id: product.id, translationStatus: 'original', updatedAt: product.updatedAt },
-      data: {
-        name,
-        originalName: original,
-        translationStatus: 'machine',
-        aliases: JSON.stringify([
-          ...new Set([
-            ...parseJsonArray(product.aliases),
-            normalizeProductName(original),
-            normalizeProductName(name),
+    writes.push(
+      prisma.product.updateMany({
+        where: { id: product.id, translationStatus: 'original', updatedAt: product.updatedAt },
+        data: {
+          name,
+          originalName: original,
+          translationStatus: 'machine',
+          aliases: JSON.stringify([
+            ...new Set([
+              ...parseJsonArray(product.aliases),
+              normalizeProductName(original),
+              normalizeProductName(name),
+            ]),
           ]),
-        ]),
-      },
-    });
+        },
+      }),
+    );
   }
+  if (writes.length) await prisma.$transaction(writes);
 }
 
 async function fetchPopularRecipeSuggestions(apiKey) {
@@ -857,6 +896,25 @@ async function recipeCatalogPage(prisma, householdId, input, logger) {
 
 async function savedRecipeCatalogPage(prisma, householdId, input, logger, warning = '') {
   const { query, offset } = input;
+  if (!query.trim()) {
+    const page = await prisma.dish.findMany({
+      where: { householdId: null, source: { not: 'user' } },
+      select: { id: true },
+      orderBy: [{ title: 'asc' }, { id: 'asc' }],
+      skip: offset,
+      take: CATALOG_PAGE_SIZE + 1,
+    });
+    const ids = page.slice(0, CATALOG_PAGE_SIZE).map((dish) => dish.id);
+    const local = await matchedDishSuggestions(prisma, householdId, 'catalog', logger, ids);
+    const byId = new Map(local.recipes.map((recipe) => [recipe.id, recipe]));
+    return {
+      recipes: ids.map((id) => byId.get(id)).filter(Boolean),
+      source: 'local',
+      nextOffset: page.length > CATALOG_PAGE_SIZE ? offset + CATALOG_PAGE_SIZE : null,
+      limited: false,
+      ...(warning ? { warning } : {}),
+    };
+  }
   const normalize = (text) => text.toLocaleLowerCase('ru').replace(/ё/g, 'е');
   const terms = normalize(query).split(/\s+/).filter(Boolean);
   const saved = await prisma.dish.findMany({
@@ -1182,9 +1240,10 @@ async function matchedDishSuggestions(
   scope = 'catalog',
   logger = console,
   ids = null,
+  localize = true,
 ) {
   if (ids?.length === 0) return { recipes: [], ingredients: [], hasLocalCatalog: false };
-  if (scope === 'catalog') await ensureCatalogLocalized(prisma, ids, logger);
+  if (scope === 'catalog' && localize) await ensureCatalogLocalized(prisma, ids, logger);
   const whereClause =
     scope === 'user'
       ? `WHERE d.source = 'user' AND d."householdId" = ?`
@@ -2130,7 +2189,7 @@ export function createApiServer(prisma, logger = console) {
 
       if (method === 'GET' && url.pathname === '/api/recipes/matches') {
         const [catalog, own] = await Promise.all([
-          matchedDishSuggestions(prisma, user.householdId, 'catalog', logger),
+          matchedDishSuggestions(prisma, user.householdId, 'catalog', logger, null, false),
           matchedDishSuggestions(prisma, user.householdId, 'user'),
         ]);
         json(response, 200, { recipes: [...catalog.recipes, ...own.recipes] });

@@ -802,7 +802,30 @@ export class App implements OnDestroy, OnInit {
     if (tab !== 'pick') this.cancelRecipeRoll();
     if (tab === 'pick') void this.refreshRecipeMatches();
     if (tab === 'recipes') {
-      void Promise.all([this.loadRecipeCatalog(), this.loadUserDishes(), this.loadMealPlan()]);
+      if (this.catalogIds() === null || this.catalogLoadFailed()) void this.loadRecipeCatalog();
+      void Promise.all([this.loadUserDishes(), this.loadMealPlan()]);
+    }
+  }
+
+  protected async refreshDevAccess(): Promise<void> {
+    if (this.loading()) return;
+    const userId = this.currentUser()?.id;
+    this.loading.set(true);
+    this.apiError.set('');
+    try {
+      const { user } = await firstValueFrom(this.api.me());
+      if (this.currentUser()?.id !== userId) return;
+      this.currentUser.set(user);
+      if (this.hasDevAccess()) {
+        await this.loadDevData();
+        this.startRealtimeRefresh();
+      } else {
+        this.showToast('Доступ администратора пока не назначен');
+      }
+    } catch (error) {
+      this.apiError.set(this.errorMessage(error, 'Не удалось проверить доступ.'));
+    } finally {
+      this.loading.set(false);
     }
   }
 

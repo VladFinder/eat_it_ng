@@ -175,6 +175,40 @@ describe('App', () => {
     fixture.destroy();
   });
 
+  it('refreshes server admin rights without discarding the current session', async () => {
+    const fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance as any;
+    app.currentUser.set({ id: 'owner', isAdmin: false });
+    app.loading.set(false);
+    apiService.me.mockReturnValueOnce(of({ user: { id: 'owner', isAdmin: true } }));
+    const load = vi.spyOn(app, 'loadDevData').mockResolvedValue(undefined);
+    vi.spyOn(app, 'startRealtimeRefresh').mockImplementation(() => {});
+    await app.refreshDevAccess();
+    expect(app.hasDevAccess()).toBe(true);
+    expect(load).toHaveBeenCalledOnce();
+    expect(app.currentUser().id).toBe('owner');
+    expect(app.loading()).toBe(false);
+    fixture.destroy();
+  });
+
+  it('keeps loaded catalog pages when switching tabs, but retries a failed page', () => {
+    const fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance as any;
+    const load = vi.spyOn(app, 'loadRecipeCatalog').mockResolvedValue(undefined);
+    vi.spyOn(app, 'loadUserDishes').mockResolvedValue(undefined);
+    vi.spyOn(app, 'loadMealPlan').mockResolvedValue(undefined);
+    app.catalogIds.set(['first-page', 'second-page']);
+    app.catalogNextOffset.set(40);
+    app.setTab('recipes');
+    expect(load).not.toHaveBeenCalled();
+    expect(app.catalogIds()).toEqual(['first-page', 'second-page']);
+    expect(app.catalogNextOffset()).toBe(40);
+    app.catalogLoadFailed.set(true);
+    app.setTab('recipes');
+    expect(load).toHaveBeenCalledOnce();
+    fixture.destroy();
+  });
+
   it('keeps recipe preferences separate between accounts and ignores malformed caches', () => {
     const fixture = TestBed.createComponent(App);
     const app = fixture.componentInstance as any;

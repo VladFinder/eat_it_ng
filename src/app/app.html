@@ -877,15 +877,20 @@
         @if (!hasDevAccess()) {
           <div class="dev-access-card">
             <p class="section-label">Dev center</p>
-            <h1>Доступ к dev-части ограничен</h1>
+            <h1>Нужен доступ администратора</h1>
             <p>
-              Сейчас открыта учётка {{ currentUser()?.email || 'без email' }}. Она не будет трогать
-              dev endpoints и не сломает основную сессию приложения.
+              Вы вошли как {{ currentUser()?.email || 'пользователь без email' }}. Для этой учётной
+              записи пока не назначены права администратора. После назначения доступа нажмите
+              «Проверить доступ».
             </p>
-            <div class="dev-allow-list" aria-label="Разрешённые аккаунты">
-              <span>vladfinder@yandex.ru</span>
-              <span>krisyagodka&#64;gmail.com</span>
-            </div>
+            <button
+              class="primary-action"
+              type="button"
+              (click)="refreshDevAccess()"
+              [disabled]="loading()"
+            >
+              Проверить доступ
+            </button>
             <button class="secondary-action" type="button" (click)="logout()">
               Войти другим аккаунтом
             </button>

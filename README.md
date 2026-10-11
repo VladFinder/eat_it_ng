@@ -40,6 +40,22 @@ hashes are stored in the database.
 Google and Apple buttons appear only when their server credentials are set in
 `/opt/eat-it/app/.env`.
 
+### Dev Center access
+
+An email/password login does not verify email ownership, even for an owner email.
+For an existing password administrator, run this command **on the API server with its database**:
+
+```bash
+npm run admin:grant -- vladfinder@yandex.ru
+```
+
+The command adds that existing account's immutable ID to `ADMIN_USER_IDS` in `.env`,
+preserving other administrator IDs. It does not create accounts or grant access to future
+registrations with the same email. Restart the API (production: `sudo systemctl restart eat-it-api`),
+then click **Проверить доступ** in Dev Center. No logout is required. If the service overrides
+`ADMIN_USER_IDS`, update that setting too. Verified Google/Apple accounts in the server email
+allowlist can also access Dev Center. All dev endpoints enforce access on the server.
+
 Recipe suggestions use the Spoonacular API. Keep the key on the API server:
 
 ```dotenv
@@ -61,7 +77,10 @@ The legacy `YANDEX_TRANSLATE_FOLDER_ID` setting is ignored.
 
 If Yandex Translate is not configured or temporarily fails, recipes remain
 available in their original language. Saved catalog recipes are translated when
-read, including recipe details and random picks; household recipes are left as entered.
+read in catalog pages and recipe details; household recipes are left as entered.
+Pages already translated bypass the translation queue. Ingredient matching and random picks
+read saved data without waiting for Yandex; opening an untranslated recipe translates it.
+Translation cache and catalog updates are written in batches to reduce SQLite commits.
 Russian titles, descriptions, steps, and product names are persisted in `Dish` and `Product`,
 with available source text retained in `original*` fields. A successful translation is marked
 `machine`; a failed translation remains pending and can retry using `TranslationCache`.
@@ -80,6 +99,8 @@ The **Рецепты** tab opens a general Spoonacular catalog independent of fr
 pages on scroll, debounces search by 350 ms, and ignores superseded responses. Russian
 queries are translated to English with Yandex and cached separately from recipe translations.
 Availability labels still reflect household stock, while the catalog preserves provider order.
+Switching tabs retains the loaded recipes and pagination position for the current session.
+Unfiltered local pages select only 20 recipes in SQLite instead of reading the entire catalog.
 
 Spoonacular limits search offsets to 900; when this window is exhausted, the UI suggests
 refining the search instead of claiming the entire provider database has ended. Requests

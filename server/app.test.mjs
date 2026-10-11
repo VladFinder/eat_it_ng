@@ -649,6 +649,21 @@ test('registering an owner email does not grant admin access', async () => {
   assert.equal(summary.status, 403);
 });
 
+test('explicit user ID grants password admin access to the existing session and can be revoked', async () => {
+  const previous = process.env.ADMIN_USER_IDS;
+  const { user, headers } = await recipeAccount('password-admin@example.com');
+  try {
+    assert.equal((await (await request('/api/auth/me', { headers })).json()).user.isAdmin, false);
+    process.env.ADMIN_USER_IDS = `another-id, ${user.id}`;
+    assert.equal((await (await request('/api/auth/me', { headers })).json()).user.isAdmin, true);
+    assert.equal((await request('/api/dev/summary', { headers })).status, 200);
+    process.env.ADMIN_USER_IDS = 'another-id';
+    assert.equal((await request('/api/dev/summary', { headers })).status, 403);
+  } finally {
+    restoreEnv('ADMIN_USER_IDS', previous);
+  }
+});
+
 test('state rejects unauthenticated requests', async () => {
   const response = await request('/api/state', { skipAuth: true });
   assert.equal(response.status, 401);
@@ -2570,5 +2585,83 @@ test('manual edits made during an automatic translation are not overwritten', as
     globalThis.fetch = previousFetch;
     restoreEnv('YANDEX_TRANSLATE_API_KEY', previousTranslate);
     restoreEnv('ADMIN_USER_IDS', previousAdmins);
+  }
+});
+
+test('saved Russian pages and ingredient matching do not wait for unrelated Yandex translation', async () => {
+  const { headers } = await recipeAccount('fast-catalog@example.com');
+  const previousFetch = globalThis.fetch;
+  const previousTranslate = process.env.YANDEX_TRANSLATE_API_KEY;
+  process.env.YANDEX_TRANSLATE_API_KEY = 'slow-translation-test';
+  const ready = await prisma.dish.create({
+    data: {
+      title: 'Готовый русский рецепт',
+      source: 'spoonacular',
+      translationStatus: 'machine',
+      instructions: '[]',
+    },
+  });
+  const waiting = await prisma.dish.create({
+    data: { title: 'Slow translation recipe', source: 'spoonacular', instructions: '[]' },
+  });
+  const pageId = JSON.stringify(['catalog', 'fast-catalog-check', 0]);
+  await prisma.providerRecipePage.create({
+    data: { id: pageId, recipeIds: JSON.stringify([ready.id]) },
+  });
+  let release;
+  let started;
+  const held = new Promise((resolve) => {
+    release = resolve;
+  });
+  const translating = new Promise((resolve) => {
+    started = resolve;
+  });
+  let providerCalls = 0;
+  globalThis.fetch = async (url, options) => {
+    if (new URL(url).origin === baseUrl) return previousFetch(url, options);
+    providerCalls++;
+    assert.equal(new URL(url).hostname, 'translate.api.cloud.yandex.net');
+    started();
+    await held;
+    return Response.json({
+      translations: JSON.parse(options.body).texts.map(() => ({ text: 'Переведённый рецепт' })),
+    });
+  };
+  let pending;
+  let timeout;
+  try {
+    pending = request(`/api/recipes/${waiting.id}`, { headers });
+    const checks = async () => {
+      await translating;
+      const cached = await request('/api/recipes/catalog?source=remote&query=fast-catalog-check', {
+        headers,
+      });
+      assert.equal(cached.status, 200);
+      assert.equal((await cached.json()).recipes[0].title, ready.title);
+      const matches = await request('/api/recipes/matches', { headers });
+      assert.equal(matches.status, 200);
+      assert.equal(
+        (await matches.json()).recipes.some((recipe) => recipe.id === waiting.id),
+        true,
+      );
+      assert.equal(providerCalls, 1);
+    };
+    await Promise.race([
+      checks(),
+      new Promise((_, reject) => {
+        timeout = setTimeout(
+          () => reject(new Error('Saved data waited for held translation')),
+          2500,
+        );
+      }),
+    ]);
+  } finally {
+    clearTimeout(timeout);
+    release();
+    await pending;
+    globalThis.fetch = previousFetch;
+    restoreEnv('YANDEX_TRANSLATE_API_KEY', previousTranslate);
+    await prisma.providerRecipePage.delete({ where: { id: pageId } });
+    await prisma.dish.deleteMany({ where: { id: { in: [ready.id, waiting.id] } } });
   }
 });
