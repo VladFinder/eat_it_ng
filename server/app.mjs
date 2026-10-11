@@ -21,6 +21,7 @@ import {
   oauthCookie,
 } from './oauth.mjs';
 import {
+  recipeCatalogQuerySchema,
   consumeSchema,
   fridgeCreateSchema,
   fridgeUpdateSchema,
@@ -456,7 +457,7 @@ async function refreshDishDetails(prisma, dish, logger = console) {
   const sourceTexts = [updated.title, updated.description, ...(updated.instructions ?? [])];
   let translations = new Map();
   try {
-    translations = await translateTextsToRussian(prisma, sourceTexts);
+    translations = await translateTexts(prisma, sourceTexts);
   } catch (error) {
     // Keep the recipe usable in English if translation is temporarily unavailable.
     logger.error('Recipe details translation failed', error);
@@ -485,12 +486,13 @@ function serializePopularRecipe(recipe) {
         .map((item) => recipeTitle(item.name ?? item.originalName))
         .filter(Boolean),
     ),
-  ).slice(0, 12);
+  );
   return {
     id: String(recipe.id),
     title: recipeTitle(recipe.title),
     image: typeof recipe.image === 'string' ? recipe.image : null,
     source: 'spoonacular-catalog',
+    subtitle: recipe.readyInMinutes ? `${recipe.readyInMinutes} мин.` : null,
     externalId: String(recipe.id),
     description: plainText(recipe.summary),
     instructions: recipeSteps(recipe),
@@ -526,18 +528,25 @@ function translationBatches(texts, maximumLength = 9_500) {
   return batches;
 }
 
-async function translateTextsToRussian(prisma, texts) {
+async function translateTexts(prisma, texts, sourceLanguage = 'en', targetLanguage = 'ru') {
   const configuration = yandexTranslateConfiguration();
   const uniqueTexts = Array.from(
-    new Set(texts.map((text) => plainText(text)).filter((text) => text && !/[а-яё]/i.test(text))),
+    new Set(
+      texts
+        .map((text) => plainText(text))
+        .filter(
+          (text) =>
+            text && (targetLanguage === 'en' ? /[а-яё]/i.test(text) : !/[а-яё]/i.test(text)),
+        ),
+    ),
   );
   const translations = new Map();
   if (uniqueTexts.length === 0) return translations;
 
   const cached = await prisma.translationCache.findMany({
     where: {
-      sourceLanguage: 'en',
-      targetLanguage: 'ru',
+      sourceLanguage,
+      targetLanguage,
       sourceText: { in: uniqueTexts },
     },
   });
@@ -547,8 +556,8 @@ async function translateTextsToRussian(prisma, texts) {
   const missing = uniqueTexts.filter((text) => !translations.has(text));
   for (const batch of translationBatches(missing)) {
     const body = {
-      sourceLanguageCode: 'en',
-      targetLanguageCode: 'ru',
+      sourceLanguageCode: sourceLanguage,
+      targetLanguageCode: targetLanguage,
       format: 'PLAIN_TEXT',
       texts: batch,
       speller: true,
@@ -583,15 +592,15 @@ async function translateTextsToRussian(prisma, texts) {
       await prisma.translationCache.upsert({
         where: {
           sourceLanguage_targetLanguage_sourceText: {
-            sourceLanguage: 'en',
-            targetLanguage: 'ru',
+            sourceLanguage,
+            targetLanguage,
             sourceText,
           },
         },
         update: { translatedText },
         create: {
-          sourceLanguage: 'en',
-          targetLanguage: 'ru',
+          sourceLanguage,
+          targetLanguage,
           sourceText,
           translatedText,
         },
@@ -613,7 +622,7 @@ async function localizeRecipeSuggestions(prisma, recipes, logger = console) {
     ...(recipe.instructions ?? []),
   ]);
   try {
-    const translations = await translateTextsToRussian(prisma, texts);
+    const translations = await translateTexts(prisma, texts);
     const translate = (text) => translations.get(plainText(text)) ?? text;
     return recipes.map((recipe) =>
       recipe.source === 'user'
@@ -665,6 +674,124 @@ async function fetchPopularRecipeSuggestions(apiKey) {
     expiresAt: Date.now() + RECIPE_CACHE_TTL_MS,
   });
   return recipes;
+}
+
+const CATALOG_PAGE_SIZE = 20;
+const catalogPages = new Map();
+
+async function fetchCatalogPage(prisma, query, offset) {
+  const apiKey = spoonacularApiKey();
+  if (!apiKey) throw Object.assign(new Error('Каталог временно недоступен.'), { status: 503 });
+  let translatedQuery = query;
+  if (/[а-яё]/i.test(query)) {
+    const translations = await translateTexts(prisma, [query], 'ru', 'en');
+    translatedQuery = translations.get(plainText(query));
+    if (!translatedQuery) {
+      throw Object.assign(new Error('Поиск временно недоступен. Попробуйте позже.'), {
+        status: 503,
+      });
+    }
+  }
+  const cacheKey = JSON.stringify([translatedQuery.toLowerCase(), offset]);
+  const cached = catalogPages.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.page;
+  const params = new URLSearchParams({
+    apiKey,
+    query: translatedQuery,
+    offset: String(offset),
+    number: String(CATALOG_PAGE_SIZE),
+    addRecipeInformation: 'true',
+    fillIngredients: 'true',
+    instructionsRequired: 'true',
+    ...(query ? {} : { sort: 'popularity', sortDirection: 'desc' }),
+  });
+  const response = await fetch(`https://api.spoonacular.com/recipes/complexSearch?${params}`, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!response.ok) {
+    throw Object.assign(new Error('Не удалось загрузить каталог. Попробуйте позже.'), {
+      status: response.status === 402 || response.status === 429 ? 429 : 502,
+    });
+  }
+  const result = await response.json();
+  if (!Array.isArray(result?.results) || !Number.isFinite(result.totalResults)) {
+    throw Object.assign(new Error('Каталог вернул некорректный ответ.'), { status: 502 });
+  }
+  const next = offset + result.results.length;
+  const page = {
+    recipes: result.results.map(serializePopularRecipe),
+    nextOffset: result.results.length && next < result.totalResults && next <= 900 ? next : null,
+    limited: next > 900 && next < result.totalResults,
+  };
+  if (catalogPages.size >= 100) catalogPages.delete(catalogPages.keys().next().value);
+  catalogPages.set(cacheKey, { page, expiresAt: Date.now() + RECIPE_CACHE_TTL_MS });
+  return page;
+}
+
+async function recipeCatalogPage(prisma, householdId, input, logger) {
+  const { query, offset, source } = input;
+  let warning = '';
+  if (source !== 'local') {
+    try {
+      const page = await fetchCatalogPage(prisma, query, offset);
+      const localized = await localizeRecipeSuggestions(prisma, page.recipes, logger);
+      await saveSpoonacularSuggestions(prisma, localized);
+      const ids = page.recipes.map((recipe) => `spoonacular-${recipe.externalId}`);
+      const local = await matchedDishSuggestions(prisma, householdId, 'catalog', logger, ids);
+      const byId = new Map(local.recipes.map((recipe) => [recipe.id, recipe]));
+      return {
+        recipes: ids.map((id) => byId.get(id)).filter(Boolean),
+        nextOffset: page.nextOffset,
+        source: 'remote',
+        limited: page.limited,
+      };
+    } catch (error) {
+      logger.error('Recipe catalog page failed', error);
+      // Never switch pagination sources halfway through a feed: retry the same page.
+      if (offset > 0 || source === 'remote') throw error;
+      warning = 'Общий каталог временно недоступен. Показаны рецепты из сохранённой базы.';
+    }
+  }
+  const normalize = (text) => text.toLocaleLowerCase('ru').replace(/ё/g, 'е');
+  const terms = normalize(query).split(/\s+/).filter(Boolean);
+  const saved = await prisma.dish.findMany({
+    where: { householdId: null, source: { not: 'user' } },
+    select: {
+      id: true,
+      title: true,
+      ingredients: { select: { product: { select: { name: true } } } },
+    },
+    orderBy: [{ title: 'asc' }, { id: 'asc' }],
+  });
+  // Include cached Russian titles/ingredients in search without translating the whole database.
+  const texts = saved.flatMap((dish) => [
+    dish.title,
+    ...dish.ingredients.map((item) => item.product.name),
+  ]);
+  const cached = texts.length
+    ? await prisma.translationCache.findMany({
+        where: { sourceLanguage: 'en', targetLanguage: 'ru', sourceText: { in: texts } },
+      })
+    : [];
+  const translations = new Map(cached.map((item) => [item.sourceText, item.translatedText]));
+  const matching = saved.filter((dish) => {
+    const values = [dish.title, ...dish.ingredients.map((item) => item.product.name)];
+    const text = normalize(
+      values.flatMap((value) => [value, translations.get(value) ?? '']).join(' '),
+    );
+    return terms.every((term) => text.includes(term));
+  });
+  const ids = matching.slice(offset, offset + CATALOG_PAGE_SIZE).map((dish) => dish.id);
+  const local = await matchedDishSuggestions(prisma, householdId, 'catalog', logger, ids);
+  const byId = new Map(local.recipes.map((recipe) => [recipe.id, recipe]));
+  return {
+    recipes: ids.map((id) => byId.get(id)).filter(Boolean),
+    source: 'local',
+    nextOffset: offset + CATALOG_PAGE_SIZE < matching.length ? offset + CATALOG_PAGE_SIZE : null,
+    limited: false,
+    ...(warning ? { warning } : {}),
+  };
 }
 
 async function fetchRecipeSuggestions(ingredients) {
@@ -883,7 +1010,14 @@ async function saveSpoonacularSuggestions(prisma, recipes) {
   }
 }
 
-async function matchedDishSuggestions(prisma, householdId, scope = 'catalog', logger = console) {
+async function matchedDishSuggestions(
+  prisma,
+  householdId,
+  scope = 'catalog',
+  logger = console,
+  ids = null,
+) {
+  if (ids?.length === 0) return { recipes: [], ingredients: [], hasLocalCatalog: false };
   const whereClause =
     scope === 'user'
       ? `WHERE d.source = 'user' AND d."householdId" = ?`
@@ -915,12 +1049,14 @@ async function matchedDishSuggestions(prisma, householdId, scope = 'catalog', lo
         p."normalizedName" AS productNormalizedName,
         p.aliases AS productAliases
       FROM "Dish" d
-      JOIN "DishIngredient" di ON di."dishId" = d.id
-      JOIN "Product" p ON p.id = di."productId"
+      LEFT JOIN "DishIngredient" di ON di."dishId" = d.id
+      LEFT JOIN "Product" p ON p.id = di."productId"
       ${whereClause}
+      ${ids ? `AND d.id IN (${ids.map(() => '?').join(',')})` : ''}
       ORDER BY d.title ASC, p.name ASC
     `,
       ...(scope === 'user' ? [householdId] : []),
+      ...(ids ?? []),
     ),
   ]);
   const fridgeIngredients = Array.from(
@@ -947,6 +1083,10 @@ async function matchedDishSuggestions(prisma, householdId, scope = 'catalog', lo
       },
       ingredients: [],
     };
+    if (!row.productId) {
+      dishes.set(row.dishId, dish);
+      continue;
+    }
     const product = {
       id: row.productId,
       name: row.productName,
@@ -1828,6 +1968,13 @@ export function createApiServer(prisma, logger = console) {
           matchedDishSuggestions(prisma, user.householdId, 'user'),
         ]);
         json(response, 200, { recipes: [...catalog.recipes, ...own.recipes] });
+        return;
+      }
+
+      if (method === 'GET' && url.pathname === '/api/recipes/catalog') {
+        const input = recipeCatalogQuerySchema.parse(Object.fromEntries(url.searchParams));
+        const result = await recipeCatalogPage(prisma, user.householdId, input, logger);
+        json(response, 200, result);
         return;
       }
 

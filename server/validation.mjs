@@ -190,3 +190,13 @@ export const adminSubscriptionSchema = z.object({
   active: z.boolean(),
   periodEnd: date.nullable().optional(),
 });
+
+export const recipeCatalogQuerySchema = z
+  .object({
+    query: z.string().trim().max(120).default(''),
+    offset: z.coerce.number().int().min(0).max(1_000_000).default(0),
+    source: z.enum(['auto', 'local', 'remote']).default('auto'),
+  })
+  .refine((value) => value.source === 'local' || value.offset <= 900, {
+    message: 'Недопустимая страница каталога.',
+  });

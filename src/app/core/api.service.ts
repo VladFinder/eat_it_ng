@@ -21,6 +21,7 @@ import {
   NotificationPreferences,
   RecipeShoppingResult,
   RecipeSuggestion,
+  RecipeCatalogPage,
   RecipeInput,
   ShoppingInput,
   ShoppingItem,
@@ -198,15 +199,15 @@ export class ApiService {
     );
   }
 
-  getRecipes(): Observable<{
-    recipes: RecipeSuggestion[];
-    ingredients: string[];
-    warning?: string;
-  }> {
-    return this.http.get<{ recipes: RecipeSuggestion[]; ingredients: string[]; warning?: string }>(
-      `${this.baseUrl}/recipes`,
-      this.options(),
-    );
+  getRecipes(
+    query = '',
+    offset = 0,
+    source: 'auto' | 'local' | 'remote' = 'auto',
+  ): Observable<RecipeCatalogPage> {
+    return this.http.get<RecipeCatalogPage>(`${this.baseUrl}/recipes/catalog`, {
+      ...this.options(),
+      params: { query, offset, source },
+    });
   }
 
   getRecipeDetails(id: string): Observable<{ recipe: RecipeSuggestion | null }> {

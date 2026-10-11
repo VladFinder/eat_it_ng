@@ -2025,6 +2025,7 @@
 
     @if (!devMode() && activeTab() === 'recipes') {
       <section class="screen">
+        <p class="catalog-intro">Ищите новые вкусы или просто листайте рецепты</p>
         <button
           class="secondary-action create-recipe-button"
           type="button"
@@ -2037,8 +2038,10 @@
           <input
             name="recipe-search"
             [ngModel]="recipeSearch()"
-            (ngModelChange)="recipeSearch.set($event)"
-            placeholder="Найти рецепт или ингредиент"
+            (ngModelChange)="setRecipeSearch($event)"
+            placeholder="Что хочется приготовить?"
+            maxlength="120"
+            type="search"
             aria-label="Найти рецепт или ингредиент"
           />
         </label>
@@ -2075,7 +2078,7 @@
           <button
             type="button"
             [class.active]="activeRecipeTab() === 'likes'"
-            (click)="activeRecipeTab.set('likes')"
+            (click)="showSavedRecipes()"
           >
             Сохраненные
           </button>
@@ -2168,6 +2171,8 @@
               >
                 <img
                   class="recipe-thumb"
+                  loading="lazy"
+                  decoding="async"
                   [src]="recipeImage(recipe.title, recipe.image)"
                   (error)="useRecipeImageFallback($event)"
                   alt=""
@@ -2204,18 +2209,52 @@
                 </button>
               </article>
             } @empty {
-              <div class="empty-state">
-                <h3>Пока пусто</h3>
-                <p>
-                  {{
-                    recipeSearch().trim()
-                      ? 'По этому запросу ничего не найдено.'
-                      : 'Для выбранного фильтра пока нет рецептов.'
-                  }}
-                </p>
-              </div>
+              @if (!recipeSuggestionsLoading()) {
+                <div class="empty-state">
+                  <h3>Пока пусто</h3>
+                  <p>
+                    {{
+                      recipeSearch().trim()
+                        ? 'По этому запросу ничего не найдено.'
+                        : 'Для выбранного фильтра пока нет рецептов.'
+                    }}
+                  </p>
+                </div>
+              }
             }
           </div>
+          @if (activeRecipeTab() !== 'mine' && activeRecipeTab() !== 'likes') {
+            <div class="catalog-pagination" aria-live="polite">
+              @if (catalogLoadFailed()) {
+                <button
+                  class="secondary-action"
+                  type="button"
+                  (click)="catalogNextOffset() === null ? loadRecipeCatalog() : loadMoreRecipes()"
+                >
+                  Повторить загрузку
+                </button>
+              } @else if (recipeSuggestionsLoading()) {
+                <span>Загружаем рецепты…</span>
+              } @else if (catalogNextOffset() !== null) {
+                @if (activeRecipeTab() === 'all') {
+                  <div
+                    class="catalog-sentinel"
+                    (appLoadMore)="loadMoreRecipes()"
+                    aria-hidden="true"
+                  ></div>
+                }
+                <button class="secondary-action" type="button" (click)="loadMoreRecipes()">
+                  Показать ещё
+                </button>
+              } @else if (catalogIds()?.length) {
+                <span>{{
+                  catalogLimited()
+                    ? 'Вы просмотрели доступную подборку. Уточните поиск, чтобы найти другие рецепты.'
+                    : 'Вы просмотрели все рецепты этой подборки.'
+                }}</span>
+              }
+            </div>
+          }
         }
       </section>
     }

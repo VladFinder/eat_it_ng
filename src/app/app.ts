@@ -20,6 +20,7 @@ import {
   RecipePickMode,
   RecipePickSource,
 } from './core/recipe-picker';
+import { LoadMoreDirective } from './core/load-more.directive';
 import { ApiService } from './core/api.service';
 import {
   AppNotification,
@@ -179,7 +180,7 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
 
 @Component({
   selector: 'app-root',
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, LoadMoreDirective],
   templateUrl: './app.html',
   styleUrl: './app.scss',
 })
@@ -228,6 +229,14 @@ export class App implements OnDestroy, OnInit {
   protected readonly shoppingSort = signal<ShoppingSort>('newest');
   protected readonly activeRecipeTab = signal<RecipeTab>('all');
   protected readonly recipeSearch = signal('');
+  protected readonly catalogIds = signal<string[] | null>(null);
+  protected readonly catalogNextOffset = signal<number | null>(null);
+  protected readonly catalogLimited = signal(false);
+  protected readonly catalogLoadFailed = signal(false);
+  private catalogSource: 'auto' | 'local' | 'remote' = 'auto';
+  private catalogRequest = 0;
+  private recipeSearchTimer: number | null = null;
+
   protected readonly pickMode = signal<RecipePickMode>('available');
   protected readonly pickSource = signal<RecipePickSource>('all');
   protected readonly maximumMissing = signal(2);
@@ -556,7 +565,13 @@ export class App implements OnDestroy, OnInit {
   protected readonly recipeList = computed(() => {
     const tab = this.activeRecipeTab();
     const search = this.normalizeSearch(this.recipeSearch());
-    return this.recipes()
+    const ids = this.catalogIds();
+    const catalogView = !['mine', 'likes', 'planned'].includes(tab) && ids !== null;
+    const byId = new Map(this.recipes().map((recipe) => [recipe.id, recipe]));
+    const recipes = catalogView
+      ? ids.map((id) => byId.get(id)).filter((recipe): recipe is Recipe => !!recipe)
+      : this.recipes();
+    return recipes
       .filter((recipe) => {
         if (tab === 'mine') return recipe.mine;
         if (tab === 'likes') return recipe.liked;
@@ -571,19 +586,13 @@ export class App implements OnDestroy, OnInit {
         return true;
       })
       .filter((recipe) => {
-        if (!search) return true;
+        if (!search || catalogView) return true;
         return [
           recipe.title,
           ...(recipe.usedIngredients ?? []),
           ...(recipe.missedIngredients ?? []),
         ].some((value) => this.normalizeSearch(value).includes(search));
-      })
-      .sort(
-        (left, right) =>
-          (right.expiringIngredientCount ?? 0) - (left.expiringIngredientCount ?? 0) ||
-          (right.matchPercent ?? 0) - (left.matchPercent ?? 0) ||
-          left.title.localeCompare(right.title),
-      );
+      });
   });
   protected readonly mealPlanDays = computed(() =>
     Array.from({ length: 7 }, (_, index) => {
@@ -655,6 +664,8 @@ export class App implements OnDestroy, OnInit {
     document.removeEventListener('touchend', this.handleNativeTouchEnd, true);
     document.removeEventListener('touchcancel', this.handleNativeTouchCancel, true);
     this.stopRealtimeRefresh();
+    this.catalogRequest++;
+    if (this.recipeSearchTimer !== null) window.clearTimeout(this.recipeSearchTimer);
     if (this.toastTimer !== null) window.clearTimeout(this.toastTimer);
     this.cancelRecipeRoll();
   }
@@ -1483,36 +1494,84 @@ export class App implements OnDestroy, OnInit {
     }
   }
 
-  protected async loadRecipeCatalog(): Promise<void> {
-    if (this.recipeSuggestionsLoading()) {
-      return;
-    }
+  protected showSavedRecipes(): void {
+    this.activeRecipeTab.set('likes');
+    void this.refreshRecipeMatches();
+  }
 
+  protected setRecipeSearch(value: string): void {
+    this.recipeSearch.set(value);
+    if (this.recipeSearchTimer !== null) window.clearTimeout(this.recipeSearchTimer);
+    this.catalogRequest++;
+    this.catalogIds.set([]);
+    this.catalogNextOffset.set(null);
+    this.catalogLoadFailed.set(false);
+    this.recipeSuggestionsError.set('');
     this.recipeSuggestionsLoading.set(true);
+    this.recipeSearchTimer = window.setTimeout(() => {
+      this.recipeSearchTimer = null;
+      void this.loadRecipeCatalog();
+    }, 350);
+  }
+
+  protected async loadMoreRecipes(): Promise<void> {
+    if (this.catalogNextOffset() === null || this.recipeSuggestionsLoading()) return;
+    await this.loadRecipeCatalog(false);
+  }
+
+  protected async loadRecipeCatalog(reset = true): Promise<void> {
+    if (!reset && this.recipeSuggestionsLoading()) return;
+    if (this.recipeSearchTimer !== null) window.clearTimeout(this.recipeSearchTimer);
+    this.recipeSearchTimer = null;
+    if (reset) {
+      this.catalogIds.set([]);
+      this.catalogNextOffset.set(null);
+      this.catalogLimited.set(false);
+      this.catalogSource = 'auto';
+    }
+    const request = ++this.catalogRequest;
+    const offset = reset ? 0 : this.catalogNextOffset();
+    if (offset === null) return;
+    this.recipeSuggestionsLoading.set(true);
+    this.catalogLoadFailed.set(false);
     this.recipeSuggestionsError.set('');
     const userId = this.currentUser()?.id;
+    const householdId = this.household()?.id;
     const revision = this.stateRevision;
     const stock = JSON.stringify(this.fridgeItems());
+    const isCurrent = () =>
+      request === this.catalogRequest &&
+      this.currentUser()?.id === userId &&
+      this.household()?.id === householdId;
     try {
-      const result = await firstValueFrom(this.api.getRecipes());
-      if (this.currentUser()?.id !== userId) return;
+      const result = await firstValueFrom(
+        this.api.getRecipes(this.recipeSearch().trim(), offset, this.catalogSource),
+      );
+      if (!isCurrent()) return;
+      this.catalogSource = result.source ?? 'auto';
+      this.catalogNextOffset.set(result.nextOffset ?? null);
+      this.catalogLimited.set(result.limited ?? false);
+      this.catalogIds.update((ids) => [
+        ...new Set([...(ids ?? []), ...result.recipes.map((recipe) => recipe.id)]),
+      ]);
+      this.recipeSuggestionsError.set(result.warning ?? '');
       if (revision !== this.stateRevision || stock !== JSON.stringify(this.fridgeItems())) {
         await this.refreshRecipeMatches();
         return;
       }
-      this.recipeSuggestionsError.set(result.warning ?? '');
       const savedById = new Map(this.recipes().map((recipe) => [recipe.id, recipe]));
-      this.recipeDishIdeas.set(result.recipes.map((recipe) => this.toDishIdea(recipe)));
-      this.recipes.update((recipes) => [
-        ...recipes.filter((recipe) => recipe.mine),
-        ...result.recipes.map((recipe) => this.toRecipe(recipe, savedById.get(recipe.id))),
-      ]);
+      for (const recipe of result.recipes)
+        savedById.set(recipe.id, this.toRecipe(recipe, savedById.get(recipe.id)));
+      this.recipes.set([...savedById.values()]);
       this.updateActiveRecipe();
     } catch (error) {
-      this.recipeSuggestionsError.set(this.errorMessage(error, 'Не удалось загрузить рецепты.'));
-      this.recipeDishIdeas.set([]);
+      if (!isCurrent()) return;
+      this.catalogLoadFailed.set(true);
+      this.recipeSuggestionsError.set(
+        this.errorMessage(error, 'Не удалось загрузить рецепты. Повторите попытку.'),
+      );
     } finally {
-      this.recipeSuggestionsLoading.set(false);
+      if (isCurrent()) this.recipeSuggestionsLoading.set(false);
     }
   }
 
@@ -2461,6 +2520,16 @@ export class App implements OnDestroy, OnInit {
 
   private resetSession(): void {
     this.stateRevision++;
+    this.catalogRequest++;
+    if (this.recipeSearchTimer !== null) window.clearTimeout(this.recipeSearchTimer);
+    this.recipeSearchTimer = null;
+    this.catalogIds.set(null);
+    this.catalogNextOffset.set(null);
+    this.catalogLimited.set(false);
+    this.catalogLoadFailed.set(false);
+    this.recipeSuggestionsLoading.set(false);
+    this.recipeSearch.set('');
+    this.catalogSource = 'auto';
     this.recipeMatchesPending = null;
     this.recipeMatchesError.set('');
     this.recipes.set([]);

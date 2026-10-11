@@ -2127,3 +2127,183 @@ test('local matches include the whole catalog, own recipes and all stock without
     restoreEnv('SPOONACULAR_API_KEY', previousKey);
   }
 });
+
+test('catalog pages browse independently of stock, cache results and translate Russian searches', async () => {
+  const previousFetch = globalThis.fetch;
+  const previousKey = process.env.SPOONACULAR_API_KEY;
+  const previousTranslate = process.env.YANDEX_TRANSLATE_API_KEY;
+  const { user, headers } = await recipeAccount('catalog-pages@example.com');
+  process.env.SPOONACULAR_API_KEY = 'test-catalog-key';
+  process.env.YANDEX_TRANSLATE_API_KEY = 'test-translate-key';
+  const calls = [];
+  const translationCalls = [];
+  const rawRecipe = (id) => ({
+    id,
+    title: `Catalog dish ${id}`,
+    readyInMinutes: 25,
+    extendedIngredients: [{ name: 'pumpkin' }],
+    analyzedInstructions: [{ steps: [{ step: 'Bake the pumpkin.' }] }],
+  });
+  globalThis.fetch = (url, options) => {
+    const parsed = new URL(url);
+    if (parsed.origin === baseUrl) return previousFetch(url, options);
+    if (parsed.hostname === 'translate.api.cloud.yandex.net') {
+      const body = JSON.parse(options.body);
+      translationCalls.push(body);
+      return Promise.resolve(
+        Response.json({
+          translations: body.texts.map((text) => ({
+            text:
+              body.targetLanguageCode === 'en'
+                ? 'pumpkin soup'
+                : text === 'pumpkin'
+                  ? 'тыква'
+                  : `Перевод ${text}`,
+          })),
+        }),
+      );
+    }
+    assert.equal(parsed.pathname, '/recipes/complexSearch');
+    assert.equal(parsed.searchParams.has('ingredients'), false);
+    assert.equal(parsed.searchParams.has('includeIngredients'), false);
+    assert.equal(parsed.searchParams.get('number'), '20');
+    calls.push(parsed);
+    const offset = Number(parsed.searchParams.get('offset'));
+    const query = parsed.searchParams.get('query');
+    if (query === 'quota') return Promise.resolve(new Response('', { status: 402 }));
+    const recipes =
+      query === 'pumpkin soup'
+        ? [rawRecipe(990050)]
+        : Array.from({ length: offset === 20 ? 1 : 20 }, (_, index) =>
+            rawRecipe(990000 + offset + index),
+          );
+    return Promise.resolve(
+      Response.json({ results: recipes, totalResults: offset === 900 ? 5000 : query ? 1 : 21 }),
+    );
+  };
+  try {
+    const firstResponse = await request('/api/recipes/catalog', { headers });
+    assert.equal(firstResponse.status, 200);
+    const first = await firstResponse.json();
+    assert.equal(first.source, 'remote');
+    assert.equal(first.recipes.length, 20);
+    assert.equal(first.nextOffset, 20);
+    assert.equal(first.recipes[0].id, 'spoonacular-990000');
+    assert.equal(first.recipes[0].preparationMinutes, 25);
+    await prisma.fridgeItem.create({
+      data: { householdId: user.householdId, name: 'тыква', quantity: 1, unit: 'шт.' },
+    });
+    const cached = await (await request('/api/recipes/catalog', { headers })).json();
+    assert.deepEqual(
+      cached.recipes.map((r) => r.id),
+      first.recipes.map((r) => r.id),
+    );
+    assert.equal(cached.recipes[0].usedIngredientCount, 1);
+    assert.equal(calls.length, 1);
+    const last = await (
+      await request('/api/recipes/catalog?offset=20&source=remote', { headers })
+    ).json();
+    assert.equal(last.recipes.length, 1);
+    assert.equal(last.nextOffset, null);
+    assert.equal(last.limited, false);
+    assert.equal(
+      first.recipes.some((r) => r.id === last.recipes[0].id),
+      false,
+    );
+    const searched = await (
+      await request('/api/recipes/catalog?query=' + encodeURIComponent('Тыквенный суп'), {
+        headers,
+      })
+    ).json();
+    assert.equal(searched.recipes[0].id, 'spoonacular-990050');
+    assert.equal(calls.at(-1).searchParams.get('query'), 'pumpkin soup');
+    assert.equal(
+      translationCalls.some(
+        (body) => body.sourceLanguageCode === 'ru' && body.targetLanguageCode === 'en',
+      ),
+      true,
+    );
+    const capped = await (
+      await request('/api/recipes/catalog?offset=900&source=remote', { headers })
+    ).json();
+    assert.equal(capped.nextOffset, null);
+    assert.equal(capped.limited, true);
+    const quota = await request('/api/recipes/catalog?query=quota&offset=20&source=remote', {
+      headers,
+    });
+    assert.equal(quota.status, 429);
+    for (const params of [
+      'offset=-1',
+      'offset=1.5',
+      'offset=901&source=remote',
+      'source=other',
+      `query=${'a'.repeat(121)}`,
+    ]) {
+      assert.equal((await request(`/api/recipes/catalog?${params}`, { headers })).status, 400);
+    }
+  } finally {
+    globalThis.fetch = previousFetch;
+    restoreEnv('SPOONACULAR_API_KEY', previousKey);
+    restoreEnv('YANDEX_TRANSLATE_API_KEY', previousTranslate);
+  }
+});
+
+test('local catalog paginates all saved recipes and searches Russian text beyond the first page', async () => {
+  const previousKey = process.env.SPOONACULAR_API_KEY;
+  delete process.env.SPOONACULAR_API_KEY;
+  const { headers } = await recipeAccount('local-catalog-pages@example.com');
+  const created = [];
+  try {
+    for (let i = 0; i < 23; i++) {
+      created.push(
+        await prisma.dish.create({
+          data: {
+            title: `Тесткаталог ${String(i).padStart(2, '0')}`,
+            source: 'catalog',
+            description: '',
+            instructions: '[]',
+          },
+        }),
+      );
+    }
+    const firstResponse = await request(
+      '/api/recipes/catalog?query=' + encodeURIComponent('ТЕСТКАТАЛОГ'),
+      { headers },
+    );
+    assert.equal(firstResponse.status, 200);
+    const first = await firstResponse.json();
+    assert.equal(first.source, 'local');
+    assert.equal(first.recipes.length, 20);
+    assert.ok(first.warning);
+    assert.equal(first.nextOffset, 20);
+    const last = await (
+      await request(
+        '/api/recipes/catalog?source=local&offset=20&query=' + encodeURIComponent('ТЕСТКАТАЛОГ'),
+        { headers },
+      )
+    ).json();
+    assert.equal(last.recipes.length, 3);
+    assert.equal(last.nextOffset, null);
+    assert.equal(new Set([...first.recipes, ...last.recipes].map((r) => r.id)).size, 23);
+    const search = await (
+      await request(
+        '/api/recipes/catalog?source=local&query=' + encodeURIComponent('Тесткаталог 22'),
+        { headers },
+      )
+    ).json();
+    assert.deepEqual(
+      search.recipes.map((r) => r.id),
+      [created[22].id],
+    );
+    const empty = await (
+      await request('/api/recipes/catalog?source=local&query=nonexistent-unique-recipe', {
+        headers,
+      })
+    ).json();
+    assert.deepEqual(empty.recipes, []);
+    assert.equal(empty.nextOffset, null);
+  } finally {
+    restoreEnv('SPOONACULAR_API_KEY', previousKey);
+    await prisma.dish.deleteMany({ where: { id: { in: created.map((r) => r.id) } } });
+  }
+});

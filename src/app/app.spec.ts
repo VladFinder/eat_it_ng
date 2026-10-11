@@ -629,6 +629,77 @@ describe('App', () => {
       fixture.destroy();
     });
 
+    it('appends catalog pages in provider order, deduplicates cards and preserves retry position', async () => {
+      const { fixture, app } = await readyApp();
+      apiService.getRecipes.mockReturnValueOnce(
+        of({ recipes: [suggestion('first')], nextOffset: 20, source: 'remote' }),
+      );
+      await app.loadRecipeCatalog();
+      app.toggleRecipeLike('first');
+      apiService.getRecipes.mockReturnValueOnce(throwError(() => new Error('offline')));
+      await app.loadMoreRecipes();
+      expect(app.catalogNextOffset()).toBe(20);
+      expect(app.catalogLoadFailed()).toBe(true);
+      expect(app.recipeList().map((r: any) => r.id)).toEqual(['first']);
+      apiService.getRecipes.mockReturnValueOnce(
+        of({
+          recipes: [suggestion('first'), suggestion('second')],
+          nextOffset: null,
+          source: 'remote',
+        }),
+      );
+      await app.loadMoreRecipes();
+      expect(apiService.getRecipes).toHaveBeenLastCalledWith('', 20, 'remote');
+      expect(app.recipeList().map((r: any) => r.id)).toEqual(['first', 'second']);
+      expect(app.recipes().find((r: any) => r.id === 'first').liked).toBe(true);
+      const calls = apiService.getRecipes.mock.calls.length;
+      await app.loadMoreRecipes();
+      expect(apiService.getRecipes).toHaveBeenCalledTimes(calls);
+      fixture.destroy();
+    });
+
+    it('ignores an older search response and keeps the newest catalog result', async () => {
+      const { fixture, app } = await readyApp();
+      const old = new Subject<any>();
+      apiService.getRecipes.mockReturnValueOnce(old);
+      const pending = app.loadRecipeCatalog();
+      app.recipeSearch.set('суп');
+      apiService.getRecipes.mockReturnValueOnce(
+        of({ recipes: [suggestion('soup')], nextOffset: null, source: 'remote' }),
+      );
+      await app.loadRecipeCatalog();
+      old.next({ recipes: [suggestion('outdated')], nextOffset: 20, source: 'remote' });
+      old.complete();
+      await pending;
+      expect(apiService.getRecipes).toHaveBeenLastCalledWith('суп', 0, 'auto');
+      expect(app.recipeList().map((r: any) => r.id)).toEqual(['soup']);
+      expect(app.catalogNextOffset()).toBeNull();
+      fixture.destroy();
+    });
+
+    it('debounces search input and clears the pending search on session reset', async () => {
+      const { fixture, app } = await readyApp();
+      vi.useFakeTimers();
+      try {
+        apiService.clearSessionToken = vi.fn();
+        app.setRecipeSearch('с');
+        app.setRecipeSearch('суп');
+        await vi.advanceTimersByTimeAsync(349);
+        expect(apiService.getRecipes).not.toHaveBeenCalled();
+        await vi.advanceTimersByTimeAsync(1);
+        expect(apiService.getRecipes).toHaveBeenCalledTimes(1);
+        expect(apiService.getRecipes).toHaveBeenLastCalledWith('суп', 0, 'auto');
+        app.setRecipeSearch('паста');
+        app.resetSession();
+        await vi.advanceTimersByTimeAsync(400);
+        expect(apiService.getRecipes).toHaveBeenCalledTimes(1);
+        expect(app.catalogIds()).toBeNull();
+      } finally {
+        vi.useRealTimers();
+        fixture.destroy();
+      }
+    });
+
     it('does not let a slow catalog request restore old ingredient availability after a mutation', async () => {
       const { fixture, app } = await readyApp();
       const old = new Subject<{ recipes: ReturnType<typeof suggestion>[] }>();

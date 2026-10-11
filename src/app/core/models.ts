@@ -63,6 +63,14 @@ export interface RecipeSuggestion {
   missedIngredients: string[];
 }
 
+export interface RecipeCatalogPage {
+  recipes: RecipeSuggestion[];
+  nextOffset: number | null;
+  source: 'local' | 'remote';
+  limited: boolean;
+  warning?: string;
+}
+
 export interface RecipeInput {
   title: string;
   ingredients: string[];

@@ -65,7 +65,21 @@ read, including recipe details and random picks; household recipes are left as e
 Cached translations remain available without a configured key. Failed translations
 are retried on the next request, so reimporting the catalog is unnecessary.
 
-The **Рецепты** tab combines the saved catalog, favorites, and household recipes.
+The **Рецепты** tab opens a general Spoonacular catalog independent of fridge contents.
+`GET /api/recipes/catalog?query=&offset=0&source=auto` returns 20 recipes, a `nextOffset`
+(or `null` at the end), and the pagination source (`remote` or `local`). The UI appends
+pages on scroll, debounces search by 350 ms, and ignores superseded responses. Russian
+queries are translated to English with Yandex and cached separately from recipe translations.
+Availability labels still reflect household stock, while the catalog preserves provider order.
+
+Spoonacular limits search offsets to 900; when this window is exhausted, the UI suggests
+refining the search instead of claiming the entire provider database has ended. Requests
+also consume the provider's quota. Pages are cached for six hours (up to 100 pages per API
+process). If the first page cannot be fetched, the API searches and paginates saved recipes;
+a failed later page remains retryable without changing the feed or skipping recipes.
+See the [provider documentation](https://spoonacular.com/food-api/docs#Search-Recipes-Complex).
+
+The **Рецепты** tab also provides favorites and household recipes.
 Household recipes support ingredients, preparation steps, optional time, description,
 and image URL. Available ingredients have green labels; missing ingredients have red labels.
 Weekly meal plans remain available to households with existing Plus access.

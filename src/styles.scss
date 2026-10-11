@@ -3898,3 +3898,21 @@ body:has(.random-result-dialog[open]) {
     font-size: 22px;
   }
 }
+
+.catalog-intro {
+  margin: 0 0 16px;
+  color: #68756c;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.catalog-pagination {
+  position: relative;
+  padding: 24px 8px;
+  text-align: center;
+  color: #68756c;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.catalog-sentinel {
+  height: 1px;
+}
