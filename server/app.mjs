@@ -1,4 +1,5 @@
 import { createServer } from 'node:http';
+import { spoonacularMealTypes } from './recipe-types.mjs';
 import { ZodError } from 'zod';
 import webpush from 'web-push';
 import { clientAddress, createAuthLimiter, isAllowedWriteOrigin } from './security.mjs';
@@ -395,6 +396,7 @@ function serializeRecipeSuggestion(recipe) {
     title: recipeTitle(recipe.title),
     image: typeof recipe.image === 'string' ? recipe.image : null,
     source: 'spoonacular',
+    mealTypes: spoonacularMealTypes(recipe.dishTypes),
     externalId: String(recipe.id),
     subtitle: recipe.readyInMinutes ? `${recipe.readyInMinutes} мин.` : null,
     description: plainText(recipe.summary),
@@ -444,6 +446,7 @@ async function fetchRecipeInformationBulk(apiKey, recipes) {
       subtitle: detail.readyInMinutes ? `${detail.readyInMinutes} мин.` : summary.subtitle,
       description: plainText(detail.summary) || summary.description,
       instructions: recipeSteps(detail),
+      mealTypes: spoonacularMealTypes(detail.dishTypes),
     };
   });
 }
@@ -474,6 +477,7 @@ async function refreshDishDetails(prisma, dish) {
       detailsFetched: true,
       subtitle: updated.subtitle || dish.subtitle,
       imageUrl: updated.image || dish.imageUrl,
+      mealTypes: JSON.stringify(updated.mealTypes ?? []),
     },
   });
   return true;
@@ -496,6 +500,7 @@ function serializePopularRecipe(recipe) {
     externalId: String(recipe.id),
     description: plainText(recipe.summary),
     instructions: recipeSteps(recipe),
+    mealTypes: spoonacularMealTypes(recipe.dishTypes),
     usedIngredientCount: 0,
     missedIngredientCount: ingredients.length,
     expiringIngredientCount: 0,
@@ -1104,6 +1109,7 @@ function serializeLocalDishSuggestion(dish, ingredients) {
     subtitle: dish.subtitle,
     description: dish.description,
     instructions: parseJsonArray(dish.instructions),
+    mealTypes: parseJsonArray(dish.mealTypes),
     ingredients: requiredIngredients.map((ingredient) => ingredient.product.name),
     preparationMinutes: /^\d+ мин/.test(dish.subtitle ?? '')
       ? Number.parseInt(dish.subtitle, 10)
@@ -1123,6 +1129,7 @@ function serializeLocalDishSuggestion(dish, ingredients) {
 
 function serializeDevRecipe(dish) {
   return {
+    mealTypes: parseJsonArray(dish.mealTypes),
     id: dish.id,
     externalId: dish.externalId,
     title: dish.title,
@@ -1160,8 +1167,19 @@ async function saveSpoonacularSuggestions(prisma, recipes) {
     await prisma.$transaction(
       async (transaction) => {
         // Stored content is authoritative, including machine and manual translations.
-        if (await transaction.dish.findUnique({ where: { id: dishId }, select: { id: true } }))
+        const stored = await transaction.dish.findUnique({
+          where: { id: dishId },
+          select: { id: true, mealTypes: true },
+        });
+        if (stored) {
+          if (stored.mealTypes === '[]' && recipe.mealTypes?.length) {
+            await transaction.dish.updateMany({
+              where: { id: dishId, mealTypes: '[]', translationStatus: { not: 'manual' } },
+              data: { mealTypes: JSON.stringify(recipe.mealTypes) },
+            });
+          }
           return;
+        }
         const description = recipe.description || 'Рецепт из общей базы.';
         const instructions = JSON.stringify(recipe.instructions ?? []);
         await transaction.dish.create({
@@ -1175,6 +1193,7 @@ async function saveSpoonacularSuggestions(prisma, recipes) {
             instructions,
             originalInstructions: instructions,
             detailsFetched: Array.isArray(recipe.instructions),
+            mealTypes: JSON.stringify(recipe.mealTypes ?? []),
             imageUrl: recipe.image,
             source: recipe.source === 'spoonacular-catalog' ? recipe.source : 'spoonacular',
             externalId,
@@ -1266,6 +1285,7 @@ async function matchedDishSuggestions(
         d.subtitle AS dishSubtitle,
         d.description AS dishDescription,
         d.instructions AS dishInstructions,
+        d."mealTypes" AS dishMealTypes,
         d."imageUrl" AS dishImageUrl,
         di.quantity AS quantity,
         di.unit AS unit,
@@ -1305,6 +1325,7 @@ async function matchedDishSuggestions(
         subtitle: row.dishSubtitle,
         description: row.dishDescription,
         instructions: row.dishInstructions,
+        mealTypes: row.dishMealTypes,
         imageUrl: row.dishImageUrl,
       },
       ingredients: [],
@@ -1369,6 +1390,10 @@ async function saveUserRecipe(prisma, user, input, id) {
     const data = {
       householdId: user.householdId,
       title: input.title,
+      mealTypes:
+        input.mealTypes === undefined
+          ? (existing?.mealTypes ?? '[]')
+          : JSON.stringify(input.mealTypes),
       subtitle:
         input.preparationMinutes === undefined && existing
           ? existing.subtitle
@@ -2862,6 +2887,9 @@ export function createApiServer(prisma, logger = console) {
               title: input.title,
               description: input.description,
               instructions: JSON.stringify(input.instructions),
+              ...(input.mealTypes === undefined
+                ? {}
+                : { mealTypes: JSON.stringify(input.mealTypes) }),
               originalTitle: dish.originalTitle ?? dish.title,
               originalDescription: dish.originalDescription ?? dish.description,
               originalInstructions: dish.originalInstructions ?? dish.instructions,

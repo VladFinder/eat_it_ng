@@ -123,6 +123,20 @@ using only available ingredients or allowing up to 1, 2, or 3 missing ingredient
 with optional favorites or household filters. The animated die respects reduced motion.
 Ingredient matching uses `GET /api/recipes/matches` without external recipe API calls;
 editing uses `PATCH /api/dishes/:id` and preserves recipe IDs and meal plan references.
+
+The picker also filters by breakfast, lunch, dinner, dessert, soup, salad, side dish,
+snack, bread, drink, or sauce. Spoonacular `dishTypes` are mapped to these categories
+and persisted in `Dish.mealTypes`; a main course belongs to both lunch and dinner.
+Recipes can have several categories. The **Докупить всё** option removes the missing
+ingredient limit and works with an empty fridge while preserving category/source filters.
+Recipes with unknown ingredients remain excluded from the picker.
+
+Migration `20261012090000_recipe_meal_types` adds this metadata without fetching providers.
+Older imported recipes with no category stay available under **Любое блюдо**. Their categories
+can be set in the admin recipe editor or filled when a later ordinary import returns that
+recipe with metadata; manual edits are preserved. Own recipes have the same category controls.
+The four built-in recipes are categorized during migration/seeding.
+
 Deploy the updated API together with the web/Android client. Before starting the updated API,
 run `npm run db:generate` and `npm run db:migrate`. Migration
 `20261011153000_persistent_recipe_translations` adds translation provenance, originals, and

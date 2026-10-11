@@ -1,3 +1,4 @@
+import { recipeMealTypes } from './recipe-types.mjs';
 import { z } from 'zod';
 
 export const units = ['шт.', 'г', 'кг', 'мг', 'мл', 'л', 'упак.', 'бан.', 'бут.'];
@@ -161,7 +162,13 @@ export const feedbackCreateSchema = z.object({
   message: supportBody,
 });
 
+const mealTypes = z
+  .array(z.enum(recipeMealTypes))
+  .max(11)
+  .transform((types) => [...new Set(types)]);
+
 export const dishCreateSchema = z.object({
+  mealTypes: mealTypes.optional(),
   title: name,
   description: z.string().trim().max(600).optional(),
   imageUrl: z
@@ -203,6 +210,7 @@ export const recipeCatalogQuerySchema = z
 
 export const adminRecipeTranslationSchema = z
   .object({
+    mealTypes: mealTypes.optional(),
     title: z
       .string()
       .trim()

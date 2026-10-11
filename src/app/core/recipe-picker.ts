@@ -1,10 +1,13 @@
-export type RecipePickMode = 'available' | 'almost';
+import { RecipeMealType } from './recipe-meal-types';
+
+export type RecipePickMode = 'available' | 'almost' | 'any';
 export type RecipePickSource = 'all' | 'likes' | 'mine';
 
 interface RecipeCandidate {
   id: string;
   mine: boolean;
   liked: boolean;
+  mealTypes?: RecipeMealType[];
   usedIngredients?: string[];
   missedIngredients?: string[];
 }
@@ -14,6 +17,7 @@ export function eligibleRecipes<T extends RecipeCandidate>(
   mode: RecipePickMode,
   source: RecipePickSource,
   maximumMissing: number,
+  mealType: RecipeMealType | 'all' = 'all',
 ): T[] {
   return recipes.filter((recipe) => {
     const missing = recipe.missedIngredients?.length ?? 0;
@@ -22,7 +26,8 @@ export function eligibleRecipes<T extends RecipeCandidate>(
       total > 0 &&
       (source !== 'mine' || recipe.mine) &&
       (source !== 'likes' || recipe.liked) &&
-      (mode === 'available' ? missing === 0 : missing <= maximumMissing)
+      (mealType === 'all' || recipe.mealTypes?.includes(mealType) === true) &&
+      (mode === 'any' || (mode === 'available' ? missing === 0 : missing <= maximumMissing))
     );
   });
 }

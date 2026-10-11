@@ -3385,6 +3385,77 @@ body:has(.notification-backdrop, .onboarding-layer) {
   font-weight: 700;
 }
 
+.picker-buy-all {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+
+  &.active {
+    border-color: var(--primary);
+    background: var(--primary-soft);
+    box-shadow: inset 0 0 0 1px var(--primary);
+  }
+  small {
+    display: block;
+    margin-top: 4px;
+    color: var(--muted);
+  }
+}
+
+.picker-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+.recipe-meal-types {
+  min-width: 0;
+  margin: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  legend {
+    font-weight: 700;
+  }
+  legend small {
+    display: block;
+    font-weight: 400;
+    color: var(--muted);
+  }
+}
+.meal-type-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-height: 44px;
+    padding: 6px 10px;
+    border-radius: 12px;
+    background: var(--surface);
+    font-size: 13px;
+    &.selected {
+      background: var(--primary-soft);
+      color: var(--primary);
+    }
+    input {
+      width: 18px;
+      height: 18px;
+      min-height: 0;
+      margin: 0;
+      accent-color: var(--primary);
+    }
+  }
+}
+
 .picker-select select {
   width: 100%;
   min-height: 44px;

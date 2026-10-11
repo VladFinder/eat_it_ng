@@ -81,6 +81,7 @@ async function seedLocalRecipeCatalog(prismaClient) {
   const dishes = [
     {
       id: 'catalog-dish-omelet-cheese',
+      mealTypes: '["breakfast"]',
       title: 'Омлет с сыром',
       subtitle: '15 минут',
       description: 'Быстрый завтрак из базовых продуктов.',
@@ -98,6 +99,7 @@ async function seedLocalRecipeCatalog(prismaClient) {
     },
     {
       id: 'catalog-dish-chicken-rice',
+      mealTypes: '["lunch","dinner"]',
       title: 'Рис с курицей',
       subtitle: '40 минут',
       description: 'Сытный ужин, который легко собрать из запасов и пары покупок.',
@@ -116,6 +118,7 @@ async function seedLocalRecipeCatalog(prismaClient) {
     },
     {
       id: 'catalog-dish-vegetable-pasta',
+      mealTypes: '["lunch","dinner"]',
       title: 'Паста с овощами',
       subtitle: '25 минут',
       description: 'Простой ужин, где овощи можно заменить тем, что уже есть дома.',
@@ -134,6 +137,7 @@ async function seedLocalRecipeCatalog(prismaClient) {
     },
     {
       id: 'catalog-dish-cottage-cheese-pancakes',
+      mealTypes: '["breakfast","dessert"]',
       title: 'Сырники',
       subtitle: '25 минут',
       description: 'Завтрак или быстрый десерт из творога.',
@@ -154,14 +158,15 @@ async function seedLocalRecipeCatalog(prismaClient) {
 
   for (const dish of dishes) {
     await prismaClient.$executeRawUnsafe(
-      `INSERT INTO "Dish" ("id", "title", "subtitle", "description", "instructions", "imageUrl", "source", "updatedAt")
-       VALUES (?, ?, ?, ?, ?, ?, 'catalog', ?)
+      `INSERT INTO "Dish" ("id", "title", "subtitle", "description", "instructions", "imageUrl", "mealTypes", "source", "updatedAt")
+       VALUES (?, ?, ?, ?, ?, ?, ?, 'catalog', ?)
        ON CONFLICT("id") DO UPDATE SET
          "title" = excluded."title",
          "subtitle" = excluded."subtitle",
          "description" = excluded."description",
          "instructions" = excluded."instructions",
          "imageUrl" = excluded."imageUrl",
+         "mealTypes" = CASE WHEN "Dish"."mealTypes" = '[]' THEN excluded."mealTypes" ELSE "Dish"."mealTypes" END,
          "source" = excluded."source",
          "updatedAt" = excluded."updatedAt"
        WHERE "Dish"."translationStatus" != 'manual'`,
@@ -171,6 +176,7 @@ async function seedLocalRecipeCatalog(prismaClient) {
       dish.description,
       dish.instructions,
       dish.imageUrl,
+      dish.mealTypes,
       nowIso(),
     );
     for (const ingredient of dish.ingredients) {
@@ -395,6 +401,7 @@ export async function ensureDatabaseSchema(prismaClient = prisma) {
   }
   await ensureColumn(prismaClient, 'Dish', 'translationStatus', "TEXT NOT NULL DEFAULT 'original'");
   await ensureColumn(prismaClient, 'Dish', 'detailsFetched', 'BOOLEAN NOT NULL DEFAULT false');
+  await ensureColumn(prismaClient, 'Dish', 'mealTypes', "TEXT NOT NULL DEFAULT '[]'");
   await ensureColumn(prismaClient, 'Product', 'originalName', 'TEXT');
   await ensureColumn(
     prismaClient,

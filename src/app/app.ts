@@ -1,3 +1,4 @@
+import { RECIPE_MEAL_TYPES, RecipeMealType } from './core/recipe-meal-types';
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
@@ -76,6 +77,7 @@ interface OnboardingStep {
 }
 
 interface Recipe {
+  mealTypes?: RecipeMealType[];
   id: string;
   title: string;
   time: string;
@@ -153,7 +155,7 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
     tab: 'pick',
     label: 'Шаг 3 из 6',
     title: 'Бросьте кубик — выберите, что приготовить',
-    body: 'В разделе «Подобрать» выбирайте рецепты из того, что есть дома, или разрешите докупить пару ингредиентов. Бросьте кубик — и получите случайный подходящий рецепт.',
+    body: 'Выберите, что хотите приготовить: завтрак, обед, ужин или десерт. Используйте запасы или включите «Докупить всё» — даже если холодильник пуст. Бросьте кубик и получите подходящий рецепт.',
     action: 'Показать рецепты',
   },
   {
@@ -240,6 +242,8 @@ export class App implements OnDestroy, OnInit {
   private recipeSearchTimer: number | null = null;
 
   protected readonly pickMode = signal<RecipePickMode>('available');
+  protected readonly mealTypeOptions = RECIPE_MEAL_TYPES;
+  protected readonly pickMealType = signal<RecipeMealType | 'all'>('all');
   protected readonly pickSource = signal<RecipePickSource>('all');
   protected readonly maximumMissing = signal(2);
   protected readonly randomBusy = signal(false);
@@ -253,12 +257,19 @@ export class App implements OnDestroy, OnInit {
     () => this.recipes().find((recipe) => recipe.id === this.randomRecipeId()) ?? null,
   );
   protected readonly pickCandidates = computed(() =>
-    eligibleRecipes(this.recipes(), this.pickMode(), this.pickSource(), this.maximumMissing()),
+    eligibleRecipes(
+      this.recipes(),
+      this.pickMode(),
+      this.pickSource(),
+      this.maximumMissing(),
+      this.pickMealType(),
+    ),
   );
   protected readonly recipeEditorOpen = signal(false);
   protected readonly recipeEditorId = signal<string | null>(null);
   protected readonly recipeEditorError = signal('');
   protected readonly recipeForm = {
+    mealTypes: [] as RecipeMealType[],
     title: '',
     description: '',
     imageUrl: '',
@@ -394,6 +405,7 @@ export class App implements OnDestroy, OnInit {
   protected readonly devTranslationSaving = signal(false);
   protected readonly devTranslationError = signal('');
   protected readonly devTranslationForm = {
+    mealTypes: [] as RecipeMealType[],
     title: '',
     description: '',
     instructions: '',
@@ -576,7 +588,7 @@ export class App implements OnDestroy, OnInit {
       return 'Общий список для дома';
     }
     if (this.activeTab() === 'pick') {
-      return 'Бросьте кубик — найдите идею для ужина';
+      return 'Бросьте кубик — найдите, что приготовить';
     }
     if (this.activeTab() === 'recipes') {
       return 'Сохраняйте любимое и создавайте свое';
@@ -1219,6 +1231,10 @@ export class App implements OnDestroy, OnInit {
     this.randomError.set('');
   }
 
+  protected toggleMealType(types: RecipeMealType[], type: RecipeMealType): RecipeMealType[] {
+    return types.includes(type) ? types.filter((item) => item !== type) : [...types, type];
+  }
+
   protected async randomizeRecipe(): Promise<void> {
     if (this.randomBusy()) return;
     this.closeRandomResult();
@@ -1302,6 +1318,7 @@ export class App implements OnDestroy, OnInit {
     this.recipeEditorId.set(recipe?.id ?? null);
     this.recipeEditorError.set('');
     Object.assign(this.recipeForm, {
+      mealTypes: [...(recipe?.mealTypes ?? [])],
       title: recipe?.title ?? '',
       description: recipe?.description ?? '',
       imageUrl: recipe?.image ?? '',
@@ -1355,6 +1372,7 @@ export class App implements OnDestroy, OnInit {
     const householdId = this.household()?.id;
     const input = {
       title: this.recipeForm.title.trim(),
+      mealTypes: this.recipeForm.mealTypes,
       description: this.recipeForm.description.trim(),
       imageUrl: this.recipeForm.imageUrl.trim() || null,
       ingredients,
@@ -1801,6 +1819,7 @@ export class App implements OnDestroy, OnInit {
   private toRecipe(recipe: RecipeSuggestion, saved?: Recipe, mine = false): Recipe {
     const isCatalogFallback = recipe.source === 'spoonacular-catalog';
     return {
+      mealTypes: recipe.mealTypes ?? [],
       id: recipe.id,
       title: recipe.title,
       time: recipe.subtitle ?? 'Рецепт из базы',
@@ -2510,6 +2529,7 @@ export class App implements OnDestroy, OnInit {
     this.devTranslationError.set('');
     this.scrollToTranslationEditor();
     Object.assign(this.devTranslationForm, {
+      mealTypes: [...(recipe.mealTypes ?? [])],
       title: recipe.title,
       description: recipe.description,
       instructions: recipe.instructions.join('\n'),
@@ -2544,6 +2564,7 @@ export class App implements OnDestroy, OnInit {
         const result = await firstValueFrom(
           this.api.saveDevRecipeTranslation(recipe.id, {
             title: this.devTranslationForm.title.trim(),
+            mealTypes: this.devTranslationForm.mealTypes,
             description: this.devTranslationForm.description.trim(),
             instructions: this.devTranslationForm.instructions
               .split('\n')

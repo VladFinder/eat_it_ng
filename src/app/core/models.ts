@@ -1,3 +1,4 @@
+import { RecipeMealType } from './recipe-meal-types';
 export type Unit =
   | 'шт.'
   | 'шт'
@@ -45,6 +46,7 @@ export interface AppState {
 }
 
 export interface RecipeSuggestion {
+  mealTypes?: RecipeMealType[];
   id: string;
   title: string;
   image: string | null;
@@ -72,6 +74,7 @@ export interface RecipeCatalogPage {
 }
 
 export interface RecipeInput {
+  mealTypes?: RecipeMealType[];
   title: string;
   ingredients: string[];
   instructions: string[];
@@ -276,6 +279,7 @@ export interface DevSummary {
 }
 
 export interface DevRecipe {
+  mealTypes?: RecipeMealType[];
   id: string;
   externalId: string | null;
   title: string;
@@ -304,6 +308,7 @@ export interface DevProduct {
   updatedAt: string;
 }
 export interface RecipeTranslationInput {
+  mealTypes?: RecipeMealType[];
   title: string;
   description: string;
   instructions: string[];

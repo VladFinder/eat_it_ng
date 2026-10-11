@@ -61,6 +61,7 @@ model Dish {
   originalInstructions String?
   translationStatus String       @default("original")
   detailsFetched Boolean         @default(false)
+  mealTypes    String            @default("[]")
   subtitle     String?
   description  String?
   instructions String?

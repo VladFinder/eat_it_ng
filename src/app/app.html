@@ -412,6 +412,23 @@
               ></textarea
               ><small>До 30 шагов приготовления.</small></label
             >
+            <fieldset class="recipe-meal-types">
+              <legend>Тип блюда <small>Можно выбрать несколько</small></legend>
+              <div class="meal-type-options">
+                @for (type of mealTypeOptions; track type.id) {
+                  <label [class.selected]="recipeForm.mealTypes.includes(type.id)">
+                    <input
+                      type="checkbox"
+                      [checked]="recipeForm.mealTypes.includes(type.id)"
+                      (change)="
+                        recipeForm.mealTypes = toggleMealType(recipeForm.mealTypes, type.id)
+                      "
+                    />
+                    {{ type.label }}
+                  </label>
+                }
+              </div>
+            </fieldset>
             <label
               >Время, минут <small>Необязательно</small
               ><input
@@ -1266,6 +1283,28 @@
                             rows="7"
                           ></textarea>
                         </label>
+                        <fieldset class="recipe-meal-types">
+                          <legend>Тип блюда <small>Можно выбрать несколько</small></legend>
+                          <div class="meal-type-options">
+                            @for (type of mealTypeOptions; track type.id) {
+                              <label
+                                [class.selected]="devTranslationForm.mealTypes.includes(type.id)"
+                              >
+                                <input
+                                  type="checkbox"
+                                  [checked]="devTranslationForm.mealTypes.includes(type.id)"
+                                  (change)="
+                                    devTranslationForm.mealTypes = toggleMealType(
+                                      devTranslationForm.mealTypes,
+                                      type.id
+                                    )
+                                  "
+                                />
+                                {{ type.label }}
+                              </label>
+                            }
+                          </div>
+                        </fieldset>
                         <p>
                           После сохранения название, описание и шаги будут отмечены как ручной
                           перевод.
@@ -2116,6 +2155,19 @@
         </div>
         <fieldset class="picker-settings panel" [disabled]="randomBusy()">
           <legend class="visually-hidden">Настройки подбора</legend>
+          <label class="picker-select"
+            >Что готовим
+            <select
+              name="pick-meal-type"
+              [ngModel]="pickMealType()"
+              (ngModelChange)="pickMealType.set($event); changePickSettings()"
+            >
+              <option value="all">Любое блюдо</option>
+              @for (type of mealTypeOptions; track type.id) {
+                <option [value]="type.id">{{ type.label }}</option>
+              }
+            </select>
+          </label>
           <span class="picker-label">Ингредиенты</span>
           <div class="picker-options">
             <button
@@ -2137,6 +2189,19 @@
               ><small>Можно сходить за парой продуктов</small>
             </button>
           </div>
+          <button
+            class="picker-buy-all"
+            type="button"
+            [class.active]="pickMode() === 'any'"
+            [attr.aria-pressed]="pickMode() === 'any'"
+            (click)="pickMode.set('any'); changePickSettings()"
+          >
+            <span aria-hidden="true">🛒</span
+            ><span
+              ><strong>Докупить всё</strong
+              ><small>Подойдёт даже с пустым холодильником</small></span
+            >
+          </button>
           @if (pickMode() === 'almost') {
             <label class="picker-select"
               >Докупить не больше
@@ -2163,6 +2228,12 @@
               <option value="mine">Мои рецепты</option>
             </select>
           </label>
+          <p class="picker-hint">
+            Подходит рецептов: {{ pickCandidates().length }}.
+            @if (pickMealType() !== 'all') {
+              Рецепты без указанного типа не участвуют в подборе.
+            }
+          </p>
         </fieldset>
         @if (randomResultOpen() && randomRecipe(); as recipe) {
           <dialog

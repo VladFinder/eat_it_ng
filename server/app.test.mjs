@@ -1,3 +1,4 @@
+import { spoonacularMealTypes } from './recipe-types.mjs';
 import assert from 'node:assert/strict';
 import { mkdirSync, rmSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -308,6 +309,16 @@ before(async () => {
   for (const sql of translationMigration
     .split(';')
     .map((statement) => statement.trim())
+    .filter(Boolean)) {
+    await prisma.$executeRawUnsafe(sql);
+  }
+  const mealTypeMigration = readFileSync(
+    new URL('../prisma/migrations/20261012090000_recipe_meal_types/migration.sql', import.meta.url),
+    'utf8',
+  );
+  for (const sql of mealTypeMigration
+    .split(';')
+    .map((part) => part.trim())
     .filter(Boolean)) {
     await prisma.$executeRawUnsafe(sql);
   }
@@ -1106,6 +1117,7 @@ test('recipe catalog loads Spoonacular recipes with images', async () => {
       externalId: '715538',
       subtitle: '35 мин.',
       description: 'A complete potato and tomato bake.',
+      mealTypes: [],
       instructions: ['Bake until golden.'],
       ingredients: ['cheese', 'potato', 'tomato'],
       preparationMinutes: 35,
@@ -2383,6 +2395,7 @@ test('recipe pages and Russian content survive API restart; manual recipe and pr
           {
             id: 880001,
             title: 'Simple quinoa',
+            dishTypes: ['main course', 'lunch', 'dinner'],
             summary: 'Quick lunch.',
             extendedIngredients: [{ name: 'quinoa' }],
             analyzedInstructions: [{ steps: [{ step: 'Boil quinoa.' }] }],
@@ -2406,6 +2419,7 @@ test('recipe pages and Russian content survive API restart; manual recipe and pr
     });
     assert.equal(dish.title, 'Простая киноа');
     assert.equal(dish.originalTitle, 'Simple quinoa');
+    assert.deepEqual(JSON.parse(dish.mealTypes), ['lunch', 'dinner']);
     assert.equal(dish.translationStatus, 'machine');
     assert.deepEqual(JSON.parse(dish.instructions), ['Отварите киноа.']);
     const product = dish.ingredients[0].product;
@@ -2444,6 +2458,7 @@ test('recipe pages and Russian content survive API restart; manual recipe and pr
       headers,
       body: JSON.stringify({
         title: 'Киноа по-домашнему',
+        mealTypes: ['breakfast'],
         description: 'Проверенный рецепт.',
         instructions: ['Промойте и отварите крупу.'],
       }),
@@ -2477,6 +2492,7 @@ test('recipe pages and Russian content survive API restart; manual recipe and pr
     assert.equal(read.status, 200);
     const recipe = (await read.json()).recipes[0];
     assert.equal(recipe.title, 'Киноа по-домашнему');
+    assert.deepEqual(recipe.mealTypes, ['breakfast']);
     assert.deepEqual(recipe.instructions, ['Промойте и отварите крупу.']);
     assert.deepEqual(recipe.ingredients, ['Крупа киноа']);
     const detail = await request(`/api/recipes/${dish.id}`, { headers });
@@ -2494,6 +2510,7 @@ test('recipe pages and Russian content survive API restart; manual recipe and pr
     );
     const cachedAgain = await request(url, { headers });
     assert.equal(cachedAgain.status, 200);
+    assert.deepEqual((await cachedAgain.json()).recipes[0].mealTypes, ['breakfast']);
     const localSearch = await request(
       '/api/recipes/catalog?query=' + encodeURIComponent('Киноа по-домашнему'),
       { headers },
@@ -2664,4 +2681,73 @@ test('saved Russian pages and ingredient matching do not wait for unrelated Yand
     await prisma.providerRecipePage.delete({ where: { id: pageId } });
     await prisma.dish.deleteMany({ where: { id: { in: [ready.id, waiting.id] } } });
   }
+});
+
+test('Spoonacular meal types map to supported categories without guessing unknown recipes', () => {
+  assert.deepEqual(spoonacularMealTypes(['main course', 'main dish', 'lunch', 'dinner']), [
+    'lunch',
+    'dinner',
+  ]);
+  assert.deepEqual(spoonacularMealTypes([' Breakfast ', 'brunch', 'dessert']), [
+    'breakfast',
+    'dessert',
+  ]);
+  assert.deepEqual(
+    spoonacularMealTypes([
+      'soup',
+      'salad',
+      'side dish',
+      'appetizer',
+      'snack',
+      'bread',
+      'beverage',
+      'drink',
+      'sauce',
+      'marinade',
+    ]),
+    ['soup', 'salad', 'side_dish', 'snack', 'bread', 'drink', 'sauce'],
+  );
+  assert.deepEqual(spoonacularMealTypes(['unknown', null, {}, '__proto__']), []);
+  assert.deepEqual(spoonacularMealTypes(undefined), []);
+});
+
+test('household recipe categories survive editing and are available to the picker with an empty fridge', async () => {
+  const { headers } = await recipeAccount('meal-types-household@example.com');
+  const input = {
+    title: 'Тестовый десерт',
+    ingredients: ['Молоко', 'Какао', 'Мука', 'Сахар'],
+    instructions: ['Смешайте.'],
+    mealTypes: ['breakfast', 'dessert'],
+  };
+  const created = await request('/api/dishes', {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(input),
+  });
+  assert.equal(created.status, 201);
+  const recipe = (await created.json()).recipes.find((dish) => dish.title === input.title);
+  assert.deepEqual(recipe.mealTypes, ['breakfast', 'dessert']);
+  const matches = (await (await request('/api/recipes/matches', { headers })).json()).recipes;
+  assert.deepEqual(matches.find((dish) => dish.id === recipe.id).mealTypes, [
+    'breakfast',
+    'dessert',
+  ]);
+  assert.equal(matches.find((dish) => dish.id === recipe.id).missedIngredientCount, 4);
+  const { mealTypes, ...legacyInput } = input;
+  const updated = await request(`/api/dishes/${recipe.id}`, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify(legacyInput),
+  });
+  assert.equal(updated.status, 200);
+  assert.deepEqual(
+    (await updated.json()).recipes.find((dish) => dish.id === recipe.id).mealTypes,
+    mealTypes,
+  );
+  const invalid = await request(`/api/dishes/${recipe.id}`, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify({ ...input, mealTypes: ['invalid'] }),
+  });
+  assert.equal(invalid.status, 400);
 });

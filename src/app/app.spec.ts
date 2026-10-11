@@ -140,6 +140,7 @@ describe('App', () => {
       title: 'Ручное название',
       description: '',
       instructions: ['Первый шаг', 'Второй шаг'],
+      mealTypes: [],
     });
     expect(app.devRecipes()[0].translationStatus).toBe('manual');
     expect(app.devTranslationRecipe()).toBeNull();
