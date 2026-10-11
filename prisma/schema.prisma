@@ -43,6 +43,8 @@ model Product {
   id             String           @id @default(cuid())
   name           String
   normalizedName String           @unique
+  originalName   String?
+  translationStatus String        @default("original")
   aliases        String?
   createdAt      DateTime         @default(now())
   updatedAt      DateTime         @updatedAt
@@ -54,6 +56,11 @@ model Dish {
   householdId  String?
   externalId   String?
   title        String
+  originalTitle String?
+  originalDescription String?
+  originalInstructions String?
+  translationStatus String       @default("original")
+  detailsFetched Boolean         @default(false)
   subtitle     String?
   description  String?
   instructions String?
@@ -273,4 +280,12 @@ model Session {
   @@index([userId])
   @@index([expiresAt])
   @@index([lastSeenAt])
+}
+
+model ProviderRecipePage {
+  id         String   @id
+  recipeIds  String
+  nextOffset Int?
+  limited    Boolean  @default(false)
+  createdAt  DateTime @default(now())
 }

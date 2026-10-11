@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdirSync, rmSync } from 'node:fs';
+import { mkdirSync, rmSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { after, before, test } from 'node:test';
 import { PrismaClient } from '@prisma/client';
@@ -298,6 +298,19 @@ before(async () => {
     CREATE UNIQUE INDEX "DishIngredient_dishId_productId_key"
     ON "DishIngredient"("dishId", "productId")
   `);
+  const translationMigration = readFileSync(
+    new URL(
+      '../prisma/migrations/20261011153000_persistent_recipe_translations/migration.sql',
+      import.meta.url,
+    ),
+    'utf8',
+  );
+  for (const sql of translationMigration
+    .split(';')
+    .map((statement) => statement.trim())
+    .filter(Boolean)) {
+    await prisma.$executeRawUnsafe(sql);
+  }
   server = createApiServer(prisma, { error() {} });
   await new Promise((resolveListen) => server.listen(0, '127.0.0.1', resolveListen));
   const address = server.address();
@@ -742,6 +755,7 @@ test('recipe suggestions calculate available and missing ingredients from local 
 test('recipe suggestions include local dishes when fridge is empty', async () => {
   await prisma.dishIngredient.deleteMany();
   await prisma.dish.deleteMany();
+  await prisma.providerRecipePage.deleteMany();
   await prisma.product.deleteMany();
   await prisma.product.create({
     data: {
@@ -780,6 +794,7 @@ test('recipe suggestions include local dishes when fridge is empty', async () =>
 test('household dishes can be created and matched against fridge products', async () => {
   await prisma.dishIngredient.deleteMany();
   await prisma.dish.deleteMany();
+  await prisma.providerRecipePage.deleteMany();
   await prisma.product.deleteMany();
   await request('/api/fridge', {
     method: 'POST',
@@ -853,6 +868,7 @@ test('Plus household can plan a recipe for the week and remove it', async () => 
 test('recipes using expiring products are prioritized', async () => {
   await prisma.dishIngredient.deleteMany();
   await prisma.dish.deleteMany();
+  await prisma.providerRecipePage.deleteMany();
   await prisma.product.deleteMany();
   await prisma.fridgeItem.deleteMany();
 
@@ -900,6 +916,7 @@ test('recipes using expiring products are prioritized', async () => {
 test('missing recipe ingredients are added to shopping without duplicates', async () => {
   await prisma.dishIngredient.deleteMany();
   await prisma.dish.deleteMany();
+  await prisma.providerRecipePage.deleteMany();
   await prisma.product.deleteMany();
   await prisma.fridgeItem.deleteMany();
   await prisma.shoppingItem.deleteMany();
@@ -954,6 +971,7 @@ test('missing recipe ingredients are added to shopping without duplicates', asyn
 test('user recipes can be deleted without deleting catalog recipes', async () => {
   await prisma.dishIngredient.deleteMany();
   await prisma.dish.deleteMany();
+  await prisma.providerRecipePage.deleteMany();
   await prisma.product.deleteMany();
 
   const createResponse = await request('/api/dishes', {
@@ -992,6 +1010,7 @@ test('recipe catalog loads Spoonacular recipes with images', async () => {
   const previousFetch = globalThis.fetch;
   await prisma.dishIngredient.deleteMany();
   await prisma.dish.deleteMany();
+  await prisma.providerRecipePage.deleteMany();
   await prisma.product.deleteMany();
   await prisma.fridgeItem.deleteMany();
   process.env.SPOONACULAR_API_KEY = 'test-spoonacular-key';
@@ -1108,6 +1127,7 @@ test('recipe translations are localized once and then loaded from SQLite cache',
   await prisma.translationCache.deleteMany();
   await prisma.dishIngredient.deleteMany();
   await prisma.dish.deleteMany();
+  await prisma.providerRecipePage.deleteMany();
   await prisma.product.deleteMany();
   await prisma.fridgeItem.deleteMany();
   process.env.SPOONACULAR_API_KEY = 'test-spoonacular-key';
@@ -1187,6 +1207,7 @@ test('saved recipes retry translation, reuse the cache and preserve household te
   await prisma.translationCache.deleteMany();
   await prisma.dishIngredient.deleteMany();
   await prisma.dish.deleteMany();
+  await prisma.providerRecipePage.deleteMany();
   await prisma.product.deleteMany();
   const { headers } = await recipeAccount('saved-translations@example.com');
   const product = await prisma.product.create({
@@ -1288,6 +1309,7 @@ test('recipe catalog falls back to popular Spoonacular recipes for unknown names
   const previousFetch = globalThis.fetch;
   await prisma.dishIngredient.deleteMany();
   await prisma.dish.deleteMany();
+  await prisma.providerRecipePage.deleteMany();
   await prisma.product.deleteMany();
   await prisma.fridgeItem.deleteMany();
   process.env.SPOONACULAR_API_KEY = 'test-spoonacular-key';
@@ -2274,7 +2296,7 @@ test('local catalog paginates all saved recipes and searches Russian text beyond
     const first = await firstResponse.json();
     assert.equal(first.source, 'local');
     assert.equal(first.recipes.length, 20);
-    assert.ok(first.warning);
+    assert.equal(first.warning, undefined);
     assert.equal(first.nextOffset, 20);
     const last = await (
       await request(
@@ -2305,5 +2327,248 @@ test('local catalog paginates all saved recipes and searches Russian text beyond
   } finally {
     restoreEnv('SPOONACULAR_API_KEY', previousKey);
     await prisma.dish.deleteMany({ where: { id: { in: created.map((r) => r.id) } } });
+  }
+});
+
+test('recipe pages and Russian content survive API restart; manual recipe and product edits remain authoritative', async () => {
+  const previousFetch = globalThis.fetch;
+  const previousKey = process.env.SPOONACULAR_API_KEY;
+  const previousTranslate = process.env.YANDEX_TRANSLATE_API_KEY;
+  const previousAdmins = process.env.ADMIN_USER_IDS;
+  const { user, headers } = await recipeAccount('translation-editor@example.com');
+  process.env.SPOONACULAR_API_KEY = 'persistent-provider-key';
+  process.env.YANDEX_TRANSLATE_API_KEY = 'persistent-translation-key';
+  const counts = { provider: 0, translator: 0 };
+  const translationMap = new Map([
+    ['Simple quinoa', 'Простая киноа'],
+    ['Quick lunch.', 'Быстрый обед.'],
+    ['Boil quinoa.', 'Отварите киноа.'],
+    ['quinoa', 'киноа'],
+  ]);
+  let restarted;
+  globalThis.fetch = (url, options) => {
+    const parsed = new URL(url);
+    if (parsed.hostname === '127.0.0.1') return previousFetch(url, options);
+    if (parsed.hostname === 'translate.api.cloud.yandex.net') {
+      counts.translator++;
+      return Promise.resolve(
+        Response.json({
+          translations: JSON.parse(options.body).texts.map((text) => ({
+            text: translationMap.get(text) ?? text,
+          })),
+        }),
+      );
+    }
+    counts.provider++;
+    assert.equal(parsed.pathname, '/recipes/complexSearch');
+    return Promise.resolve(
+      Response.json({
+        totalResults: 1,
+        results: [
+          {
+            id: 880001,
+            title: 'Simple quinoa',
+            summary: 'Quick lunch.',
+            extendedIngredients: [{ name: 'quinoa' }],
+            analyzedInstructions: [{ steps: [{ step: 'Boil quinoa.' }] }],
+          },
+        ],
+      }),
+    );
+  };
+  try {
+    const url = '/api/recipes/catalog?query=persist-local-store';
+    const [first, concurrent] = await Promise.all([
+      request(url, { headers }),
+      request(url, { headers }),
+    ]);
+    assert.equal(first.status, 200);
+    assert.equal(concurrent.status, 200);
+    assert.deepEqual(counts, { provider: 1, translator: 1 });
+    const dish = await prisma.dish.findUnique({
+      where: { id: 'spoonacular-880001' },
+      include: { ingredients: { include: { product: true } } },
+    });
+    assert.equal(dish.title, 'Простая киноа');
+    assert.equal(dish.originalTitle, 'Simple quinoa');
+    assert.equal(dish.translationStatus, 'machine');
+    assert.deepEqual(JSON.parse(dish.instructions), ['Отварите киноа.']);
+    const product = dish.ingredients[0].product;
+    assert.equal(product.name, 'киноа');
+    assert.equal(product.translationStatus, 'machine');
+    assert.equal(product.originalName, 'quinoa');
+    assert.equal((await request('/api/dev/recipes', { headers })).status, 403);
+    assert.equal(
+      (
+        await request(`/api/dev/recipes/${dish.id}/translation`, {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify({ title: 'Ручное название', description: '', instructions: [] }),
+        })
+      ).status,
+      403,
+    );
+    assert.equal(
+      (
+        await request(`/api/dev/products/${product.id}/translation`, {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify({ name: 'Крупа киноа' }),
+        })
+      ).status,
+      403,
+    );
+    process.env.ADMIN_USER_IDS = user.id;
+    const adminList = await (
+      await request('/api/dev/recipes?query=' + encodeURIComponent('киноа'), { headers })
+    ).json();
+    assert.equal(adminList.recipes.find((r) => r.id === dish.id).savedInDatabase, true);
+    assert.equal(adminList.recipes.find((r) => r.id === dish.id).translationStatus, 'machine');
+    const manual = await request(`/api/dev/recipes/${dish.id}/translation`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({
+        title: 'Киноа по-домашнему',
+        description: 'Проверенный рецепт.',
+        instructions: ['Промойте и отварите крупу.'],
+      }),
+    });
+    assert.equal(manual.status, 200);
+    assert.equal((await manual.json()).recipe.translationStatus, 'manual');
+    const editedProduct = await request(`/api/dev/products/${product.id}/translation`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({ name: 'Крупа киноа' }),
+    });
+    assert.equal(editedProduct.status, 200);
+    assert.equal((await editedProduct.json()).product.translationStatus, 'manual');
+    assert.equal(
+      (
+        await request(`/api/dev/products/${product.id}/translation`, {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify({ name: 'english-only' }),
+        })
+      ).status,
+      400,
+    );
+    // Expiring the old six-hour window and loading a fresh module cannot cause a provider request.
+    await prisma.providerRecipePage.updateMany({ data: { createdAt: new Date('2020-01-01') } });
+    const freshModule = await import(`./app.mjs?persistent-test=${Date.now()}`);
+    restarted = freshModule.createApiServer(prisma, { error() {} });
+    await new Promise((resolve) => restarted.listen(0, '127.0.0.1', resolve));
+    const restartedBase = `http://127.0.0.1:${restarted.address().port}`;
+    const read = await previousFetch(restartedBase + url, { headers });
+    assert.equal(read.status, 200);
+    const recipe = (await read.json()).recipes[0];
+    assert.equal(recipe.title, 'Киноа по-домашнему');
+    assert.deepEqual(recipe.instructions, ['Промойте и отварите крупу.']);
+    assert.deepEqual(recipe.ingredients, ['Крупа киноа']);
+    const detail = await request(`/api/recipes/${dish.id}`, { headers });
+    assert.equal((await detail.json()).recipe.title, 'Киноа по-домашнему');
+    // A new provider search returning the same recipe cannot overwrite its manual translation.
+    await request('/api/recipes/catalog?query=another-provider-query', { headers });
+    assert.deepEqual(counts, { provider: 2, translator: 1 });
+    assert.equal(
+      (await prisma.dish.findUnique({ where: { id: dish.id } })).title,
+      'Киноа по-домашнему',
+    );
+    assert.equal(
+      (await prisma.product.findUnique({ where: { id: product.id } })).name,
+      'Крупа киноа',
+    );
+    const cachedAgain = await request(url, { headers });
+    assert.equal(cachedAgain.status, 200);
+    const localSearch = await request(
+      '/api/recipes/catalog?query=' + encodeURIComponent('Киноа по-домашнему'),
+      { headers },
+    );
+    assert.equal((await localSearch.json()).source, 'local');
+    assert.deepEqual(counts, { provider: 2, translator: 1 });
+  } finally {
+    if (restarted) await new Promise((resolve) => restarted.close(resolve));
+    globalThis.fetch = previousFetch;
+    restoreEnv('SPOONACULAR_API_KEY', previousKey);
+    restoreEnv('YANDEX_TRANSLATE_API_KEY', previousTranslate);
+    restoreEnv('ADMIN_USER_IDS', previousAdmins);
+  }
+});
+
+test('manual edits made during an automatic translation are not overwritten', async () => {
+  const { user, headers } = await recipeAccount('translation-race@example.com');
+  const previousTranslate = process.env.YANDEX_TRANSLATE_API_KEY;
+  const previousAdmins = process.env.ADMIN_USER_IDS;
+  const previousFetch = globalThis.fetch;
+  process.env.ADMIN_USER_IDS = user.id;
+  process.env.YANDEX_TRANSLATE_API_KEY = 'race-translation-key';
+  const product = await prisma.product.create({
+    data: {
+      name: 'Race ingredient',
+      originalName: 'Race ingredient',
+      normalizedName: 'race ingredient',
+    },
+  });
+  const dish = await prisma.dish.create({
+    data: {
+      title: 'Race recipe',
+      originalTitle: 'Race recipe',
+      source: 'spoonacular',
+      instructions: '[]',
+      detailsFetched: true,
+      ingredients: { create: { productId: product.id } },
+    },
+  });
+  let release;
+  let started;
+  const waiting = new Promise((resolve) => {
+    started = resolve;
+  });
+  globalThis.fetch = async (url, options) => {
+    if (new URL(url).origin === baseUrl) return previousFetch(url, options);
+    const body = JSON.parse(options.body);
+    started();
+    await new Promise((resolve) => {
+      release = resolve;
+    });
+    return Response.json({
+      translations: body.texts.map(() => ({ text: 'Автоматический перевод' })),
+    });
+  };
+  try {
+    const pending = request(`/api/recipes/${dish.id}`, { headers });
+    await waiting;
+    const recipeEdit = await request(`/api/dev/recipes/${dish.id}/translation`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({
+        title: 'Ручной рецепт',
+        description: '',
+        instructions: ['Ручной шаг.'],
+      }),
+    });
+    assert.equal(recipeEdit.status, 200);
+    const productEdit = await request(`/api/dev/products/${product.id}/translation`, {
+      method: 'PATCH',
+      headers,
+      body: JSON.stringify({ name: 'Ручной продукт' }),
+    });
+    assert.equal(productEdit.status, 200);
+    release();
+    const result = await (await pending).json();
+    assert.equal(result.recipe.title, 'Ручной рецепт');
+    assert.deepEqual(result.recipe.ingredients, ['Ручной продукт']);
+    assert.equal(
+      (await prisma.dish.findUnique({ where: { id: dish.id } })).translationStatus,
+      'manual',
+    );
+    assert.equal(
+      (await prisma.product.findUnique({ where: { id: product.id } })).translationStatus,
+      'manual',
+    );
+  } finally {
+    release?.();
+    globalThis.fetch = previousFetch;
+    restoreEnv('YANDEX_TRANSLATE_API_KEY', previousTranslate);
+    restoreEnv('ADMIN_USER_IDS', previousAdmins);
   }
 });

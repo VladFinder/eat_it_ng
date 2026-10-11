@@ -24,6 +24,8 @@ describe('App', () => {
     updateRecipe: ReturnType<typeof vi.fn>;
     getRecipes: ReturnType<typeof vi.fn>;
     getDishes: ReturnType<typeof vi.fn>;
+    saveDevRecipeTranslation: ReturnType<typeof vi.fn>;
+    saveDevProductTranslation: ReturnType<typeof vi.fn>;
   };
 
   beforeEach(async () => {
@@ -89,6 +91,8 @@ describe('App', () => {
       updateRecipe: vi.fn().mockReturnValue(of({ recipes: [] })),
       getRecipes: vi.fn().mockReturnValue(of({ recipes: [] })),
       getDishes: vi.fn().mockReturnValue(of({ recipes: [] })),
+      saveDevRecipeTranslation: vi.fn(),
+      saveDevProductTranslation: vi.fn(),
     };
 
     await TestBed.configureTestingModule({
@@ -100,6 +104,65 @@ describe('App', () => {
         },
       ],
     }).compileComponents();
+  });
+
+  it('saves manual recipe translations and updates the admin status without hiding failures', async () => {
+    const fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance as any;
+    const recipe = {
+      id: 'translation-test',
+      title: 'Машинное название',
+      description: '',
+      instructions: ['Машинный шаг'],
+      products: [],
+      translationStatus: 'machine',
+    };
+    app.devRecipes.set([recipe]);
+    app.editDevRecipeTranslation(recipe);
+    app.devTranslationForm.title = 'Ручное название';
+    app.devTranslationForm.instructions = 'Первый шаг\n\nВторой шаг';
+    apiService.saveDevRecipeTranslation.mockReturnValueOnce(throwError(() => new Error('offline')));
+    await app.saveDevTranslation();
+    expect(app.devTranslationRecipe()).not.toBeNull();
+    expect(app.devTranslationError()).toBeTruthy();
+    apiService.saveDevRecipeTranslation.mockReturnValueOnce(
+      of({
+        recipe: {
+          ...recipe,
+          title: 'Ручное название',
+          instructions: ['Первый шаг', 'Второй шаг'],
+          translationStatus: 'manual',
+        },
+      }),
+    );
+    await app.saveDevTranslation();
+    expect(apiService.saveDevRecipeTranslation).toHaveBeenLastCalledWith('translation-test', {
+      title: 'Ручное название',
+      description: '',
+      instructions: ['Первый шаг', 'Второй шаг'],
+    });
+    expect(app.devRecipes()[0].translationStatus).toBe('manual');
+    expect(app.devTranslationRecipe()).toBeNull();
+    fixture.destroy();
+  });
+
+  it('updates a manually translated product everywhere in the admin recipe list', async () => {
+    const fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance as any;
+    const product = { id: 'product', name: 'rice', translationStatus: 'original' };
+    app.devProducts.set([product]);
+    app.devRecipes.set([{ id: 'recipe', products: [product], ingredients: ['rice'] }]);
+    app.editDevProductTranslation(product);
+    app.devTranslationForm.productName = 'Рис';
+    apiService.saveDevProductTranslation.mockReturnValueOnce(
+      of({ product: { ...product, name: 'Рис', translationStatus: 'manual' } }),
+    );
+    await app.saveDevTranslation();
+    expect(apiService.saveDevProductTranslation).toHaveBeenCalledWith('product', 'Рис');
+    expect(app.devRecipes()[0].ingredients).toEqual(['Рис']);
+    expect(app.devProducts()[0].translationStatus).toBe('manual');
+    expect(app.devTranslationProduct()).toBeNull();
+    fixture.destroy();
   });
 
   it('does not grant frontend admin access from an unverified owner email', () => {

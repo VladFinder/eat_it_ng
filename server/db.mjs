@@ -63,7 +63,8 @@ async function upsertProduct(prismaClient, product) {
      ON CONFLICT("normalizedName") DO UPDATE SET
        "name" = excluded."name",
        "aliases" = excluded."aliases",
-       "updatedAt" = excluded."updatedAt"`,
+       "updatedAt" = excluded."updatedAt"
+     WHERE "Product"."translationStatus" != 'manual'`,
     product.name,
     normalizedName,
     JSON.stringify((product.aliases ?? []).map(normalizeProductName)),
@@ -162,7 +163,8 @@ async function seedLocalRecipeCatalog(prismaClient) {
          "instructions" = excluded."instructions",
          "imageUrl" = excluded."imageUrl",
          "source" = excluded."source",
-         "updatedAt" = excluded."updatedAt"`,
+         "updatedAt" = excluded."updatedAt"
+       WHERE "Dish"."translationStatus" != 'manual'`,
       dish.id,
       dish.title,
       dish.subtitle,
@@ -210,12 +212,7 @@ export async function ensureDatabaseSchema(prismaClient = prisma) {
   await ensureColumn(prismaClient, 'User', 'notifyShopping', 'BOOLEAN NOT NULL DEFAULT true');
   await ensureColumn(prismaClient, 'User', 'quietHoursStart', 'TEXT');
   await ensureColumn(prismaClient, 'User', 'quietHoursEnd', 'TEXT');
-  await ensureColumn(
-    prismaClient,
-    'User',
-    'timezone',
-    "TEXT NOT NULL DEFAULT 'Europe/Moscow'",
-  );
+  await ensureColumn(prismaClient, 'User', 'timezone', "TEXT NOT NULL DEFAULT 'Europe/Moscow'");
   await ensureColumn(prismaClient, 'FridgeItem', 'reminderDays', 'INTEGER NOT NULL DEFAULT 1');
   await ensureColumn(prismaClient, 'FridgeItem', 'category', "TEXT NOT NULL DEFAULT 'products'");
   await ensureColumn(prismaClient, 'ShoppingItem', 'category', "TEXT NOT NULL DEFAULT 'products'");
@@ -392,6 +389,26 @@ export async function ensureDatabaseSchema(prismaClient = prisma) {
   );
   await prismaClient.$executeRawUnsafe(
     'CREATE INDEX IF NOT EXISTS "MealPlanEntry_dishId_idx" ON "MealPlanEntry"("dishId")',
+  );
+  for (const column of ['originalTitle', 'originalDescription', 'originalInstructions']) {
+    await ensureColumn(prismaClient, 'Dish', column, 'TEXT');
+  }
+  await ensureColumn(prismaClient, 'Dish', 'translationStatus', "TEXT NOT NULL DEFAULT 'original'");
+  await ensureColumn(prismaClient, 'Dish', 'detailsFetched', 'BOOLEAN NOT NULL DEFAULT false');
+  await ensureColumn(prismaClient, 'Product', 'originalName', 'TEXT');
+  await ensureColumn(
+    prismaClient,
+    'Product',
+    'translationStatus',
+    "TEXT NOT NULL DEFAULT 'original'",
+  );
+  await ensureTable(
+    prismaClient,
+    'ProviderRecipePage',
+    `CREATE TABLE "ProviderRecipePage" (
+    "id" TEXT NOT NULL PRIMARY KEY, "recipeIds" TEXT NOT NULL, "nextOffset" INTEGER,
+    "limited" BOOLEAN NOT NULL DEFAULT false, "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+  )`,
   );
   await seedLocalRecipeCatalog(prismaClient);
 }

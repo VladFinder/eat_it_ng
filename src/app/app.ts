@@ -28,6 +28,8 @@ import {
   AuthUser,
   DevSummary,
   DevRecipe,
+  DevProduct,
+  TranslationStatus,
   DevUser,
   FeedbackItem,
   FridgeItem,
@@ -214,7 +216,7 @@ export class App implements OnDestroy, OnInit {
     { id: 'feedback', label: 'Фидбек', icon: '✦' },
     { id: 'events', label: 'Ошибки и события', icon: '!' },
     { id: 'infra', label: 'Инфраструктура', icon: '⌁' },
-    { id: 'recipes', label: 'API рецепты', icon: 'SP' },
+    { id: 'recipes', label: 'Рецепты и переводы', icon: 'SP' },
     { id: 'experiments', label: 'Эксперименты', icon: 'A/B' },
   ];
 
@@ -379,6 +381,25 @@ export class App implements OnDestroy, OnInit {
   protected readonly devTickets = signal<SupportTicket[]>([]);
   protected readonly devFeedback = signal<FeedbackItem[]>([]);
   protected readonly devRecipes = signal<DevRecipe[]>([]);
+  protected readonly devProducts = signal<DevProduct[]>([]);
+  protected readonly devCatalogKind = signal<'recipes' | 'products'>('recipes');
+  protected readonly devCatalogNext = signal<number | null>(null);
+  protected readonly devCatalogTotal = signal(0);
+  protected readonly devCatalogLoading = signal(false);
+  protected readonly devCatalogError = signal('');
+  protected devCatalogSearch = '';
+  private devCatalogRequest = 0;
+  protected readonly devTranslationRecipe = signal<DevRecipe | null>(null);
+  protected readonly devTranslationProduct = signal<DevProduct | null>(null);
+  protected readonly devTranslationSaving = signal(false);
+  protected readonly devTranslationError = signal('');
+  protected readonly devTranslationForm = {
+    title: '',
+    description: '',
+    instructions: '',
+    productName: '',
+  };
+
   protected readonly activeDevTicket = signal<SupportTicket | null>(null);
   protected readonly devMessages = signal<SupportMessage[]>([]);
   protected readonly devReply = signal('');
@@ -2415,11 +2436,131 @@ export class App implements OnDestroy, OnInit {
     }
   }
 
-  private async loadDevRecipes(): Promise<void> {
+  protected async loadDevRecipes(append = false): Promise<void> {
+    if (append && (this.devCatalogLoading() || this.devCatalogNext() === null)) return;
     const userId = this.currentUser()?.id;
-    const result = await firstValueFrom(this.api.getDevRecipes());
-    if (this.currentUser()?.id !== userId) return;
-    this.devRecipes.set(result.recipes);
+    const request = ++this.devCatalogRequest;
+    const kind = this.devCatalogKind();
+    const offset = append ? this.devCatalogNext()! : 0;
+    this.devCatalogLoading.set(true);
+    this.devCatalogError.set('');
+    try {
+      const result =
+        kind === 'recipes'
+          ? await firstValueFrom(this.api.getDevRecipes(this.devCatalogSearch, offset))
+          : await firstValueFrom(this.api.getDevProducts(this.devCatalogSearch, offset));
+      if (this.currentUser()?.id !== userId || request !== this.devCatalogRequest) return;
+      if ('recipes' in result)
+        this.devRecipes.update((items) =>
+          append ? [...items, ...result.recipes] : result.recipes,
+        );
+      else
+        this.devProducts.update((items) =>
+          append ? [...items, ...result.products] : result.products,
+        );
+      this.devCatalogNext.set(result.nextOffset ?? null);
+      this.devCatalogTotal.set(result.total ?? 0);
+    } catch (error) {
+      if (request === this.devCatalogRequest)
+        this.devCatalogError.set(this.errorMessage(error, 'Не удалось загрузить базу.'));
+    } finally {
+      if (request === this.devCatalogRequest) this.devCatalogLoading.set(false);
+    }
+  }
+
+  protected setDevCatalogKind(kind: 'recipes' | 'products'): void {
+    this.devCatalogKind.set(kind);
+    this.devCatalogSearch = '';
+    this.devCatalogNext.set(null);
+    void this.loadDevRecipes();
+  }
+
+  protected translationLabel(status: TranslationStatus, text: string): string {
+    if (status === 'manual') return 'Ручной перевод';
+    if (status === 'machine') return 'Машинный перевод';
+    return /[а-яё]/i.test(text) ? 'Оригинал на русском' : 'Ожидает перевода';
+  }
+
+  protected editDevRecipeTranslation(recipe: DevRecipe): void {
+    this.devTranslationRecipe.set(recipe);
+    this.devTranslationProduct.set(null);
+    this.devTranslationError.set('');
+    this.scrollToTranslationEditor();
+    Object.assign(this.devTranslationForm, {
+      title: recipe.title,
+      description: recipe.description,
+      instructions: recipe.instructions.join('\n'),
+    });
+  }
+
+  protected editDevProductTranslation(product: DevProduct): void {
+    this.devTranslationProduct.set(product);
+    this.devTranslationRecipe.set(null);
+    this.devTranslationError.set('');
+    this.devTranslationForm.productName = product.name;
+    this.scrollToTranslationEditor();
+  }
+
+  private scrollToTranslationEditor(): void {
+    afterNextRender(
+      () => document.getElementById('dev-translation-editor')?.scrollIntoView?.({ block: 'start' }),
+      { injector: this.injector },
+    );
+  }
+
+  protected async saveDevTranslation(): Promise<void> {
+    if (this.devTranslationSaving()) return;
+    const recipe = this.devTranslationRecipe();
+    const product = this.devTranslationProduct();
+    if (!recipe && !product) return;
+    const userId = this.currentUser()?.id;
+    this.devTranslationSaving.set(true);
+    this.devTranslationError.set('');
+    try {
+      if (recipe) {
+        const result = await firstValueFrom(
+          this.api.saveDevRecipeTranslation(recipe.id, {
+            title: this.devTranslationForm.title.trim(),
+            description: this.devTranslationForm.description.trim(),
+            instructions: this.devTranslationForm.instructions
+              .split('\n')
+              .map((step) => step.trim())
+              .filter(Boolean),
+          }),
+        );
+        if (this.currentUser()?.id !== userId) return;
+        this.devRecipes.update((items) =>
+          items.map((item) => (item.id === result.recipe.id ? result.recipe : item)),
+        );
+        this.devTranslationRecipe.set(null);
+      } else if (product) {
+        const result = await firstValueFrom(
+          this.api.saveDevProductTranslation(
+            product.id,
+            this.devTranslationForm.productName.trim(),
+          ),
+        );
+        if (this.currentUser()?.id !== userId) return;
+        this.devProducts.update((items) =>
+          items.map((item) => (item.id === result.product.id ? result.product : item)),
+        );
+        this.devRecipes.update((items) =>
+          items.map((item) => {
+            const products = item.products.map((entry) =>
+              entry.id === result.product.id ? result.product : entry,
+            );
+            return { ...item, products, ingredients: products.map((entry) => entry.name) };
+          }),
+        );
+        this.devTranslationProduct.set(null);
+      }
+      this.showToast('Ручной перевод сохранён в базе');
+    } catch (error) {
+      if (this.currentUser()?.id === userId)
+        this.devTranslationError.set(this.errorMessage(error, 'Не удалось сохранить перевод.'));
+    } finally {
+      this.devTranslationSaving.set(false);
+    }
   }
 
   protected recipeSourceLabel(source?: string): string {
@@ -2553,6 +2694,14 @@ export class App implements OnDestroy, OnInit {
     this.feedbackForm.message = '';
     this.devUsers.set([]);
     this.devRecipes.set([]);
+    this.devProducts.set([]);
+    this.devCatalogRequest++;
+    this.devCatalogNext.set(null);
+    this.devCatalogSearch = '';
+    this.devCatalogError.set('');
+    this.devTranslationRecipe.set(null);
+    this.devTranslationProduct.set(null);
+    this.devTranslationError.set('');
     this.recipeDishIdeas.set([]);
     this.userDishIdeas.set([]);
     this.mealPlan.set([]);

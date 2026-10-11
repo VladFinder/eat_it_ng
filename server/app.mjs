@@ -22,6 +22,9 @@ import {
 } from './oauth.mjs';
 import {
   recipeCatalogQuerySchema,
+  adminRecipeTranslationSchema,
+  adminProductTranslationSchema,
+  adminCatalogQuerySchema,
   consumeSchema,
   fridgeCreateSchema,
   fridgeUpdateSchema,
@@ -445,34 +448,31 @@ async function fetchRecipeInformationBulk(apiKey, recipes) {
   });
 }
 
-async function refreshDishDetails(prisma, dish, logger = console) {
-  if (!dish.externalId || !['spoonacular', 'spoonacular-catalog'].includes(dish.source)) {
+async function refreshDishDetails(prisma, dish) {
+  if (
+    dish.detailsFetched ||
+    dish.translationStatus === 'manual' ||
+    !dish.externalId ||
+    !['spoonacular', 'spoonacular-catalog'].includes(dish.source)
+  )
     return false;
-  }
   const apiKey = spoonacularApiKey();
   if (!apiKey) return false;
-
   const [updated] = await fetchRecipeInformationBulk(apiKey, [{ id: dish.externalId }]);
-  if (!updated) return false;
-  const sourceTexts = [updated.title, updated.description, ...(updated.instructions ?? [])];
-  let translations = new Map();
-  try {
-    translations = await translateTexts(prisma, sourceTexts);
-  } catch (error) {
-    // Keep the recipe usable in English if translation is temporarily unavailable.
-    logger.error('Recipe details translation failed', error);
-  }
-  const translate = (value) => translations.get(plainText(value)) ?? value;
-  const title = translate(updated.title) || dish.title;
-  const description = translate(updated.description) || dish.description;
-  const instructions = (updated.instructions ?? []).map(translate);
-  await prisma.dish.update({
-    where: { id: dish.id },
+  if (!updated?.title) return false;
+  const instructions = JSON.stringify(updated.instructions ?? []);
+  await prisma.dish.updateMany({
+    where: { id: dish.id, translationStatus: { not: 'manual' }, updatedAt: dish.updatedAt },
     data: {
-      title,
+      title: updated.title,
+      originalTitle: updated.title,
+      description: updated.description || dish.description,
+      originalDescription: updated.description || dish.description,
+      instructions,
+      originalInstructions: instructions,
+      translationStatus: 'original',
+      detailsFetched: true,
       subtitle: updated.subtitle || dish.subtitle,
-      description,
-      instructions: instructions.length ? JSON.stringify(instructions) : dish.instructions,
       imageUrl: updated.image || dish.imageUrl,
     },
   });
@@ -610,36 +610,97 @@ async function translateTexts(prisma, texts, sourceLanguage = 'en', targetLangua
   return translations;
 }
 
-async function localizeRecipeSuggestions(prisma, recipes, logger = console) {
-  const catalogRecipes = recipes.filter((recipe) => recipe.source !== 'user');
-  if (catalogRecipes.length === 0) return recipes;
-  const texts = catalogRecipes.flatMap((recipe) => [
-    recipe.title,
-    recipe.description,
-    ...(recipe.usedIngredients ?? []),
-    ...(recipe.missedIngredients ?? []),
-    ...(recipe.ingredients ?? []),
-    ...(recipe.instructions ?? []),
-  ]);
+function needsRussianTranslation(value) {
+  return /[a-z]/i.test(plainText(value)) && !/[а-яё]/i.test(plainText(value));
+}
+
+const catalogTranslationWork = new WeakMap();
+function ensureCatalogLocalized(prisma, ids = null, logger = console) {
+  const previous = catalogTranslationWork.get(prisma) ?? Promise.resolve();
+  const pending = previous
+    .catch(() => {})
+    .then(() => persistCatalogTranslations(prisma, ids, logger));
+  catalogTranslationWork.set(prisma, pending);
+  return pending.finally(() => {
+    if (catalogTranslationWork.get(prisma) === pending) catalogTranslationWork.delete(prisma);
+  });
+}
+
+async function persistCatalogTranslations(prisma, ids, logger) {
+  const dishes = await prisma.dish.findMany({
+    where: {
+      householdId: null,
+      source: { in: ['spoonacular', 'spoonacular-catalog'] },
+      ...(ids ? { id: { in: ids } } : {}),
+    },
+    include: { ingredients: { include: { product: true } } },
+  });
+  const pending = dishes.filter((dish) => dish.translationStatus === 'original');
+  const products = [
+    ...new Map(
+      dishes.flatMap((dish) => dish.ingredients.map((item) => [item.product.id, item.product])),
+    ).values(),
+  ].filter(
+    (product) =>
+      product.translationStatus === 'original' &&
+      needsRussianTranslation(product.originalName ?? product.name),
+  );
+  const texts = [
+    ...pending.flatMap((dish) => [
+      dish.originalTitle ?? dish.title,
+      dish.originalDescription ?? dish.description,
+      ...parseJsonArray(dish.originalInstructions ?? dish.instructions),
+    ]),
+    ...products.map((product) => product.originalName ?? product.name),
+  ];
+  let translations;
   try {
-    const translations = await translateTexts(prisma, texts);
-    const translate = (text) => translations.get(plainText(text)) ?? text;
-    return recipes.map((recipe) =>
-      recipe.source === 'user'
-        ? recipe
-        : {
-            ...recipe,
-            title: translate(recipe.title),
-            description: recipe.description ? translate(recipe.description) : recipe.description,
-            usedIngredients: recipe.usedIngredients.map(translate),
-            missedIngredients: recipe.missedIngredients.map(translate),
-            ...(recipe.ingredients ? { ingredients: recipe.ingredients.map(translate) } : {}),
-            instructions: (recipe.instructions ?? []).map(translate),
-          },
-    );
+    translations = await translateTexts(prisma, texts);
   } catch (error) {
     logger.error('Recipe translation failed', error);
-    return recipes;
+    return;
+  }
+  const translate = (text) => translations.get(plainText(text)) ?? text;
+  const complete = (values) =>
+    values.every((text) => !needsRussianTranslation(text) || translations.has(plainText(text)));
+  for (const dish of pending) {
+    const title = dish.originalTitle ?? dish.title;
+    const description = dish.originalDescription ?? dish.description;
+    const instructions = parseJsonArray(dish.originalInstructions ?? dish.instructions);
+    if (!complete([title, description, ...instructions])) continue;
+    // A manual edit made while Yandex was responding always wins.
+    await prisma.dish.updateMany({
+      where: { id: dish.id, translationStatus: 'original', updatedAt: dish.updatedAt },
+      data: {
+        originalTitle: title,
+        originalDescription: description,
+        originalInstructions: JSON.stringify(instructions),
+        title: translate(title),
+        description: translate(description),
+        instructions: JSON.stringify(instructions.map(translate)),
+        translationStatus: 'machine',
+      },
+    });
+  }
+  for (const product of products) {
+    const original = product.originalName ?? product.name;
+    if (!complete([original])) continue;
+    const name = translate(original);
+    await prisma.product.updateMany({
+      where: { id: product.id, translationStatus: 'original', updatedAt: product.updatedAt },
+      data: {
+        name,
+        originalName: original,
+        translationStatus: 'machine',
+        aliases: JSON.stringify([
+          ...new Set([
+            ...parseJsonArray(product.aliases),
+            normalizeProductName(original),
+            normalizeProductName(name),
+          ]),
+        ]),
+      },
+    });
   }
 }
 
@@ -677,9 +738,38 @@ async function fetchPopularRecipeSuggestions(apiKey) {
 }
 
 const CATALOG_PAGE_SIZE = 20;
-const catalogPages = new Map();
 
-async function fetchCatalogPage(prisma, query, offset) {
+function catalogPageKey(query, offset) {
+  return JSON.stringify([
+    'catalog',
+    query.trim().toLocaleLowerCase('ru').replace(/ё/g, 'е'),
+    offset,
+  ]);
+}
+
+const catalogPageRequests = new WeakMap();
+function fetchCatalogPage(prisma, query, offset) {
+  let requests = catalogPageRequests.get(prisma);
+  if (!requests) {
+    requests = new Map();
+    catalogPageRequests.set(prisma, requests);
+  }
+  const key = catalogPageKey(query, offset);
+  if (requests.has(key)) return requests.get(key);
+  const pending = loadCatalogPage(prisma, query, offset).finally(() => requests.delete(key));
+  requests.set(key, pending);
+  return pending;
+}
+
+async function loadCatalogPage(prisma, query, offset) {
+  const pageKey = catalogPageKey(query, offset);
+  const stored = await prisma.providerRecipePage.findUnique({ where: { id: pageKey } });
+  if (stored)
+    return {
+      ids: parseJsonArray(stored.recipeIds),
+      nextOffset: stored.nextOffset,
+      limited: stored.limited,
+    };
   const apiKey = spoonacularApiKey();
   if (!apiKey) throw Object.assign(new Error('Каталог временно недоступен.'), { status: 503 });
   let translatedQuery = query;
@@ -692,9 +782,6 @@ async function fetchCatalogPage(prisma, query, offset) {
       });
     }
   }
-  const cacheKey = JSON.stringify([translatedQuery.toLowerCase(), offset]);
-  const cached = catalogPages.get(cacheKey);
-  if (cached && cached.expiresAt > Date.now()) return cached.page;
   const params = new URLSearchParams({
     apiKey,
     query: translatedQuery,
@@ -724,20 +811,32 @@ async function fetchCatalogPage(prisma, query, offset) {
     nextOffset: result.results.length && next < result.totalResults && next <= 900 ? next : null,
     limited: next > 900 && next < result.totalResults,
   };
-  if (catalogPages.size >= 100) catalogPages.delete(catalogPages.keys().next().value);
-  catalogPages.set(cacheKey, { page, expiresAt: Date.now() + RECIPE_CACHE_TTL_MS });
-  return page;
+  await saveSpoonacularSuggestions(prisma, page.recipes);
+  const ids = page.recipes.map((recipe) => `spoonacular-${recipe.externalId}`);
+  await prisma.providerRecipePage.upsert({
+    where: { id: pageKey },
+    update: {},
+    create: {
+      id: pageKey,
+      recipeIds: JSON.stringify(ids),
+      nextOffset: page.nextOffset,
+      limited: page.limited,
+    },
+  });
+  return { ids, nextOffset: page.nextOffset, limited: page.limited };
 }
 
 async function recipeCatalogPage(prisma, householdId, input, logger) {
   const { query, offset, source } = input;
   let warning = '';
+  if (source === 'auto' && query) {
+    const saved = await savedRecipeCatalogPage(prisma, householdId, input, logger);
+    if (saved.recipes.length) return saved;
+  }
   if (source !== 'local') {
     try {
       const page = await fetchCatalogPage(prisma, query, offset);
-      const localized = await localizeRecipeSuggestions(prisma, page.recipes, logger);
-      await saveSpoonacularSuggestions(prisma, localized);
-      const ids = page.recipes.map((recipe) => `spoonacular-${recipe.externalId}`);
+      const ids = page.ids;
       const local = await matchedDishSuggestions(prisma, householdId, 'catalog', logger, ids);
       const byId = new Map(local.recipes.map((recipe) => [recipe.id, recipe]));
       return {
@@ -753,6 +852,11 @@ async function recipeCatalogPage(prisma, householdId, input, logger) {
       warning = 'Общий каталог временно недоступен. Показаны рецепты из сохранённой базы.';
     }
   }
+  return savedRecipeCatalogPage(prisma, householdId, input, logger, warning);
+}
+
+async function savedRecipeCatalogPage(prisma, householdId, input, logger, warning = '') {
+  const { query, offset } = input;
   const normalize = (text) => text.toLocaleLowerCase('ru').replace(/ё/g, 'е');
   const terms = normalize(query).split(/\s+/).filter(Boolean);
   const saved = await prisma.dish.findMany({
@@ -760,7 +864,8 @@ async function recipeCatalogPage(prisma, householdId, input, logger) {
     select: {
       id: true,
       title: true,
-      ingredients: { select: { product: { select: { name: true } } } },
+      originalTitle: true,
+      ingredients: { select: { product: { select: { name: true, originalName: true } } } },
     },
     orderBy: [{ title: 'asc' }, { id: 'asc' }],
   });
@@ -776,7 +881,11 @@ async function recipeCatalogPage(prisma, householdId, input, logger) {
     : [];
   const translations = new Map(cached.map((item) => [item.sourceText, item.translatedText]));
   const matching = saved.filter((dish) => {
-    const values = [dish.title, ...dish.ingredients.map((item) => item.product.name)];
+    const values = [
+      dish.title,
+      dish.originalTitle ?? '',
+      ...dish.ingredients.flatMap((item) => [item.product.name, item.product.originalName ?? '']),
+    ];
     const text = normalize(
       values.flatMap((value) => [value, translations.get(value) ?? '']).join(' '),
     );
@@ -792,6 +901,26 @@ async function recipeCatalogPage(prisma, householdId, input, logger) {
     limited: false,
     ...(warning ? { warning } : {}),
   };
+}
+
+async function importRecipeSuggestions(prisma, ingredients) {
+  const key = JSON.stringify([
+    'suggestions',
+    [...new Set(ingredients.map(canonicalIngredientName))].sort(),
+  ]);
+  if (await prisma.providerRecipePage.findUnique({ where: { id: key } })) return;
+  const recipes = await fetchRecipeSuggestions(ingredients);
+  await saveSpoonacularSuggestions(prisma, recipes);
+  await prisma.providerRecipePage.upsert({
+    where: { id: key },
+    update: {},
+    create: {
+      id: key,
+      recipeIds: JSON.stringify(
+        recipes.map((recipe) => `spoonacular-${recipe.externalId ?? recipe.id}`),
+      ),
+    },
+  });
 }
 
 async function fetchRecipeSuggestions(ingredients) {
@@ -944,6 +1073,25 @@ function serializeDevRecipe(dish) {
     createdAt: dish.createdAt.toISOString(),
     updatedAt: dish.updatedAt.toISOString(),
     ingredients: dish.ingredients.map((ingredient) => ingredient.product.name),
+    description: dish.description ?? '',
+    instructions: parseJsonArray(dish.instructions),
+    originalTitle: dish.originalTitle,
+    originalDescription: dish.originalDescription,
+    originalInstructions: parseJsonArray(dish.originalInstructions),
+    translationStatus: dish.translationStatus,
+    savedInDatabase: true,
+    products: dish.ingredients.map((ingredient) => serializeDevProduct(ingredient.product)),
+  };
+}
+
+function serializeDevProduct(product) {
+  return {
+    id: product.id,
+    name: product.name,
+    originalName: product.originalName,
+    translationStatus: product.translationStatus,
+    savedInDatabase: true,
+    updatedAt: product.updatedAt.toISOString(),
   };
 }
 
@@ -951,62 +1099,80 @@ async function saveSpoonacularSuggestions(prisma, recipes) {
   for (const recipe of recipes) {
     const externalId = String(recipe.externalId ?? recipe.id);
     const dishId = `spoonacular-${externalId}`;
-    const source = recipe.source === 'spoonacular-catalog' ? recipe.source : 'spoonacular';
-    const description =
-      recipe.description ||
-      (source === 'spoonacular-catalog'
-        ? 'Популярный рецепт из каталога Spoonacular.'
-        : recipe.missedIngredients.length > 0
-          ? `Можно приготовить, если докупить: ${recipe.missedIngredients.join(', ')}.`
-          : `Подходит под ваши продукты: ${recipe.usedIngredients.join(', ')}.`);
-    const instructions = recipe.instructions?.length ? JSON.stringify(recipe.instructions) : null;
-    await prisma.dish.upsert({
-      where: { id: dishId },
-      update: {
-        title: recipe.title,
-        subtitle: recipe.subtitle || 'Spoonacular',
-        description,
-        instructions,
-        imageUrl: recipe.image,
-        source,
-        externalId,
+    await prisma.$transaction(
+      async (transaction) => {
+        // Stored content is authoritative, including machine and manual translations.
+        if (await transaction.dish.findUnique({ where: { id: dishId }, select: { id: true } }))
+          return;
+        const description = recipe.description || 'Рецепт из общей базы.';
+        const instructions = JSON.stringify(recipe.instructions ?? []);
+        await transaction.dish.create({
+          data: {
+            id: dishId,
+            title: recipe.title,
+            originalTitle: recipe.title,
+            subtitle: recipe.subtitle || 'Spoonacular',
+            description,
+            originalDescription: description,
+            instructions,
+            originalInstructions: instructions,
+            detailsFetched: Array.isArray(recipe.instructions),
+            imageUrl: recipe.image,
+            source: recipe.source === 'spoonacular-catalog' ? recipe.source : 'spoonacular',
+            externalId,
+          },
+        });
+        const names = [
+          ...new Set(
+            [...recipe.usedIngredients, ...recipe.missedIngredients]
+              .map((name) => name.trim())
+              .filter(Boolean),
+          ),
+        ];
+        for (const ingredientName of names) {
+          const normalizedName = normalizeProductName(ingredientName);
+          let product = await transaction.product.findUnique({ where: { normalizedName } });
+          if (!product) {
+            const cached = await transaction.translationCache.findUnique({
+              where: {
+                sourceLanguage_targetLanguage_sourceText: {
+                  sourceLanguage: 'en',
+                  targetLanguage: 'ru',
+                  sourceText: ingredientName,
+                },
+              },
+            });
+            if (cached)
+              product = await transaction.product.findUnique({
+                where: { normalizedName: normalizeProductName(cached.translatedText) },
+              });
+          }
+          if (!product)
+            product = await transaction.product.create({
+              data: {
+                name: ingredientName,
+                originalName: ingredientName,
+                normalizedName,
+                aliases: '[]',
+              },
+            });
+          else if (!parseJsonArray(product.aliases).includes(normalizedName)) {
+            await transaction.product.update({
+              where: { id: product.id },
+              data: {
+                aliases: JSON.stringify([...parseJsonArray(product.aliases), normalizedName]),
+              },
+            });
+          }
+          await transaction.dishIngredient.upsert({
+            where: { dishId_productId: { dishId, productId: product.id } },
+            update: {},
+            create: { dishId, productId: product.id },
+          });
+        }
       },
-      create: {
-        id: dishId,
-        title: recipe.title,
-        subtitle: recipe.subtitle || 'Spoonacular',
-        description,
-        instructions,
-        imageUrl: recipe.image,
-        source,
-        externalId,
-      },
-    });
-
-    const ingredientNames = [...recipe.usedIngredients, ...recipe.missedIngredients]
-      .map((ingredient) => ingredient.trim())
-      .filter(Boolean);
-    for (const ingredientName of ingredientNames) {
-      const normalizedName = normalizeProductName(ingredientName);
-      const product = await prisma.product.upsert({
-        where: { normalizedName },
-        update: { name: ingredientName },
-        create: {
-          name: ingredientName,
-          normalizedName,
-          aliases: JSON.stringify([]),
-        },
-      });
-      await prisma.dishIngredient.upsert({
-        where: { dishId_productId: { dishId, productId: product.id } },
-        update: {},
-        create: {
-          id: `${dishId}-${product.id}`,
-          dishId,
-          productId: product.id,
-        },
-      });
-    }
+      { timeout: 20_000 },
+    );
   }
 }
 
@@ -1018,6 +1184,7 @@ async function matchedDishSuggestions(
   ids = null,
 ) {
   if (ids?.length === 0) return { recipes: [], ingredients: [], hasLocalCatalog: false };
+  if (scope === 'catalog') await ensureCatalogLocalized(prisma, ids, logger);
   const whereClause =
     scope === 'user'
       ? `WHERE d.source = 'user' AND d."householdId" = ?`
@@ -1116,7 +1283,7 @@ async function matchedDishSuggestions(
     );
   return {
     // Saved recipes must also be localized after enabling Translate or recovering from an outage.
-    recipes: await localizeRecipeSuggestions(prisma, recipes, logger),
+    recipes,
     ingredients: fridgeIngredients,
     hasLocalCatalog: dishCount > 0,
   };
@@ -1191,6 +1358,7 @@ async function saveUserRecipe(prisma, user, input, id) {
 }
 
 async function addMissingDishIngredientsToShopping(prisma, user, dishId) {
+  await ensureCatalogLocalized(prisma, [dishId]);
   return prisma.$transaction(async (transaction) => {
     const dish = await transaction.dish.findFirst({
       where: {
@@ -1928,9 +2096,7 @@ export function createApiServer(prisma, logger = console) {
 
         if (spoonacularApiKey()) {
           try {
-            const recipes = await fetchRecipeSuggestions(ingredients);
-            const localizedRecipes = await localizeRecipeSuggestions(prisma, recipes, logger);
-            await saveSpoonacularSuggestions(prisma, localizedRecipes);
+            await importRecipeSuggestions(prisma, ingredients);
           } catch (error) {
             logger.error(`${method} ${url.pathname}`, error);
           }
@@ -2003,6 +2169,7 @@ export function createApiServer(prisma, logger = console) {
           user.householdId,
           dish.source === 'user' ? 'user' : 'catalog',
           logger,
+          [dish.id],
         );
         const recipe = local.recipes.find((item) => item.id === dish.id);
         json(response, 200, { recipe: recipe ?? null });
@@ -2024,9 +2191,7 @@ export function createApiServer(prisma, logger = console) {
           warning = 'Сервис рецептов временно недоступен. Показаны сохраненные рецепты.';
         } else if (ingredients.length > 0) {
           try {
-            const recipes = await fetchRecipeSuggestions(ingredients);
-            const localizedRecipes = await localizeRecipeSuggestions(prisma, recipes, logger);
-            await saveSpoonacularSuggestions(prisma, localizedRecipes);
+            await importRecipeSuggestions(prisma, ingredients);
           } catch (error) {
             logger.error(`${method} ${url.pathname}`, error);
             warning =
@@ -2575,15 +2740,111 @@ export function createApiServer(prisma, logger = console) {
         return;
       }
 
-      if (method === 'GET' && url.pathname === '/api/dev/recipes') {
+      if (method === 'GET' && ['/api/dev/recipes', '/api/dev/products'].includes(url.pathname)) {
         requireAdmin(user);
-        const recipes = await prisma.dish.findMany({
-          where: { source: { in: ['spoonacular', 'spoonacular-catalog'] } },
-          orderBy: { updatedAt: 'desc' },
-          include: { ingredients: { include: { product: true } } },
-          take: 100,
+        const { query, offset } = adminCatalogQuerySchema.parse(
+          Object.fromEntries(url.searchParams),
+        );
+        const normalize = (text) => (text ?? '').toLocaleLowerCase('ru').replace(/ё/g, 'е');
+        const search = normalize(query);
+        const isRecipes = url.pathname.endsWith('/recipes');
+        const entries = isRecipes
+          ? await prisma.dish.findMany({
+              where: { householdId: null, source: { not: 'user' } },
+              select: { id: true, title: true, originalTitle: true },
+              orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+            })
+          : await prisma.product.findMany({
+              select: { id: true, name: true, originalName: true },
+              orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+            });
+        const matches = entries.filter(
+          (item) =>
+            !search ||
+            normalize(
+              [item.title ?? item.name, item.originalTitle ?? item.originalName].join(' '),
+            ).includes(search),
+        );
+        const ids = matches.slice(offset, offset + 50).map((item) => item.id);
+        if (isRecipes) await ensureCatalogLocalized(prisma, ids, logger);
+        const records = isRecipes
+          ? await prisma.dish.findMany({
+              where: { id: { in: ids } },
+              include: { ingredients: { include: { product: true } } },
+            })
+          : await prisma.product.findMany({ where: { id: { in: ids } } });
+        const byId = new Map(records.map((record) => [record.id, record]));
+        const serialized = ids.map((id) =>
+          isRecipes ? serializeDevRecipe(byId.get(id)) : serializeDevProduct(byId.get(id)),
+        );
+        json(response, 200, {
+          [isRecipes ? 'recipes' : 'products']: serialized,
+          nextOffset: offset + 50 < matches.length ? offset + 50 : null,
+          total: matches.length,
         });
-        json(response, 200, { recipes: recipes.map(serializeDevRecipe) });
+        return;
+      }
+
+      const recipeTranslationRoute = routeMatch(
+        url.pathname,
+        /^\/api\/dev\/recipes\/(?<id>[^/]+)\/translation$/,
+      );
+      if (recipeTranslationRoute && method === 'PATCH') {
+        requireAdmin(user);
+        const input = adminRecipeTranslationSchema.parse(await readJson(request));
+        const recipe = await prisma.$transaction(async (transaction) => {
+          const dish = await transaction.dish.findFirst({
+            where: { id: recipeTranslationRoute.id, householdId: null, source: { not: 'user' } },
+          });
+          if (!dish) throw Object.assign(new Error('Рецепт не найден'), { status: 404 });
+          return transaction.dish.update({
+            where: { id: dish.id },
+            data: {
+              title: input.title,
+              description: input.description,
+              instructions: JSON.stringify(input.instructions),
+              originalTitle: dish.originalTitle ?? dish.title,
+              originalDescription: dish.originalDescription ?? dish.description,
+              originalInstructions: dish.originalInstructions ?? dish.instructions,
+              translationStatus: 'manual',
+              detailsFetched: true,
+            },
+            include: { ingredients: { include: { product: true } } },
+          });
+        });
+        json(response, 200, { recipe: serializeDevRecipe(recipe) });
+        return;
+      }
+
+      const productTranslationRoute = routeMatch(
+        url.pathname,
+        /^\/api\/dev\/products\/(?<id>[^/]+)\/translation$/,
+      );
+      if (productTranslationRoute && method === 'PATCH') {
+        requireAdmin(user);
+        const input = adminProductTranslationSchema.parse(await readJson(request));
+        const product = await prisma.$transaction(async (transaction) => {
+          const existing = await transaction.product.findUnique({
+            where: { id: productTranslationRoute.id },
+          });
+          if (!existing) throw Object.assign(new Error('Продукт не найден'), { status: 404 });
+          return transaction.product.update({
+            where: { id: existing.id },
+            data: {
+              name: input.name,
+              originalName: existing.originalName ?? existing.name,
+              translationStatus: 'manual',
+              aliases: JSON.stringify([
+                ...new Set([
+                  ...parseJsonArray(existing.aliases),
+                  normalizeProductName(existing.name),
+                  normalizeProductName(input.name),
+                ]),
+              ]),
+            },
+          });
+        });
+        json(response, 200, { product: serializeDevProduct(product) });
         return;
       }
 

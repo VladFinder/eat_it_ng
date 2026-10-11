@@ -200,3 +200,30 @@ export const recipeCatalogQuerySchema = z
   .refine((value) => value.source === 'local' || value.offset <= 900, {
     message: 'Недопустимая страница каталога.',
   });
+
+export const adminRecipeTranslationSchema = z
+  .object({
+    title: z
+      .string()
+      .trim()
+      .min(1)
+      .max(200)
+      .regex(/[а-яё]/i, 'Введите название на русском'),
+    description: z.string().trim().max(10000).default(''),
+    instructions: z.array(z.string().trim().min(1).max(4000)).max(100),
+  })
+  .strict();
+export const adminProductTranslationSchema = z
+  .object({
+    name: z
+      .string()
+      .trim()
+      .min(1)
+      .max(120)
+      .regex(/[а-яё]/i, 'Введите название на русском'),
+  })
+  .strict();
+export const adminCatalogQuerySchema = z.object({
+  query: z.string().trim().max(120).default(''),
+  offset: z.coerce.number().int().min(0).max(1_000_000).default(0),
+});

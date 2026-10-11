@@ -11,6 +11,8 @@ import {
   DevSummary,
   DevUser,
   DevRecipe,
+  DevProduct,
+  RecipeTranslationInput,
   FeedbackItem,
   FridgeInput,
   FridgeItem,
@@ -158,8 +160,43 @@ export class ApiService {
     );
   }
 
-  getDevRecipes(): Observable<{ recipes: DevRecipe[] }> {
-    return this.http.get<{ recipes: DevRecipe[] }>(`${this.baseUrl}/dev/recipes`, this.options());
+  getDevRecipes(
+    query = '',
+    offset = 0,
+  ): Observable<{ recipes: DevRecipe[]; nextOffset: number | null; total: number }> {
+    return this.http.get<{ recipes: DevRecipe[]; nextOffset: number | null; total: number }>(
+      `${this.baseUrl}/dev/recipes`,
+      { ...this.options(), params: { query, offset } },
+    );
+  }
+
+  getDevProducts(
+    query = '',
+    offset = 0,
+  ): Observable<{ products: DevProduct[]; nextOffset: number | null; total: number }> {
+    return this.http.get<{ products: DevProduct[]; nextOffset: number | null; total: number }>(
+      `${this.baseUrl}/dev/products`,
+      { ...this.options(), params: { query, offset } },
+    );
+  }
+
+  saveDevRecipeTranslation(
+    id: string,
+    input: RecipeTranslationInput,
+  ): Observable<{ recipe: DevRecipe }> {
+    return this.http.patch<{ recipe: DevRecipe }>(
+      `${this.baseUrl}/dev/recipes/${encodeURIComponent(id)}/translation`,
+      input,
+      this.options(),
+    );
+  }
+
+  saveDevProductTranslation(id: string, name: string): Observable<{ product: DevProduct }> {
+    return this.http.patch<{ product: DevProduct }>(
+      `${this.baseUrl}/dev/products/${encodeURIComponent(id)}/translation`,
+      { name },
+      this.options(),
+    );
   }
 
   closeDevFeedback(id: string): Observable<FeedbackItem> {

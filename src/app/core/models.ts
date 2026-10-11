@@ -284,4 +284,27 @@ export interface DevRecipe {
   createdAt: string;
   updatedAt: string;
   ingredients: string[];
+  products: DevProduct[];
+  description: string;
+  instructions: string[];
+  originalTitle: string | null;
+  originalDescription: string | null;
+  originalInstructions: string[];
+  translationStatus: TranslationStatus;
+  savedInDatabase: boolean;
+}
+
+export type TranslationStatus = 'original' | 'machine' | 'manual';
+export interface DevProduct {
+  id: string;
+  name: string;
+  originalName: string | null;
+  translationStatus: TranslationStatus;
+  savedInDatabase: boolean;
+  updatedAt: string;
+}
+export interface RecipeTranslationInput {
+  title: string;
+  description: string;
+  instructions: string[];
 }

@@ -3916,3 +3916,116 @@ body:has(.random-result-dialog[open]) {
 .catalog-sentinel {
   height: 1px;
 }
+
+.dev-catalog-search,
+.dev-translation-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 16px 0;
+}
+.dev-catalog-search input {
+  flex: 1;
+  min-width: 180px;
+}
+.dev-translation-form {
+  padding: 20px;
+  margin: 20px 0;
+  border: 1px solid #cadbd1;
+  border-radius: 16px;
+  background: #f5faf7;
+}
+.dev-translation-form label {
+  display: grid;
+  gap: 7px;
+  margin: 14px 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.dev-catalog-search input,
+.dev-translation-form input,
+.dev-translation-form textarea {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 12px;
+  color: #263a30;
+  background: #fff;
+  border: 1px solid #c7d4cd;
+  border-radius: 10px;
+  font: inherit;
+}
+.dev-translation-form textarea {
+  resize: vertical;
+}
+.dev-translation-form p,
+.dev-catalog-count {
+  color: #56675c;
+  font-size: 13px;
+  line-height: 1.6;
+}
+.dev-translation-list {
+  display: grid;
+  gap: 16px;
+}
+.dev-translation-list > article {
+  padding: 16px;
+  border: 1px solid #e1e7e3;
+  border-radius: 14px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.dev-translation-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.dev-translation-heading h3 {
+  margin: 0 0 5px;
+}
+.dev-translation-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 12px 0;
+}
+.dev-translation-badges span {
+  padding: 5px 9px;
+  border-radius: 8px;
+  background: #eef3f0;
+  color: #466451;
+  font-size: 12px;
+}
+.dev-translation-badges .manual {
+  background: #d7eddf;
+  color: #216042;
+  font-weight: 700;
+}
+.dev-ingredient-translations {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.dev-ingredient-translations button {
+  display: grid;
+  text-align: left;
+  gap: 3px;
+  padding: 8px 10px;
+  background: #fff;
+  border: 1px solid #d5dfd8;
+  border-radius: 9px;
+  cursor: pointer;
+}
+.dev-ingredient-translations small {
+  color: #617369;
+  font-size: 10px;
+}
+
+.dev-translation-heading .dev-recipe-thumb {
+  flex: none;
+  display: grid;
+  place-items: center;
+  background: #edf3e9;
+  font-size: 26px;
+  object-fit: cover;
+}

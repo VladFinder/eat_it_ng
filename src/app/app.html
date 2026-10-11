@@ -1182,35 +1182,255 @@
                   <article class="dev-card">
                     <div class="dev-card-head">
                       <div>
-                        <h2>Сохраненные API-рецепты</h2>
-                        <p>Рецепты, которые пришли из Spoonacular и были сохранены в нашу базу</p>
+                        <h2>База рецептов и переводов</h2>
+                        <p>
+                          Сохранённые данные читаются из нашей базы. Ручной перевод защищён от
+                          автоматической замены.
+                        </p>
                       </div>
                     </div>
-                    <div class="dev-ticket-list">
-                      @for (recipe of devRecipes(); track recipe.id) {
-                        <article>
-                          <img
-                            class="dev-recipe-thumb"
-                            [src]="recipeImage(recipe.title, recipe.image)"
-                            alt=""
-                          />
-                          <span>
-                            <b>{{ recipe.title }}</b>
-                            <small>
-                              Spoonacular ID {{ recipe.externalId || 'нет' }} ·
-                              {{ recipe.ingredients.length }} ингредиентов ·
-                              {{ notificationTime(recipe.updatedAt) }}
-                            </small>
-                            <small>{{ recipe.ingredients.join(', ') }}</small>
-                          </span>
-                        </article>
-                      } @empty {
-                        <div class="dev-empty">
-                          API рецепты еще не сохранялись. Откройте вкладку рецептов с продуктами в
-                          холодильнике.
+                    <div class="filter-pills">
+                      <button
+                        type="button"
+                        [class.active]="devCatalogKind() === 'recipes'"
+                        (click)="setDevCatalogKind('recipes')"
+                      >
+                        Рецепты
+                      </button>
+                      <button
+                        type="button"
+                        [class.active]="devCatalogKind() === 'products'"
+                        (click)="setDevCatalogKind('products')"
+                      >
+                        Продукты
+                      </button>
+                    </div>
+                    <form class="dev-catalog-search" (ngSubmit)="loadDevRecipes()">
+                      <input
+                        type="search"
+                        name="dev-catalog-search"
+                        [(ngModel)]="devCatalogSearch"
+                        maxlength="120"
+                        placeholder="Название или оригинал"
+                        aria-label="Поиск по базе переводов"
+                      />
+                      <button
+                        class="secondary-action"
+                        type="submit"
+                        [disabled]="devCatalogLoading()"
+                      >
+                        Найти
+                      </button>
+                    </form>
+                    @if (devTranslationRecipe(); as recipe) {
+                      <form
+                        class="dev-translation-form"
+                        id="dev-translation-editor"
+                        (ngSubmit)="saveDevTranslation()"
+                      >
+                        <h3>Перевод рецепта</h3>
+                        <details>
+                          <summary>Показать оригинал</summary>
+                          <p>{{ recipe.originalTitle || recipe.title }}</p>
+                          <p>{{ recipe.originalDescription }}</p>
+                          <ol>
+                            @for (step of recipe.originalInstructions; track $index) {
+                              <li>{{ step }}</li>
+                            }
+                          </ol>
+                        </details>
+                        <label
+                          >Название на русском<input
+                            name="translation-title"
+                            [(ngModel)]="devTranslationForm.title"
+                            required
+                            maxlength="200"
+                        /></label>
+                        <label
+                          >Описание<textarea
+                            name="translation-description"
+                            [(ngModel)]="devTranslationForm.description"
+                            rows="3"
+                            maxlength="10000"
+                          ></textarea>
+                        </label>
+                        <label
+                          >Приготовление — каждый шаг с новой строки<textarea
+                            name="translation-steps"
+                            [(ngModel)]="devTranslationForm.instructions"
+                            rows="7"
+                          ></textarea>
+                        </label>
+                        <p>
+                          После сохранения название, описание и шаги будут отмечены как ручной
+                          перевод.
+                        </p>
+                        @if (devTranslationError()) {
+                          <p class="form-error" role="alert">{{ devTranslationError() }}</p>
+                        }
+                        <div class="dev-translation-actions">
+                          <button
+                            class="primary-action"
+                            type="submit"
+                            [disabled]="devTranslationSaving()"
+                          >
+                            {{ devTranslationSaving() ? 'Сохраняем…' : 'Сохранить ручной перевод' }}
+                          </button>
+                          <button
+                            class="secondary-action"
+                            type="button"
+                            [disabled]="devTranslationSaving()"
+                            (click)="devTranslationRecipe.set(null)"
+                          >
+                            Отмена
+                          </button>
                         </div>
+                      </form>
+                    }
+                    @if (devTranslationProduct(); as product) {
+                      <form
+                        class="dev-translation-form"
+                        id="dev-translation-editor"
+                        (ngSubmit)="saveDevTranslation()"
+                      >
+                        <h3>Перевод продукта</h3>
+                        <p>Оригинал: {{ product.originalName || product.name }}</p>
+                        <label
+                          >Название на русском<input
+                            name="translation-product"
+                            [(ngModel)]="devTranslationForm.productName"
+                            required
+                            maxlength="120"
+                        /></label>
+                        <p>
+                          Название обновится во всех рецептах с этим продуктом. Автоперевод больше
+                          не изменит его.
+                        </p>
+                        @if (devTranslationError()) {
+                          <p class="form-error" role="alert">{{ devTranslationError() }}</p>
+                        }
+                        <div class="dev-translation-actions">
+                          <button
+                            class="primary-action"
+                            type="submit"
+                            [disabled]="devTranslationSaving()"
+                          >
+                            {{ devTranslationSaving() ? 'Сохраняем…' : 'Сохранить ручной перевод' }}
+                          </button>
+                          <button
+                            class="secondary-action"
+                            type="button"
+                            [disabled]="devTranslationSaving()"
+                            (click)="devTranslationProduct.set(null)"
+                          >
+                            Отмена
+                          </button>
+                        </div>
+                      </form>
+                    }
+                    @if (devCatalogError()) {
+                      <p class="form-error" role="alert">{{ devCatalogError() }}</p>
+                    }
+                    <p class="dev-catalog-count">В базе: {{ devCatalogTotal() }}</p>
+                    <div class="dev-translation-list">
+                      @if (devCatalogKind() === 'recipes') {
+                        @for (recipe of devRecipes(); track recipe.id) {
+                          <article>
+                            <div class="dev-translation-heading">
+                              @if (recipe.image) {
+                                <img
+                                  class="dev-recipe-thumb"
+                                  [src]="recipe.image"
+                                  alt=""
+                                  loading="lazy"
+                                />
+                              } @else {
+                                <span class="dev-recipe-thumb" aria-hidden="true">🍲</span>
+                              }
+                              <div>
+                                <h3>{{ recipe.title }}</h3>
+                                <small
+                                  >ID источника:
+                                  {{ recipe.externalId || 'локальный рецепт' }}</small
+                                >
+                              </div>
+                            </div>
+                            <div class="dev-translation-badges">
+                              @if (recipe.savedInDatabase) {
+                                <span>✓ Сохранён в нашей базе</span>
+                              }
+                              <span [class.manual]="recipe.translationStatus === 'manual'">{{
+                                translationLabel(recipe.translationStatus, recipe.title)
+                              }}</span>
+                            </div>
+                            <div class="dev-ingredient-translations">
+                              @for (product of recipe.products; track product.id) {
+                                <button
+                                  type="button"
+                                  [disabled]="devTranslationSaving()"
+                                  (click)="editDevProductTranslation(product)"
+                                >
+                                  {{ product.name }}
+                                  <small>{{
+                                    translationLabel(product.translationStatus, product.name)
+                                  }}</small>
+                                </button>
+                              }
+                            </div>
+                            <button
+                              class="secondary-action"
+                              type="button"
+                              [disabled]="devTranslationSaving()"
+                              (click)="editDevRecipeTranslation(recipe)"
+                            >
+                              Редактировать перевод рецепта
+                            </button>
+                          </article>
+                        } @empty {
+                          @if (!devCatalogLoading()) {
+                            <p>Рецепты не найдены.</p>
+                          }
+                        }
+                      } @else {
+                        @for (product of devProducts(); track product.id) {
+                          <article>
+                            <h3>{{ product.name }}</h3>
+                            <p>Оригинал: {{ product.originalName || product.name }}</p>
+                            <div class="dev-translation-badges">
+                              <span>✓ Сохранён в нашей базе</span
+                              ><span [class.manual]="product.translationStatus === 'manual'">{{
+                                translationLabel(product.translationStatus, product.name)
+                              }}</span>
+                            </div>
+                            <button
+                              class="secondary-action"
+                              type="button"
+                              [disabled]="devTranslationSaving()"
+                              (click)="editDevProductTranslation(product)"
+                            >
+                              Редактировать перевод продукта
+                            </button>
+                          </article>
+                        } @empty {
+                          @if (!devCatalogLoading()) {
+                            <p>Продукты не найдены.</p>
+                          }
+                        }
                       }
                     </div>
+                    @if (devCatalogLoading()) {
+                      <p role="status">Загружаем базу…</p>
+                    }
+                    @if (devCatalogNext() !== null) {
+                      <button
+                        class="secondary-action"
+                        type="button"
+                        [disabled]="devCatalogLoading()"
+                        (click)="loadDevRecipes(true)"
+                      >
+                        Показать ещё
+                      </button>
+                    }
                   </article>
                 </section>
               }

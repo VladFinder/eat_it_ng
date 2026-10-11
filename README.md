@@ -62,8 +62,17 @@ The legacy `YANDEX_TRANSLATE_FOLDER_ID` setting is ignored.
 If Yandex Translate is not configured or temporarily fails, recipes remain
 available in their original language. Saved catalog recipes are translated when
 read, including recipe details and random picks; household recipes are left as entered.
-Cached translations remain available without a configured key. Failed translations
-are retried on the next request, so reimporting the catalog is unnecessary.
+Russian titles, descriptions, steps, and product names are persisted in `Dish` and `Product`,
+with available source text retained in `original*` fields. A successful translation is marked
+`machine`; a failed translation remains pending and can retry using `TranslationCache`.
+Saved Russian content remains usable without provider credentials.
+
+The admin **Рецепты и переводы** section supports paginated search, recipe and product
+translation editors, database-save badges, and translation provenance. Manual edits are
+marked `manual` and cannot be replaced by automatic translation, reimport, or catalog seeds.
+Product IDs and matching aliases are preserved. The API also protects a manual edit made
+while a Yandex request is in flight. Existing translations whose English originals were not
+previously stored retain their current text; the missing originals are not fetched again.
 
 The **Рецепты** tab opens a general Spoonacular catalog independent of fridge contents.
 `GET /api/recipes/catalog?query=&offset=0&source=auto` returns 20 recipes, a `nextOffset`
@@ -74,9 +83,13 @@ Availability labels still reflect household stock, while the catalog preserves p
 
 Spoonacular limits search offsets to 900; when this window is exhausted, the UI suggests
 refining the search instead of claiming the entire provider database has ended. Requests
-also consume the provider's quota. Pages are cached for six hours (up to 100 pages per API
-process). If the first page cannot be fetched, the API searches and paginates saved recipes;
-a failed later page remains retryable without changing the feed or skipping recipes.
+consume the provider's quota **only for previously unseen queries/pages**. Page membership,
+continuation offsets, and empty results are stored durably in `ProviderRecipePage`, without
+a six-hour expiry. Repeated reads survive API restarts and never re-fetch a stored page from
+Spoonacular. Concurrent requests for the same page share one import; stored recipes are not
+overwritten when they appear in another search. Known search terms are resolved locally first.
+Legacy ingredient suggestions are also stored durably. If an uncached first page cannot be
+fetched, the API searches saved recipes; a failed later page remains retryable.
 See the [provider documentation](https://spoonacular.com/food-api/docs#Search-Recipes-Complex).
 
 The **Рецепты** tab also provides favorites and household recipes.
@@ -89,8 +102,11 @@ using only available ingredients or allowing up to 1, 2, or 3 missing ingredient
 with optional favorites or household filters. The animated die respects reduced motion.
 Ingredient matching uses `GET /api/recipes/matches` without external recipe API calls;
 editing uses `PATCH /api/dishes/:id` and preserves recipe IDs and meal plan references.
-Deploy the updated API together with the web/Android client. These changes require no
-database migration. Public subscription purchasing remains marked **Скоро**.
+Deploy the updated API together with the web/Android client. Before starting the updated API,
+run `npm run db:generate` and `npm run db:migrate`. Migration
+`20261011153000_persistent_recipe_translations` adds translation provenance, originals, and
+persistent provider pages without deleting existing recipes. Back up the production database
+before applying migrations. Public subscription purchasing remains marked **Скоро**.
 
 Web Push requires one VAPID key pair. Generate it once:
 
