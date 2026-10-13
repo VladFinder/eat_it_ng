@@ -2602,7 +2602,7 @@ export function createApiServer(prisma, logger = console) {
             })
             .then((sessions) => sessions.length),
           prisma.session.count({ where: { expiresAt: { gt: now } } }),
-          prisma.household.count(),
+          prisma.household.count({ where: { users: { some: {} } } }),
           prisma.fridgeItem.count(),
           prisma.fridgeItem.count({ where: { category: 'products' } }),
           prisma.fridgeItem.count({ where: { category: 'household' } }),
@@ -2962,6 +2962,31 @@ export function createApiServer(prisma, logger = console) {
           where: { id: user.householdId },
           data: { name: input.name },
           include: { users: { orderBy: [{ displayName: 'asc' }, { email: 'asc' }] } },
+        });
+        json(response, 200, serializeHousehold(household));
+        return;
+      }
+
+      if (method === 'POST' && url.pathname === '/api/household/leave') {
+        const household = await prisma.$transaction(async (transaction) => {
+          const member = await transaction.user.findUniqueOrThrow({ where: { id: user.id } });
+          const members = await transaction.user.count({ where: { householdId: member.householdId } });
+          if (member.householdId !== user.householdId || members < 2) {
+            const error = new Error('Вы уже находитесь в личном доме. Обновите страницу.');
+            error.status = 409;
+            throw error;
+          }
+          const personal = await transaction.household.create({
+            data: { name: `${member.displayName}: дом` },
+          });
+          await transaction.user.update({
+            where: { id: member.id },
+            data: { householdId: personal.id },
+          });
+          await transaction.householdInvitation.deleteMany({
+            where: { householdId: member.householdId, inviterId: member.id, status: 'pending' },
+          });
+          return getHousehold(transaction, personal.id);
         });
         json(response, 200, serializeHousehold(household));
         return;

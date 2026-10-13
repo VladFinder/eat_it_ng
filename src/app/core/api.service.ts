@@ -314,6 +314,10 @@ export class ApiService {
     return this.http.get<Household>(`${this.baseUrl}/household`, this.options());
   }
 
+  leaveHousehold(): Observable<Household> {
+    return this.http.post<Household>(`${this.baseUrl}/household/leave`, {}, this.options());
+  }
+
   renameHousehold(name: string): Observable<Household> {
     return this.http.patch<Household>(`${this.baseUrl}/household`, { name }, this.options());
   }

@@ -2751,3 +2751,52 @@ test('household recipe categories survive editing and are available to the picke
   });
   assert.equal(invalid.status, 400);
 });
+
+
+test('household totals ignore empty homes and leaving preserves shared data and isolates access', async () => {
+  const owner = await recipeAccount('leave-owner@example.com');
+  const guest = await recipeAccount('leave-guest@example.com');
+  const previousAdminIds = process.env.ADMIN_USER_IDS;
+  process.env.ADMIN_USER_IDS = owner.user.id;
+  try {
+    const summary = async () => {
+      const response = await request('/api/dev/summary', { headers: owner.headers });
+      assert.equal(response.status, 200);
+      return (await response.json()).households.total;
+    };
+    const before = await summary();
+    await prisma.user.update({ where: { id: guest.user.id }, data: { householdId: owner.user.householdId } });
+    assert.equal(await summary(), before - 1);
+    const itemResponse = await request('/api/fridge', {
+      method: 'POST', headers: owner.headers,
+      body: JSON.stringify({ name: 'Молоко', quantity: 1, unit: 'л', expiresAt: '2026-12-20' }),
+    });
+    assert.equal(itemResponse.status, 201);
+    const item = await itemResponse.json();
+    const outsider = await recipeAccount('leave-invite@example.com');
+    const invitation = await prisma.householdInvitation.create({ data: {
+      householdId: owner.user.householdId, inviterId: guest.user.id, inviteeId: outsider.user.id,
+    } });
+    const unauthenticated = await request('/api/household/leave', { method: 'POST', skipAuth: true });
+    assert.equal(unauthenticated.status, 401);
+    const left = await request('/api/household/leave', { method: 'POST', headers: guest.headers });
+    assert.equal(left.status, 200);
+    const personal = await left.json();
+    assert.notEqual(personal.id, owner.user.householdId);
+    assert.deepEqual(personal.members.map((member) => member.id), [guest.user.id]);
+    assert.equal(await prisma.householdInvitation.findUnique({ where: { id: invitation.id } }), null);
+    const state = await (await request('/api/state', { headers: guest.headers })).json();
+    assert.equal(state.household.id, personal.id);
+    assert.deepEqual(state.fridgeItems, []);
+    assert.deepEqual(state.shoppingItems, []);
+    assert.equal((await prisma.fridgeItem.findUnique({ where: { id: item.id } })).householdId, owner.user.householdId);
+    const removal = await request(`/api/fridge/${item.id}`, { method: 'DELETE', headers: guest.headers });
+    assert.equal(removal.status, 404);
+    const count = await prisma.household.count();
+    assert.equal((await request('/api/household/leave', { method: 'POST', headers: guest.headers })).status, 409);
+    assert.equal(await prisma.household.count(), count);
+    assert.equal(await summary(), before + 1);
+  } finally {
+    restoreEnv('ADMIN_USER_IDS', previousAdminIds);
+  }
+});

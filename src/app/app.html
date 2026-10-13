@@ -920,6 +920,9 @@
               <p>Оперативный центр продукта</p>
             </div>
             <div class="dev-system-pill"><span></span> Все системы работают</div>
+            <button class="secondary-action" type="button" (click)="devMode.set(false); retryLoad()">
+              Вернуться в приложение
+            </button>
             <nav class="dev-nav" aria-label="Dev menu">
               @for (item of devMenu; track item.id) {
                 <button
@@ -2612,6 +2615,13 @@
               Обратная связь
               <strong>›</strong>
             </button>
+            @if (hasDevAccess()) {
+              <button type="button" (click)="openDevCenter()">
+                <span>⚙</span>
+                Dev center
+                <strong>›</strong>
+              </button>
+            }
             <button type="button" (click)="logout()">
               <span>↩</span>
               Выйти
@@ -2933,6 +2943,12 @@
               />
               <button class="primary-action" type="submit" [disabled]="saving()">Добавить</button>
             </form>
+            @if (groupMembers().length > 1) {
+              <p>При выходе общие продукты, покупки и рецепты останутся в этом доме.</p>
+              <button class="danger-action" type="button" [disabled]="saving()" (click)="leaveHousehold()">
+                Выйти из дома
+              </button>
+            }
           </div>
         }
       </section>

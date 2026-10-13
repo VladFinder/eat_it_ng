@@ -10,6 +10,7 @@ describe('App', () => {
     me: ReturnType<typeof vi.fn>;
     getAuthProviders: ReturnType<typeof vi.fn>;
     getState: ReturnType<typeof vi.fn>;
+    leaveHousehold: ReturnType<typeof vi.fn>;
     createFridgeItem: ReturnType<typeof vi.fn>;
     consumeFridgeItem: ReturnType<typeof vi.fn>;
     createShoppingItem: ReturnType<typeof vi.fn>;
@@ -51,6 +52,7 @@ describe('App', () => {
           household: { id: 'household-1', name: 'Дом', members: [] },
         }),
       ),
+      leaveHousehold: vi.fn(),
       createFridgeItem: vi.fn().mockImplementation((payload: Record<string, unknown>) =>
         of({
           id: 'fridge-1',
@@ -173,6 +175,41 @@ describe('App', () => {
     expect(app.hasDevAccess()).toBe(false);
     app.currentUser.set({ id: 'owner', email: 'vladfinder@yandex.ru', isAdmin: true });
     expect(app.hasDevAccess()).toBe(true);
+    fixture.destroy();
+  });
+
+  it('opens Dev center only for administrators', async () => {
+    const fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance as any;
+    const load = vi.spyOn(app, 'loadDevData').mockResolvedValue(undefined);
+    app.currentUser.set({ id: 'owner', isAdmin: false });
+    await app.openDevCenter();
+    expect(app.devMode()).toBe(false);
+    expect(load).not.toHaveBeenCalled();
+    app.currentUser.set({ id: 'owner', isAdmin: true });
+    await app.openDevCenter();
+    expect(app.devMode()).toBe(true);
+    expect(load).toHaveBeenCalledOnce();
+    expect(app.loading()).toBe(false);
+    fixture.destroy();
+  });
+
+  it('cancels leaving a shared home and keeps data when the server rejects leaving', async () => {
+    const fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance as any;
+    const household = { id: 'shared', name: 'Дом', members: [{ id: 'one' }, { id: 'two' }] };
+    app.household.set(household);
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    await app.leaveHousehold();
+    expect(apiService.leaveHousehold).not.toHaveBeenCalled();
+    confirm.mockReturnValue(true);
+    apiService.leaveHousehold.mockReturnValue(throwError(() => new Error('Offline')));
+    await app.leaveHousehold();
+    expect(apiService.leaveHousehold).toHaveBeenCalledOnce();
+    expect(app.household()).toEqual(household);
+    expect(app.saving()).toBe(false);
+    expect(app.apiError()).toBeTruthy();
+    confirm.mockRestore();
     fixture.destroy();
   });
 

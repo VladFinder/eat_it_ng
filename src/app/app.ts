@@ -2626,6 +2626,41 @@ export class App implements OnDestroy, OnInit {
     });
   }
 
+  protected async openDevCenter(): Promise<void> {
+    if (!this.hasDevAccess()) return;
+    this.devMode.set(true);
+    this.loading.set(true);
+    this.apiError.set('');
+    try {
+      await this.loadDevData();
+    } catch (error) {
+      this.apiError.set(this.errorMessage(error, 'Не удалось загрузить Dev center.'));
+    } finally {
+      this.loading.set(false);
+    }
+  }
+
+  protected async leaveHousehold(): Promise<void> {
+    if (this.saving() || this.groupMembers().length < 2) return;
+    if (
+      !window.confirm(
+        'Выйти из общего дома? Продукты, покупки и рецепты останутся у остальных участников. ' +
+          'Для вас будет создан пустой личный дом.',
+      )
+    ) return;
+    this.stateRevision++;
+    this.saving.set(true);
+    this.apiError.set('');
+    try {
+      await firstValueFrom(this.api.leaveHousehold());
+      // Reload all household-scoped caches and in-flight requests together.
+      window.location.reload();
+    } catch (error) {
+      this.apiError.set(this.errorMessage(error, 'Не удалось выйти из дома. Повторите попытку.'));
+      this.saving.set(false);
+    }
+  }
+
   private async runMutation(action: () => Promise<void>): Promise<void> {
     if (this.saving()) return;
     this.stateRevision++;
