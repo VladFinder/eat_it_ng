@@ -164,7 +164,7 @@ that installed web app.
 Google OAuth variables:
 
 ```dotenv
-APP_URL="https://eat-it.space"
+APP_URL="https://homie-web.app"
 GOOGLE_CLIENT_ID="..."
 GOOGLE_CLIENT_SECRET="..."
 ```
@@ -172,13 +172,13 @@ GOOGLE_CLIENT_SECRET="..."
 Register this redirect URI in Google Cloud Console:
 
 ```text
-https://eat-it.space/api/auth/google/callback
+https://homie-web.app/api/auth/google/callback
 ```
 
 Apple OAuth variables:
 
 ```dotenv
-APP_URL="https://eat-it.space"
+APP_URL="https://homie-web.app"
 APPLE_CLIENT_ID="your.services.id"
 APPLE_TEAM_ID="..."
 APPLE_KEY_ID="..."
@@ -188,7 +188,7 @@ APPLE_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----"
 Register this return URL for the Apple Services ID:
 
 ```text
-https://eat-it.space/api/auth/apple/callback
+https://homie-web.app/api/auth/apple/callback
 ```
 
 Apple requires an HTTPS domain, a Services ID associated with a Sign in with
@@ -262,8 +262,8 @@ Install the provided Nginx virtual host, which serves Angular and proxies
 `/api` to Node.js:
 
 ```bash
-sudo cp /opt/eat-it/app/deploy/nginx-eat-it.space.conf /etc/nginx/sites-available/eat-it.space
-sudo ln -s /etc/nginx/sites-available/eat-it.space /etc/nginx/sites-enabled/eat-it.space
+sudo cp /opt/eat-it/app/deploy/nginx-homie-web.app.conf /etc/nginx/sites-available/homie-web.app
+sudo ln -s /etc/nginx/sites-available/homie-web.app /etc/nginx/sites-enabled/homie-web.app
 sudo nginx -t
 sudo systemctl reload nginx
 ```
@@ -290,8 +290,8 @@ sudo systemctl daemon-reload
 sudo systemctl restart eat-it-api
 ```
 
-The Nginx virtual host is provided in `deploy/nginx-eat-it.space.conf`.
-The Android build uses `https://eat-it.space/api`, so HTTPS must be configured
+The Nginx virtual host is provided in `deploy/nginx-homie-web.app.conf`.
+The Android build uses `https://homie-web.app/api`, so HTTPS must be configured
 before testing synchronization from an APK.
 
 The implementation stages are tracked in `docs/ROADMAP.md`.
@@ -315,3 +315,6 @@ npm run android:apk
 The APK is generated at `android/app/build/outputs/apk/debug/app-debug.apk`.
 GitHub Actions also publishes it as the `eat-it-debug-apk` artifact after a
 successful CI run.
+
+For an existing deployment, follow [the domain migration guide](docs/DOMAIN_MIGRATION.md)
+to connect `homie-web.app` and keep older Android clients working.

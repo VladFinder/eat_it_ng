@@ -56,11 +56,11 @@ PowerShell can copy the value for the first secret with:
 
 - Create the Google Play Console application using package name `space.eatit.app`.
 - Complete the store listing: name, short and full descriptions, 512x512 icon, feature graphic, and at least two current-phone screenshots.
-- Publish the privacy-policy URL `https://eat-it.space/privacy.html` in Play Console. The app collects an email address, account profile, household and food-list data, support messages, and auth tokens.
+- Publish the privacy-policy URL `https://homie-web.app/privacy.html` in Play Console. The app collects an email address, account profile, household and food-list data, support messages, and auth tokens.
 - Complete the Data safety form from the actual server-side retention, sharing, and deletion policy. Do not guess the answers.
-- Enter `https://eat-it.space/delete-account.html` as the external account-deletion URL in Play Console. The same deletion path is available in the application profile.
+- Enter `https://homie-web.app/delete-account.html` as the external account-deletion URL in Play Console. The same deletion path is available in the application profile.
 - Test the signed AAB through an internal testing track on a physical Android device, including registration, login, logout, data changes, support, and an upgrade over the previous build.
-- Confirm that `https://eat-it.space/api/health` and authentication are monitored and that database backups can be restored.
+- Confirm that `https://homie-web.app/api/health` and authentication are monitored and that database backups can be restored.
 
 ## Release procedure
 

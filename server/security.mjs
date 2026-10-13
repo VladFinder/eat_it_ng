@@ -35,7 +35,7 @@ export function isAllowedWriteOrigin(request, capacitorOrigins) {
   const origin = request.headers.origin;
   if (!origin) return request.headers['sec-fetch-site'] !== 'cross-site';
   if (capacitorOrigins.has(origin)) return true;
-  const appOrigin = new URL(process.env.APP_URL ?? 'https://eat-it.space').origin;
+  const appOrigin = new URL(process.env.APP_URL ?? 'https://homie-web.app').origin;
   if (origin === appOrigin) return true;
   return process.env.NODE_ENV !== 'production' && origin === 'http://localhost:4200';
 }

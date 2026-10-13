@@ -1864,7 +1864,7 @@ function redirect(response, location, cookies = []) {
 }
 
 function appLocation(searchParams = {}) {
-  const location = new URL(process.env.APP_URL ?? 'https://eat-it.space');
+  const location = new URL(process.env.APP_URL ?? 'https://homie-web.app');
   for (const [key, value] of Object.entries(searchParams)) {
     if (value) {
       location.searchParams.set(key, value);

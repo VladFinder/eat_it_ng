@@ -35,7 +35,7 @@ import {
 @Injectable({ providedIn: 'root' })
 export class ApiService {
   private readonly http = inject(HttpClient);
-  private readonly baseUrl = Capacitor.isNativePlatform() ? 'https://eat-it.space/api' : '/api';
+  private readonly baseUrl = Capacitor.isNativePlatform() ? 'https://homie-web.app/api' : '/api';
   private readonly tokenKey = 'eat-it.session-token';
 
   register(input: {

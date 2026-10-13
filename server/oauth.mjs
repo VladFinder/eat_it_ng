@@ -6,7 +6,7 @@ const googleKeys = createRemoteJWKSet(new URL('https://www.googleapis.com/oauth2
 const appleKeys = createRemoteJWKSet(new URL('https://appleid.apple.com/auth/keys'));
 
 function baseUrl() {
-  return (process.env.APP_URL ?? 'https://eat-it.space').replace(/\/$/, '');
+  return (process.env.APP_URL ?? 'https://homie-web.app').replace(/\/$/, '');
 }
 
 function randomValue() {

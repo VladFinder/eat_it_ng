@@ -36,7 +36,7 @@ describe('ApiService session transport', () => {
     const api = TestBed.inject(ApiService);
     api.setSessionToken('native-token');
     api.me().subscribe();
-    const request = http.expectOne('https://eat-it.space/api/auth/me');
+    const request = http.expectOne('https://homie-web.app/api/auth/me');
     expect(request.request.headers.get('Authorization')).toBe('Bearer native-token');
     request.flush({ user: {} });
     api.clearSessionToken();
