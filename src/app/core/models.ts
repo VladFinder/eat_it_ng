@@ -219,6 +219,8 @@ export interface FeedbackItem {
 }
 
 export interface DevSummary {
+  generatedAt: string;
+  timezone: string;
   users: {
     total: number;
     online: number;
@@ -232,10 +234,10 @@ export interface DevSummary {
     shoppingProducts: number;
     shoppingHousehold: number;
     checkedShoppingItems: number;
-    expiringFridgeItems: number;
   };
   support: {
     openTickets: number;
+    unansweredTickets: number;
     closedTickets: number;
     openFeedback: number;
     closedFeedback: number;
@@ -244,6 +246,7 @@ export interface DevSummary {
   };
   households: {
     total: number;
+    shared: number;
     pendingInvitations: number;
   };
   notifications: {

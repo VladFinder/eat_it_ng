@@ -9,6 +9,10 @@ describe('App', () => {
     clearSessionToken?: ReturnType<typeof vi.fn>;
     me: ReturnType<typeof vi.fn>;
     getAuthProviders: ReturnType<typeof vi.fn>;
+    getDevSummary: ReturnType<typeof vi.fn>;
+    getDevSupportTickets: ReturnType<typeof vi.fn>;
+    getDevFeedback: ReturnType<typeof vi.fn>;
+    getDevUsers: ReturnType<typeof vi.fn>;
     getState: ReturnType<typeof vi.fn>;
     leaveHousehold: ReturnType<typeof vi.fn>;
     createFridgeItem: ReturnType<typeof vi.fn>;
@@ -45,6 +49,10 @@ describe('App', () => {
       getAuthProviders: vi
         .fn()
         .mockReturnValue(of({ password: true, google: false, apple: false })),
+      getDevSummary: vi.fn(),
+      getDevSupportTickets: vi.fn().mockReturnValue(of({ tickets: [], nextOffset: null })),
+      getDevFeedback: vi.fn().mockReturnValue(of({ feedback: [] })),
+      getDevUsers: vi.fn().mockReturnValue(of({ users: [] })),
       getState: vi.fn().mockReturnValue(
         of({
           fridgeItems: [],
@@ -210,6 +218,52 @@ describe('App', () => {
     expect(app.saving()).toBe(false);
     expect(app.apiError()).toBeTruthy();
     confirm.mockRestore();
+    fixture.destroy();
+  });
+
+  it('keeps the last dashboard snapshot with an explicit error and clears it after recovery', async () => {
+    const fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance as any;
+    app.currentUser.set({ id: 'admin', isAdmin: true });
+    const snapshot = {
+      generatedAt: '2026-10-14T10:00:00Z',
+      support: { unansweredTickets: 140 },
+      activity: { days: [{ users: 0, supportTickets: 0, feedback: 0 }] },
+    };
+    apiService.getDevSummary.mockReturnValue(of(snapshot));
+    await app.loadDevData();
+    expect(app.devUnansweredTickets()).toBe(140);
+    expect(app.devActivityHeight(0)).toBe('0%');
+    const updated = app.devLastUpdated();
+    apiService.getDevSummary.mockReturnValue(throwError(() => new Error('Offline')));
+    await app.loadDevData();
+    expect(app.devSummary()).toEqual(snapshot);
+    expect(app.devLastUpdated()).toBe(updated);
+    expect(app.devDataError()).toContain('последние успешно загруженные');
+    expect(app.devDataLoading()).toBe(false);
+    apiService.getDevSummary.mockReturnValue(of(snapshot));
+    await app.loadDevData();
+    expect(app.devDataError()).toBe('');
+    fixture.destroy();
+  });
+
+  it('filters support on the server and preserves loaded pages during dashboard refresh', async () => {
+    const fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance as any;
+    app.currentUser.set({ id: 'admin', isAdmin: true });
+    apiService.getDevSummary.mockReturnValue(of({ generatedAt: '2026-10-14T10:00:00Z' }));
+    apiService.getDevSupportTickets.mockImplementation((_filter: string, offset: number) =>
+      of({ tickets: [{ id: `ticket-${offset}` }], nextOffset: offset === 0 ? 100 : null }),
+    );
+    await app.filterDevTickets('unanswered');
+    expect(apiService.getDevSupportTickets).toHaveBeenLastCalledWith('unanswered', 0);
+    await app.loadMoreDevTickets();
+    expect(app.devTickets().map((ticket: any) => ticket.id)).toEqual(['ticket-0', 'ticket-100']);
+    await app.loadDevData();
+    expect(app.devTickets()).toHaveLength(2);
+    await app.filterDevTickets('closed');
+    expect(app.devTickets()).toHaveLength(1);
+    expect(apiService.getDevSupportTickets).toHaveBeenLastCalledWith('closed', 0);
     fixture.destroy();
   });
 
@@ -916,6 +970,26 @@ describe('App', () => {
       };
     }
 
+    it('matches products across the saved database outside the loaded catalog page', async () => {
+      const fixture = TestBed.createComponent(App);
+      const app = fixture.componentInstance as any;
+      app.catalogIds.set(['cake']);
+      apiService.getRecipeMatches.mockReturnValue(of({ recipes: [
+        recipe('pasta', 'Паста', { used: ['Томат'], missed: ['Сыр'] }),
+        recipe('omelet', 'Омлет', { used: ['Яйца'] }),
+        recipe('cake', 'Торт', { missed: ['Мука'] }),
+      ] }));
+      app.selectRecipeTab('available');
+      await app.refreshRecipeMatches();
+      expect(apiService.getRecipeMatches).toHaveBeenCalledOnce();
+      expect(app.recipeList().map((item: any) => item.id)).toEqual(['omelet', 'pasta']);
+      app.setRecipeSearch('томат');
+      expect(app.recipeList().map((item: any) => item.id)).toEqual(['pasta']);
+      expect(apiService.getRecipes).not.toHaveBeenCalled();
+      expect(app.recipeMatchesLoading()).toBe(false);
+      fixture.destroy();
+    });
+
     it('searches recipes and applies availability and ownership filters', () => {
       const fixture = TestBed.createComponent(App);
       const app = fixture.componentInstance as any;
@@ -930,9 +1004,7 @@ describe('App', () => {
       expect(app.recipeList().map((item: any) => item.id)).toEqual(['omelet', 'pasta']);
       app.recipeSearch.set('');
       app.activeRecipeTab.set('available');
-      expect(app.recipeList().map((item: any) => item.id)).toEqual(['omelet']);
-      app.activeRecipeTab.set('almost');
-      expect(app.recipeList().map((item: any) => item.id)).toEqual(['pasta', 'soup']);
+      expect(app.recipeList().map((item: any) => item.id)).toEqual(['omelet', 'pasta']);
       app.activeRecipeTab.set('mine');
       expect(app.recipeList().map((item: any) => item.id)).toEqual(['soup']);
       app.activeRecipeTab.set('likes');

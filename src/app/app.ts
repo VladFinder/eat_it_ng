@@ -47,7 +47,7 @@ import {
 } from './core/models';
 
 type TabId = 'fridge' | 'shopping' | 'pick' | 'recipes' | 'profile';
-type RecipeTab = 'all' | 'available' | 'almost' | 'mine' | 'likes' | 'planned';
+type RecipeTab = 'all' | 'available' | 'mine' | 'likes' | 'planned';
 type ShoppingFilter = 'all' | ItemCategory;
 type FridgeStatusFilter = 'all' | 'expired' | 'soon' | 'no-expiry';
 type FridgeSort = 'newest' | 'oldest' | 'expiry' | 'name';
@@ -59,13 +59,11 @@ type DevSection =
   | 'overview'
   | 'users'
   | 'usage'
-  | 'features'
   | 'support'
   | 'feedback'
   | 'events'
   | 'infra'
-  | 'recipes'
-  | 'experiments';
+  | 'recipes';
 
 interface OnboardingStep {
   tab: TabId;
@@ -213,13 +211,11 @@ export class App implements OnDestroy, OnInit {
     { id: 'overview', label: 'Обзор', icon: '▦' },
     { id: 'users', label: 'Пользователи', icon: '◉' },
     { id: 'usage', label: 'Использование', icon: '↗' },
-    { id: 'features', label: 'Популярные функции', icon: '★' },
     { id: 'support', label: 'Поддержка', icon: '?' },
     { id: 'feedback', label: 'Фидбек', icon: '✦' },
-    { id: 'events', label: 'Ошибки и события', icon: '!' },
-    { id: 'infra', label: 'Инфраструктура', icon: '⌁' },
+    { id: 'events', label: 'События', icon: '!' },
+    { id: 'infra', label: 'Состояние данных', icon: '⌁' },
     { id: 'recipes', label: 'Рецепты и переводы', icon: 'SP' },
-    { id: 'experiments', label: 'Эксперименты', icon: 'A/B' },
   ];
 
   protected readonly units: Unit[] = ['шт.', 'г', 'кг', 'мг', 'мл', 'л', 'упак.', 'бан.', 'бут.'];
@@ -285,6 +281,7 @@ export class App implements OnDestroy, OnInit {
   protected readonly recipeSuggestionsLoading = signal(false);
   protected readonly recipeSuggestionsError = signal('');
   protected readonly recipeMatchesError = signal('');
+  protected readonly recipeMatchesLoading = signal(false);
   protected readonly dishesLoading = signal(false);
   protected readonly dishesError = signal('');
   protected readonly planningDish = signal<{ id: string; title: string } | null>(null);
@@ -426,11 +423,15 @@ export class App implements OnDestroy, OnInit {
       'Оперативная панель',
   );
   protected readonly devLastUpdated = signal('');
+  protected readonly devDataError = signal('');
+  protected readonly devDataLoading = signal(false);
+  protected readonly devTicketFilter = signal<'all' | 'open' | 'unanswered' | 'closed'>('open');
+  protected readonly devTicketNextOffset = signal<number | null>(null);
+  private devTicketPages = 1;
+  private devDataRequest = 0;
+  private devNextRefreshAt = 0;
   protected readonly devUnansweredTickets = computed(
-    () =>
-      this.devTickets().filter(
-        (ticket) => ticket.status !== 'closed' && ticket.lastMessage?.authorRole !== 'support',
-      ).length,
+    () => this.devSummary()?.support.unansweredTickets ?? 0,
   );
   protected readonly devFeatureRows = computed(() => {
     const summary = this.devSummary();
@@ -440,23 +441,16 @@ export class App implements OnDestroy, OnInit {
       { label: 'Продукты дома', count: summary?.usage.fridgeProducts ?? 0 },
       { label: 'Бытовая химия дома', count: summary?.usage.fridgeHousehold ?? 0 },
       { label: 'Покупки', count: summary?.usage.shoppingItems ?? 0 },
-      { label: 'Обращения в поддержку', count: summary?.support.openTickets ?? 0 },
-      { label: 'Фидбек', count: summary?.support.openFeedback ?? 0 },
+      { label: 'Открытые обращения', count: summary?.support.openTickets ?? 0 },
+      { label: 'Открытый фидбек', count: summary?.support.openFeedback ?? 0 },
     ];
     const max = Math.max(...rows.map((row) => row.count), 1);
-    return rows.map((row) => ({ ...row, width: `${Math.max((row.count / max) * 100, 6)}%` }));
+    return rows.map((row) => ({ ...row, width: `${(row.count / max) * 100}%` }));
   });
   protected readonly devActivityMax = computed(() => {
     const days = this.devSummary()?.activity.days ?? [];
     return Math.max(
-      ...days.flatMap((day) => [
-        day.users,
-        day.sessions,
-        day.fridgeItems,
-        day.shoppingItems,
-        day.supportTickets,
-        day.feedback,
-      ]),
+      ...days.flatMap((day) => [day.users, day.supportTickets, day.feedback]),
       1,
     );
   });
@@ -599,7 +593,7 @@ export class App implements OnDestroy, OnInit {
     const tab = this.activeRecipeTab();
     const search = this.normalizeSearch(this.recipeSearch());
     const ids = this.catalogIds();
-    const catalogView = !['mine', 'likes', 'planned'].includes(tab) && ids !== null;
+    const catalogView = tab === 'all' && ids !== null;
     const byId = new Map(this.recipes().map((recipe) => [recipe.id, recipe]));
     const recipes = catalogView
       ? ids.map((id) => byId.get(id)).filter((recipe): recipe is Recipe => !!recipe)
@@ -610,14 +604,15 @@ export class App implements OnDestroy, OnInit {
         if (tab === 'likes') return recipe.liked;
         if (tab === 'available')
           return (
-            this.recipeIngredientTotal(recipe) > 0 && (recipe.missedIngredients?.length ?? 0) === 0
+            (recipe.usedIngredients?.length ?? 0) > 0 && (recipe.missedIngredients?.length ?? 0) <= 2
           );
-        if (tab === 'almost') {
-          const missing = recipe.missedIngredients?.length ?? 0;
-          return missing > 0 && missing <= 2;
-        }
         return true;
       })
+      .sort((a, b) =>
+        tab === 'available'
+          ? (a.missedIngredients?.length ?? 0) - (b.missedIngredients?.length ?? 0)
+          : 0,
+      )
       .filter((recipe) => {
         if (!search || catalogView) return true;
         return [
@@ -815,6 +810,7 @@ export class App implements OnDestroy, OnInit {
     if (tab === 'pick') void this.refreshRecipeMatches();
     if (tab === 'recipes') {
       if (this.catalogIds() === null || this.catalogLoadFailed()) void this.loadRecipeCatalog();
+      if (this.activeRecipeTab() === 'available') void this.refreshRecipeMatches();
       void Promise.all([this.loadUserDishes(), this.loadMealPlan()]);
     }
   }
@@ -1406,6 +1402,7 @@ export class App implements OnDestroy, OnInit {
     if (this.recipeMatchesPending && this.recipeMatchesKey === key)
       return this.recipeMatchesPending;
     this.recipeMatchesKey = key;
+    this.recipeMatchesLoading.set(true);
     const pending = (async () => {
       try {
         const result = await firstValueFrom(this.api.getRecipeMatches());
@@ -1438,7 +1435,10 @@ export class App implements OnDestroy, OnInit {
     try {
       return await pending;
     } finally {
-      if (this.recipeMatchesPending === pending) this.recipeMatchesPending = null;
+      if (this.recipeMatchesPending === pending) {
+        this.recipeMatchesPending = null;
+        this.recipeMatchesLoading.set(false);
+      }
     }
   }
 
@@ -1561,6 +1561,12 @@ export class App implements OnDestroy, OnInit {
     void this.refreshRecipeMatches();
   }
 
+  protected selectRecipeTab(tab: RecipeTab): void {
+    this.activeRecipeTab.set(tab);
+    if (tab === 'available') void this.refreshRecipeMatches();
+    if (tab === 'all' && this.catalogIds() === null) void this.loadRecipeCatalog();
+  }
+
   protected setRecipeSearch(value: string): void {
     this.recipeSearch.set(value);
     if (this.recipeSearchTimer !== null) window.clearTimeout(this.recipeSearchTimer);
@@ -1569,6 +1575,12 @@ export class App implements OnDestroy, OnInit {
     this.catalogNextOffset.set(null);
     this.catalogLoadFailed.set(false);
     this.recipeSuggestionsError.set('');
+    if (this.activeRecipeTab() === 'available') {
+      this.recipeSearchTimer = null;
+      this.catalogIds.set(null);
+      this.recipeSuggestionsLoading.set(false);
+      return;
+    }
     this.recipeSuggestionsLoading.set(true);
     this.recipeSearchTimer = window.setTimeout(() => {
       this.recipeSearchTimer = null;
@@ -2353,7 +2365,7 @@ export class App implements OnDestroy, OnInit {
   }
 
   protected devActivityHeight(value: number): string {
-    return `${Math.max((value / this.devActivityMax()) * 100, value > 0 ? 8 : 2)}%`;
+    return `${(value / this.devActivityMax()) * 100}%`;
   }
 
   private async loadState(): Promise<void> {
@@ -2390,7 +2402,7 @@ export class App implements OnDestroy, OnInit {
     const revision = this.stateRevision;
     try {
       if (this.devMode()) {
-        if (this.hasDevAccess()) {
+        if (this.hasDevAccess() && Date.now() >= this.devNextRefreshAt) {
           await this.loadDevData();
           this.apiError.set('');
         }
@@ -2442,23 +2454,53 @@ export class App implements OnDestroy, OnInit {
     this.supportTickets.set(result.tickets);
   }
 
+  protected async filterDevTickets(filter: 'all' | 'open' | 'unanswered' | 'closed'): Promise<void> {
+    this.devTicketFilter.set(filter);
+    this.devTicketPages = 1;
+    this.devTickets.set([]);
+    this.devTicketNextOffset.set(null);
+    await this.loadDevData();
+  }
+
+  protected async loadMoreDevTickets(): Promise<void> {
+    if (this.devDataLoading() || this.devTicketNextOffset() === null) return;
+    this.devTicketPages++;
+    await this.loadDevData();
+  }
+
   private async loadDevData(): Promise<void> {
     const userId = this.currentUser()?.id;
-    const [summary, tickets, feedback, users] = await Promise.all([
-      firstValueFrom(this.api.getDevSummary()),
-      firstValueFrom(this.api.getDevSupportTickets()),
-      firstValueFrom(this.api.getDevFeedback()),
-      firstValueFrom(this.api.getDevUsers()),
-    ]);
-    if (this.currentUser()?.id !== userId) return;
-    this.devSummary.set(summary);
-    this.devTickets.set(tickets.tickets);
-    this.devFeedback.set(feedback.feedback);
-    this.devUsers.set(users.users);
-    if (this.activeDevSection() === 'recipes') {
-      await this.loadDevRecipes();
+    const request = ++this.devDataRequest;
+    this.devNextRefreshAt = Date.now() + 30_000;
+    this.devDataLoading.set(true);
+    try {
+      const [summary, ticketPages, feedback, users] = await Promise.all([
+        firstValueFrom(this.api.getDevSummary()),
+        Promise.all(Array.from({ length: this.devTicketPages }, (_, page) =>
+          firstValueFrom(this.api.getDevSupportTickets(this.devTicketFilter(), page * 100)),
+        )),
+        firstValueFrom(this.api.getDevFeedback()),
+        firstValueFrom(this.api.getDevUsers()),
+      ]);
+      if (this.currentUser()?.id !== userId || request !== this.devDataRequest) return;
+      this.devSummary.set(summary);
+      this.devTickets.set([...new Map(ticketPages.flatMap((page) => page.tickets)
+        .map((ticket) => [ticket.id, ticket])).values()]);
+      this.devTicketNextOffset.set(ticketPages.at(-1)?.nextOffset ?? null);
+      this.devFeedback.set(feedback.feedback);
+      this.devUsers.set(users.users);
+      this.devLastUpdated.set(new Date(summary.generatedAt).toLocaleTimeString('ru-RU'));
+      this.devDataError.set('');
+      if (this.activeDevSection() === 'recipes') await this.loadDevRecipes();
+    } catch {
+      if (this.currentUser()?.id === userId && request === this.devDataRequest) {
+        this.devDataError.set(this.devSummary()
+          ? 'Не удалось обновить данные. Показаны последние успешно загруженные значения.'
+          : 'Не удалось загрузить показатели. Нажмите «Обновить».');
+      }
+    } finally {
+      if (request === this.devDataRequest) this.devDataLoading.set(false);
     }
-    this.devLastUpdated.set(new Date().toLocaleTimeString('ru-RU'));
   }
 
   protected async toggleDevUserSubscription(user: DevUser): Promise<void> {
@@ -2751,6 +2793,7 @@ export class App implements OnDestroy, OnInit {
     this.recipeSearch.set('');
     this.catalogSource = 'auto';
     this.recipeMatchesPending = null;
+    this.recipeMatchesLoading.set(false);
     this.recipeMatchesError.set('');
     this.recipes.set([]);
     this.clearedNotificationIds.set([]);
@@ -2796,6 +2839,13 @@ export class App implements OnDestroy, OnInit {
     this.toastMessage.set('');
     this.cancelSwipe();
     this.devSummary.set(null);
+    this.devDataRequest++;
+    this.devDataError.set('');
+    this.devDataLoading.set(false);
+    this.devLastUpdated.set('');
+    this.devTicketFilter.set('open');
+    this.devTicketNextOffset.set(null);
+    this.devTicketPages = 1;
     this.devTickets.set([]);
     this.devFeedback.set([]);
     this.activeDevTicket.set(null);

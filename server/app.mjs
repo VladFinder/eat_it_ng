@@ -26,6 +26,7 @@ import {
   adminRecipeTranslationSchema,
   adminProductTranslationSchema,
   adminCatalogQuerySchema,
+  adminSupportQuerySchema,
   consumeSchema,
   fridgeCreateSchema,
   fridgeUpdateSchema,
@@ -1536,14 +1537,27 @@ function emptyDailyBuckets(days = 7) {
   return buckets;
 }
 
-function countByDay(items, buckets, field) {
-  const byDate = new Map(buckets.map((bucket) => [bucket.date, bucket]));
-  for (const item of items) {
-    const bucket = byDate.get(dayKey(item.createdAt));
-    if (bucket) {
-      bucket[field] += 1;
-    }
-  }
+async function dailyCounts(prisma, table, since) {
+  // Table names are internal constants; dates are bound parameters.
+  const rows = await prisma.$queryRawUnsafe(
+    `SELECT date(CASE WHEN typeof("createdAt") = 'integer'
+       THEN "createdAt" / 1000 ELSE "createdAt" END,
+       CASE WHEN typeof("createdAt") = 'integer' THEN 'unixepoch' ELSE '+0 days' END) AS date,
+       COUNT(*) AS total FROM "${table}" WHERE "createdAt" >= ? GROUP BY date`,
+    since,
+  );
+  return rows.map((row) => ({ date: row.date, total: Number(row.total) }));
+}
+
+const unansweredTicketCondition = `t.status = 'open'
+  AND COALESCE((SELECT m."authorRole" FROM "SupportMessage" m
+    WHERE m."ticketId" = t.id ORDER BY m."createdAt" DESC, m.id DESC LIMIT 1), 'user') != 'support'`;
+
+async function unansweredTicketCount(prisma) {
+  const [row] = await prisma.$queryRawUnsafe(
+    `SELECT COUNT(*) AS total FROM "SupportTicket" t WHERE ${unansweredTicketCondition}`,
+  );
+  return Number(row.total);
 }
 
 async function getHousehold(prisma, householdId) {
@@ -2562,8 +2576,6 @@ export function createApiServer(prisma, logger = console) {
         dayStart.setUTCHours(0, 0, 0, 0);
         const sevenDaysAgo = new Date(dayStart);
         sevenDaysAgo.setUTCDate(dayStart.getUTCDate() - 6);
-        const expiringSoon = new Date(now);
-        expiringSoon.setUTCDate(expiringSoon.getUTCDate() + 2);
         const [
           userCount,
           onlineUsers,
@@ -2572,7 +2584,6 @@ export function createApiServer(prisma, logger = console) {
           fridgeItems,
           fridgeProducts,
           fridgeHousehold,
-          expiringFridgeItems,
           shoppingItems,
           shoppingProducts,
           shoppingHousehold,
@@ -2593,6 +2604,10 @@ export function createApiServer(prisma, logger = console) {
           recentShoppingItems,
           recentTickets,
           recentFeedback,
+          ticketDaily,
+          feedbackDaily,
+          unansweredTickets,
+          sharedHouseholds,
         ] = await Promise.all([
           prisma.user.count(),
           prisma.session
@@ -2606,7 +2621,6 @@ export function createApiServer(prisma, logger = console) {
           prisma.fridgeItem.count(),
           prisma.fridgeItem.count({ where: { category: 'products' } }),
           prisma.fridgeItem.count({ where: { category: 'household' } }),
-          prisma.fridgeItem.count({ where: { expiresAt: { lte: expiringSoon } } }),
           prisma.shoppingItem.count(),
           prisma.shoppingItem.count({ where: { category: 'products' } }),
           prisma.shoppingItem.count({ where: { category: 'household' } }),
@@ -2620,27 +2634,11 @@ export function createApiServer(prisma, logger = console) {
           prisma.user.count({ where: { createdAt: { gte: dayStart } } }),
           prisma.supportTicket.count({ where: { createdAt: { gte: dayStart } } }),
           prisma.feedbackItem.count({ where: { createdAt: { gte: dayStart } } }),
-          prisma.user.findMany({ orderBy: { createdAt: 'desc' }, take: 5 }),
-          prisma.user.findMany({
-            where: { createdAt: { gte: sevenDaysAgo } },
-            select: { createdAt: true },
-            take: 500,
-          }),
-          prisma.session.findMany({
-            where: { createdAt: { gte: sevenDaysAgo } },
-            select: { createdAt: true },
-            take: 500,
-          }),
-          prisma.fridgeItem.findMany({
-            where: { createdAt: { gte: sevenDaysAgo } },
-            select: { createdAt: true },
-            take: 500,
-          }),
-          prisma.shoppingItem.findMany({
-            where: { createdAt: { gte: sevenDaysAgo } },
-            select: { createdAt: true },
-            take: 500,
-          }),
+          prisma.user.findMany({ orderBy: { createdAt: 'desc' }, take: 12 }),
+          dailyCounts(prisma, 'User', sevenDaysAgo),
+          dailyCounts(prisma, 'Session', sevenDaysAgo),
+          dailyCounts(prisma, 'FridgeItem', sevenDaysAgo),
+          dailyCounts(prisma, 'ShoppingItem', sevenDaysAgo),
           prisma.supportTicket.findMany({
             where: { createdAt: { gte: sevenDaysAgo } },
             orderBy: { createdAt: 'desc' },
@@ -2653,18 +2651,26 @@ export function createApiServer(prisma, logger = console) {
             include: { user: true },
             take: 20,
           }),
+          dailyCounts(prisma, 'SupportTicket', sevenDaysAgo),
+          dailyCounts(prisma, 'FeedbackItem', sevenDaysAgo),
+          unansweredTicketCount(prisma),
+          prisma.$queryRawUnsafe('SELECT COUNT(*) AS total FROM (SELECT "householdId" FROM "User" GROUP BY "householdId" HAVING COUNT(*) > 1)'),
         ]);
 
         const daily = emptyDailyBuckets(7);
-        countByDay(recentUserActivity, daily, 'users');
-        countByDay(recentSessions, daily, 'sessions');
-        countByDay(recentFridgeItems, daily, 'fridgeItems');
-        countByDay(recentShoppingItems, daily, 'shoppingItems');
-        countByDay(recentTickets, daily, 'supportTickets');
-        countByDay(recentFeedback, daily, 'feedback');
+        for (const [field, rows] of Object.entries({
+          users: recentUserActivity, sessions: recentSessions,
+          fridgeItems: recentFridgeItems, shoppingItems: recentShoppingItems,
+          supportTickets: ticketDaily, feedback: feedbackDaily,
+        })) {
+          for (const row of rows) {
+            const day = daily.find((bucket) => bucket.date === row.date);
+            if (day) day[field] = row.total;
+          }
+        }
 
         const events = [
-          ...recentUsers.map((item) => ({
+          ...recentUsers.filter((item) => item.createdAt >= sevenDaysAgo).map((item) => ({
             id: `user-${item.id}`,
             type: 'user',
             title: 'Новый пользователь',
@@ -2690,6 +2696,8 @@ export function createApiServer(prisma, logger = console) {
           .slice(0, 12);
 
         json(response, 200, {
+          generatedAt: now.toISOString(),
+          timezone: 'UTC',
           users: { total: userCount, online: onlineUsers, recent: recentUsers.map(serializeUser) },
           usage: {
             fridgeItems,
@@ -2699,17 +2707,17 @@ export function createApiServer(prisma, logger = console) {
             shoppingProducts,
             shoppingHousehold,
             checkedShoppingItems,
-            expiringFridgeItems,
           },
           support: {
             openTickets,
+            unansweredTickets,
             closedTickets,
             openFeedback: feedbackCount,
             closedFeedback,
             newTicketsToday,
             newFeedbackToday,
           },
-          households: { total: householdCount, pendingInvitations },
+          households: { total: householdCount, shared: Number(sharedHouseholds[0].total), pendingInvitations },
           notifications: { unread: unreadNotifications },
           sessions: { active: activeSessions, onlineWindowMinutes: 5 },
           today: {
@@ -2725,15 +2733,30 @@ export function createApiServer(prisma, logger = console) {
 
       if (method === 'GET' && url.pathname === '/api/dev/support/tickets') {
         requireAdmin(user);
+        const { filter, offset } = adminSupportQuerySchema.parse(Object.fromEntries(url.searchParams));
+        const unansweredPage = filter === 'unanswered'
+          ? await prisma.$queryRawUnsafe(
+              `SELECT t.id FROM "SupportTicket" t WHERE ${unansweredTicketCondition}
+               ORDER BY t."updatedAt" DESC, t.id DESC LIMIT 101 OFFSET ?`, offset,
+            )
+          : null;
+        const where = unansweredPage
+          ? { id: { in: unansweredPage.map((ticket) => ticket.id) } }
+          : filter === 'all' ? {} : { status: filter };
         const tickets = await prisma.supportTicket.findMany({
-          orderBy: [{ status: 'asc' }, { updatedAt: 'desc' }],
+          where,
+          orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
           include: {
             user: true,
-            messages: { orderBy: { createdAt: 'desc' }, take: 1 },
+            messages: { orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 1 },
           },
-          take: 100,
+          skip: unansweredPage ? 0 : offset,
+          take: 101,
         });
-        json(response, 200, { tickets: tickets.map(serializeSupportTicket) });
+        json(response, 200, {
+          tickets: tickets.slice(0, 100).map(serializeSupportTicket),
+          nextOffset: tickets.length > 100 ? offset + 100 : null,
+        });
         return;
       }
 
@@ -2816,7 +2839,7 @@ export function createApiServer(prisma, logger = console) {
       if (method === 'GET' && url.pathname === '/api/dev/feedback') {
         requireAdmin(user);
         const items = await prisma.feedbackItem.findMany({
-          orderBy: [{ status: 'asc' }, { createdAt: 'desc' }],
+          orderBy: [{ status: 'desc' }, { createdAt: 'desc' }],
           include: { user: true },
           take: 100,
         });

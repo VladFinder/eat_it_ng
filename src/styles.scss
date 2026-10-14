@@ -2574,7 +2574,8 @@ a.secondary-action {
 
 .dev-bars {
   display: grid;
-  grid-template-columns: repeat(7, minmax(32px, 1fr));
+  grid-template-columns: repeat(7, minmax(48px, 1fr));
+  overflow-x: auto;
   align-items: end;
   gap: 12px;
   min-height: 230px;
@@ -2584,14 +2585,15 @@ a.secondary-action {
 
 .dev-bars div {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: 170px 16px 16px;
   align-items: end;
   gap: 4px;
   height: 210px;
 }
 
 .dev-bars span {
-  min-height: 4px;
+  min-height: 0;
   border-radius: 999px 999px 0 0;
   background: #49875e;
   transition: height 0.25s ease;
@@ -2602,6 +2604,7 @@ a.secondary-action {
 }
 
 .dev-bars small {
+  white-space: nowrap;
   grid-column: 1 / -1;
   color: #656f66;
   font-size: 10px;
@@ -4099,4 +4102,13 @@ body:has(.random-result-dialog[open]) {
   background: #edf3e9;
   font-size: 26px;
   object-fit: cover;
+}
+
+.dev-bars span.purple {
+  background: #8560a8;
+}
+
+.dev-legend .purple {
+  background: #eee5f7;
+  color: #745196;
 }

@@ -915,11 +915,13 @@
         } @else {
           <aside class="dev-sidebar">
             <div class="dev-brand">
-              <span>EAT IT</span>
+              <span>HOMIE</span>
               <strong>DEV CENTER</strong>
               <p>Оперативный центр продукта</p>
             </div>
-            <div class="dev-system-pill"><span></span> Все системы работают</div>
+            <div class="dev-system-pill">
+              {{ devDataError() ? 'Данные не обновлены' : devDataLoading() ? 'Обновление данных…' : devLastUpdated() ? 'Данные загружены' : 'Ожидание данных' }}
+            </div>
             <button class="secondary-action" type="button" (click)="devMode.set(false); retryLoad()">
               Вернуться в приложение
             </button>
@@ -938,8 +940,8 @@
             <div class="dev-admin">
               <div>{{ currentUser()?.displayName?.charAt(0) || 'В' }}</div>
               <span>
-                <strong>{{ currentUser()?.displayName || 'Влад' }} · Owner</strong>
-                <small>Последний вход сейчас</small>
+                <strong>{{ currentUser()?.displayName || 'Администратор' }}</strong>
+                <small>Администратор</small>
               </span>
             </div>
           </aside>
@@ -954,19 +956,25 @@
                 </p>
               </div>
               <div class="dev-controls">
-                <button type="button">Последние 7 дней</button>
+                <span>Дни и «сегодня»: UTC</span>
                 <button class="dev-refresh" type="button" (click)="retryLoad()">↻ Обновить</button>
               </div>
             </header>
 
+            @if (devDataError()) {
+              <div class="recipe-notice warning" role="alert">{{ devDataError() }}</div>
+            }
+            @if (!devSummary()) {
+              <p role="status">{{ devDataLoading() ? 'Загружаем показатели…' : 'Показатели недоступны' }}</p>
+            } @else {
             @if ((devSummary()?.support?.openTickets || 0) > 0) {
               <article class="dev-critical-alert">
-                <strong>LIVE</strong>
+                <strong>Поддержка</strong>
                 <span>
                   <b>{{ devSummary()?.support?.openTickets }} открытых обращений в поддержку</b>
                   <small
                     >{{ devUnansweredTickets() }} без ответа ·
-                    {{ devSummary()?.support?.newTicketsToday || 0 }} новых сегодня</small
+                    {{ devSummary()?.support?.newTicketsToday || 0 }} новых сегодня (UTC)</small
                   >
                 </span>
                 <button type="button" (click)="setDevSection('support')">Открыть очередь</button>
@@ -975,7 +983,7 @@
               <article class="dev-ok-alert">
                 <strong>●</strong>
                 <span>
-                  <b>Критичных обращений нет</b>
+                  <b>Открытых обращений нет</b>
                   <small>Состояние считается по текущим данным приложения</small>
                 </span>
               </article>
@@ -983,35 +991,29 @@
 
             <section class="dev-metrics" aria-label="Ключевые метрики">
               <article class="dev-metric-card">
-                <span>Сейчас онлайн</span>
+                <span>Активны за 5 минут</span>
                 <strong>{{ devSummary()?.users?.online || 0 }}</strong>
                 <p>
-                  <b>{{ devSummary()?.sessions?.active || 0 }}</b> активных сессий
+                  <b>{{ devSummary()?.sessions?.active || 0 }}</b> действующих сессий входа
                 </p>
               </article>
               <article class="dev-metric-card">
                 <span>Пользователи</span>
                 <strong>{{ devSummary()?.users?.total || 0 }}</strong>
                 <p>
-                  <b>{{ devSummary()?.today?.newUsers || 0 }}</b> новых сегодня
+                  <b>{{ devSummary()?.today?.newUsers || 0 }}</b> новых сегодня (UTC)
                 </p>
               </article>
               <article class="dev-metric-card">
-                <span>Записи в приложении</span>
-                <strong>{{
-                  (devSummary()?.usage?.fridgeItems || 0) +
-                    (devSummary()?.usage?.shoppingItems || 0)
-                }}</strong>
-                <p>
-                  <b class="blue">{{ devSummary()?.usage?.expiringFridgeItems || 0 }}</b> скоро
-                  истекает
-                </p>
+                <span>Дома с участниками</span>
+                <strong>{{ devSummary()?.households?.total || 0 }}</strong>
+                <p><b>{{ devSummary()?.households?.shared || 0 }}</b> совместных — от двух участников</p>
               </article>
               <article class="dev-metric-card">
                 <span>Открытые обращения</span>
                 <strong>{{ devSummary()?.support?.openTickets || 0 }}</strong>
                 <p>
-                  <b class="red">{{ devSummary()?.support?.openFeedback || 0 }}</b> фидбек
+                  <b class="red">{{ devUnansweredTickets() }}</b> без ответа
                 </p>
               </article>
             </section>
@@ -1022,23 +1024,26 @@
                   <article class="dev-card dev-activity">
                     <div class="dev-card-head">
                       <div>
-                        <h2>Активность за 7 дней</h2>
-                        <p>Новые записи, сессии, тикеты и фидбек</p>
+                        <h2>Регистрации и обращения за 7 дней</h2>
+                        <p>Количество по дате создания · дни по UTC</p>
                       </div>
                     </div>
                     <div class="dev-legend">
-                      <span class="green">● Пользователи</span>
-                      <span class="blue">● Сессии</span>
+                      <span class="green">● Регистрации</span>
+                      <span class="blue">● Обращения</span>
+                      <span class="purple">● Фидбек</span>
                     </div>
-                    <div class="dev-bars" aria-label="Активность за 7 дней">
+                    <div class="dev-bars" aria-label="Регистрации и обращения за 7 дней">
                       @for (day of devSummary()?.activity?.days || []; track day.date) {
                         <div>
                           <span [style.height]="devActivityHeight(day.users)"></span>
                           <span
                             class="blue"
-                            [style.height]="devActivityHeight(day.sessions)"
+                            [style.height]="devActivityHeight(day.supportTickets)"
                           ></span>
+                          <span class="purple" [style.height]="devActivityHeight(day.feedback)"></span>
                           <small>{{ day.date.slice(5) }}</small>
+                          <small>{{ day.users }}/{{ day.supportTickets }}/{{ day.feedback }}</small>
                         </div>
                       }
                     </div>
@@ -1047,7 +1052,7 @@
                   <article class="dev-card dev-online">
                     <div class="dev-card-head">
                       <div>
-                        <h2>Онлайн сейчас</h2>
+                        <h2>Активны за 5 минут</h2>
                         <p>
                           Последние {{ devSummary()?.sessions?.onlineWindowMinutes || 5 }} минут
                         </p>
@@ -1086,7 +1091,7 @@
                     <div class="dev-card-head">
                       <div>
                         <h2>Пользователи и подписки</h2>
-                        <p>Тариф и доступ Plus для каждого дома</p>
+                        <p>Последние 200 зарегистрированных пользователей · тариф общий для дома</p>
                       </div>
                     </div>
                     <div class="dev-user-list">
@@ -1153,12 +1158,6 @@
                   </article>
                 </section>
               }
-              @case ('features') {
-                <section class="dev-grid operations">
-                  <ng-container *ngTemplateOutlet="devUsageCard"></ng-container>
-                  <ng-container *ngTemplateOutlet="devEventsCard"></ng-container>
-                </section>
-              }
               @case ('support') {
                 <section class="dev-grid operations single">
                   <ng-container *ngTemplateOutlet="devSupportCard"></ng-container>
@@ -1180,7 +1179,7 @@
                   <article class="dev-card">
                     <div class="dev-card-head">
                       <div>
-                        <h2>Системные очереди</h2>
+                        <h2>Обратная связь и уведомления</h2>
                         <p>Данные из текущих таблиц приложения</p>
                       </div>
                     </div>
@@ -1481,25 +1480,10 @@
                   </article>
                 </section>
               }
-              @case ('experiments') {
-                <section class="dev-grid operations single">
-                  <article class="dev-card">
-                    <div class="dev-card-head">
-                      <div>
-                        <h2>Эксперименты</h2>
-                        <p>В приложении пока нет сущности A/B экспериментов</p>
-                      </div>
-                    </div>
-                    <div class="dev-empty">
-                      Активных экспериментов нет. Здесь не показываются тестовые данные.
-                    </div>
-                  </article>
-                </section>
-              }
             }
 
             <footer class="dev-live">
-              <b>● LIVE</b>
+              <b>{{ devDataError() ? 'Обновление недоступно' : 'Обновление каждые 30 секунд' }}</b>
               @for (event of (devSummary()?.events || []).slice(0, 3); track event.id) {
                 <span>{{ notificationTime(event.createdAt) }} — {{ event.title }}</span>
               } @empty {
@@ -1507,12 +1491,14 @@
               }
             </footer>
 
+            }
+
             <ng-template #devUsageCard>
               <article class="dev-card">
                 <div class="dev-card-head">
                   <div>
-                    <h2>Популярные рабочие области</h2>
-                    <p>Реальные счётчики объектов приложения</p>
+                    <h2>Объекты в базе</h2>
+                    <p>Текущее число сохранённых записей, не частота использования</p>
                   </div>
                 </div>
                 <div class="dev-feature-list">
@@ -1536,13 +1522,10 @@
                   </div>
                 </div>
                 <div class="dev-filter-row">
-                  <button type="button" class="active">
-                    Открыто {{ devSummary()?.support?.openTickets || 0 }}
-                  </button>
-                  <button type="button">Без ответа {{ devUnansweredTickets() }}</button>
-                  <button type="button">
-                    Закрыто {{ devSummary()?.support?.closedTickets || 0 }}
-                  </button>
+                  <button type="button" [class.active]="devTicketFilter() === 'all'" (click)="filterDevTickets('all')">Все</button>
+                  <button type="button" [class.active]="devTicketFilter() === 'open'" (click)="filterDevTickets('open')">Открыто {{ devSummary()?.support?.openTickets || 0 }}</button>
+                  <button type="button" [class.active]="devTicketFilter() === 'unanswered'" (click)="filterDevTickets('unanswered')">Без ответа {{ devUnansweredTickets() }}</button>
+                  <button type="button" [class.active]="devTicketFilter() === 'closed'" (click)="filterDevTickets('closed')">Закрыто {{ devSummary()?.support?.closedTickets || 0 }}</button>
                 </div>
                 <div class="dev-ticket-list">
                   @for (ticket of devTickets(); track ticket.id) {
@@ -1569,9 +1552,12 @@
                       >
                     </button>
                   } @empty {
-                    <div class="dev-empty">Новых обращений нет</div>
+                    <div class="dev-empty">{{ devDataLoading() ? 'Загружаем обращения…' : 'Для выбранного фильтра обращений нет' }}</div>
                   }
                 </div>
+                @if (devTicketNextOffset() !== null) {
+                  <button class="secondary-action" type="button" [disabled]="devDataLoading()" (click)="loadMoreDevTickets()">Показать ещё обращения</button>
+                }
               </article>
             </ng-template>
 
@@ -1580,13 +1566,13 @@
                 <div class="dev-card-head">
                   <div>
                     <h2>Фидбек</h2>
-                    <p>Идеи, баги и сообщения из приложения</p>
+                    <p>До 100 сообщений: сначала открытые, затем последние обработанные</p>
                   </div>
                 </div>
                 <div class="dev-score">
                   <strong>{{ devSummary()?.support?.openFeedback || 0 }}</strong>
                   <span>открыто</span>
-                  <b>{{ devSummary()?.support?.newFeedbackToday || 0 }} сегодня</b>
+                  <b>{{ devSummary()?.support?.newFeedbackToday || 0 }} сегодня (UTC)</b>
                 </div>
                 <div class="dev-feedback-list">
                   @for (item of devFeedback(); track item.id) {
@@ -1621,13 +1607,13 @@
               <article class="dev-card">
                 <div class="dev-card-head">
                   <div>
-                    <h2>Здоровье данных</h2>
-                    <p>Считается по состоянию приложения</p>
+                    <h2>Состояние данных</h2>
+                    <p>Сводка базы · не мониторинг инфраструктуры</p>
                   </div>
                 </div>
                 <div class="dev-health">
                   <span></span>
-                  <p>Активные сессии</p>
+                  <p>Действующие сессии входа</p>
                   <b>{{ devSummary()?.sessions?.active || 0 }}</b>
                 </div>
                 <div class="dev-health">
@@ -1636,9 +1622,7 @@
                   <b>{{ devSummary()?.users?.online || 0 }}</b>
                 </div>
                 <div class="dev-health warn">
-                  <span></span>
-                  <p>Скоро истекают продукты</p>
-                  <b>{{ devSummary()?.usage?.expiringFridgeItems || 0 }}</b>
+                  <span></span><p>Обращения без ответа</p><b>{{ devUnansweredTickets() }}</b>
                 </div>
                 <div class="dev-health warn">
                   <span></span>
@@ -2349,23 +2333,16 @@
           <button
             type="button"
             [class.active]="activeRecipeTab() === 'all'"
-            (click)="activeRecipeTab.set('all')"
+            (click)="selectRecipeTab('all')"
           >
             Все
           </button>
           <button
             type="button"
             [class.active]="activeRecipeTab() === 'available'"
-            (click)="activeRecipeTab.set('available')"
+            (click)="selectRecipeTab('available')"
           >
-            Можно готовить
-          </button>
-          <button
-            type="button"
-            [class.active]="activeRecipeTab() === 'almost'"
-            (click)="activeRecipeTab.set('almost')"
-          >
-            Почти готово
+            По продуктам
           </button>
           <button
             type="button"
@@ -2392,7 +2369,10 @@
             {{ activeRecipeTab() === 'planned' ? 'Вернуться к рецептам' : 'Недельное меню' }}
           </button>
         }
-        @if (recipeSuggestionsLoading() || dishesLoading()) {
+        @if (activeRecipeTab() === 'available') {
+          <p class="recipe-notice">Из продуктов дома — готовим сразу или докупаем до двух ингредиентов.</p>
+        }
+        @if (recipeSuggestionsLoading() || dishesLoading() || recipeMatchesLoading()) {
           <div class="recipe-notice" role="status">Загружаем рецепты…</div>
         }
         @if (recipeSuggestionsError()) {
@@ -2435,7 +2415,7 @@
                     <button
                       class="meal-plan-empty"
                       type="button"
-                      (click)="activeRecipeTab.set('all')"
+                      (click)="selectRecipeTab('all')"
                     >
                       + Выбрать блюдо
                     </button>
@@ -2508,21 +2488,23 @@
                 </button>
               </article>
             } @empty {
-              @if (!recipeSuggestionsLoading()) {
+              @if (!recipeSuggestionsLoading() && !dishesLoading() && !recipeMatchesLoading() && (activeRecipeTab() !== 'available' || !recipeMatchesError())) {
                 <div class="empty-state">
                   <h3>Пока пусто</h3>
                   <p>
                     {{
                       recipeSearch().trim()
                         ? 'По этому запросу ничего не найдено.'
-                        : 'Для выбранного фильтра пока нет рецептов.'
+                        : activeRecipeTab() === 'available'
+                          ? 'Подходящих рецептов пока нет. Добавьте продукты в холодильник или выберите «Все».'
+                          : 'Для выбранного фильтра пока нет рецептов.'
                     }}
                   </p>
                 </div>
               }
             }
           </div>
-          @if (activeRecipeTab() !== 'mine' && activeRecipeTab() !== 'likes') {
+          @if (activeRecipeTab() === 'all') {
             <div class="catalog-pagination" aria-live="polite">
               @if (catalogLoadFailed()) {
                 <button

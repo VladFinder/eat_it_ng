@@ -235,3 +235,8 @@ export const adminCatalogQuerySchema = z.object({
   query: z.string().trim().max(120).default(''),
   offset: z.coerce.number().int().min(0).max(1_000_000).default(0),
 });
+
+export const adminSupportQuerySchema = z.object({
+  filter: z.enum(['all', 'open', 'unanswered', 'closed']).default('all'),
+  offset: z.coerce.number().int().min(0).max(1_000_000).default(0),
+});

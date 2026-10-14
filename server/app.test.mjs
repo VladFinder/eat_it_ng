@@ -2800,3 +2800,65 @@ test('household totals ignore empty homes and leaving preserves shared data and 
     restoreEnv('ADMIN_USER_IDS', previousAdminIds);
   }
 });
+
+test('dev summary aggregates beyond list limits and support filters page all unanswered tickets', async () => {
+  const { user, headers } = await recipeAccount('dashboard-admin@example.com');
+  const previousAdminIds = process.env.ADMIN_USER_IDS;
+  process.env.ADMIN_USER_IDS = user.id;
+  try {
+    const readSummary = async () => {
+      const response = await request('/api/dev/summary', { headers });
+      assert.equal(response.status, 200);
+      return response.json();
+    };
+    const baseline = await readSummary();
+    const now = new Date();
+    await prisma.user.createMany({ data: Array.from({ length: 501 }, (_, i) => ({
+      id: `dashboard-user-${i}`, email: `dashboard-${i}@example.com`, displayName: 'Dashboard test',
+      householdId: user.householdId, createdAt: now,
+    })) });
+    await prisma.supportTicket.createMany({ data: Array.from({ length: 105 }, (_, i) => ({
+      id: `dashboard-ticket-${i}`, userId: user.id, subject: 'Dashboard test', createdAt: now,
+    })) });
+    await prisma.feedbackItem.createMany({ data: Array.from({ length: 25 }, (_, i) => ({
+      userId: user.id, type: 'idea', body: 'Dashboard test', createdAt: now,
+    })) });
+    await prisma.supportMessage.create({ data: {
+      ticketId: 'dashboard-ticket-0', authorId: user.id, authorRole: 'support', body: 'Answered',
+    } });
+    await prisma.supportTicket.update({ where: { id: 'dashboard-ticket-1' }, data: { status: 'closed' } });
+    const summary = await readSummary();
+    const day = now.toISOString().slice(0, 10);
+    const current = summary.activity.days.find((entry) => entry.date === day);
+    const previous = baseline.activity.days.find((entry) => entry.date === day);
+    assert.equal(current.users - previous.users, 501);
+    assert.equal(current.supportTickets - previous.supportTickets, 105);
+    assert.equal(current.feedback - previous.feedback, 25);
+    assert.equal(summary.support.unansweredTickets - baseline.support.unansweredTickets, 103);
+    assert.equal(summary.households.total, baseline.households.total);
+    assert.equal(summary.households.shared, baseline.households.shared + 1);
+    assert.equal(summary.timezone, 'UTC');
+    assert.ok(Number.isFinite(Date.parse(summary.generatedAt)));
+    assert.equal('expiringFridgeItems' in summary.usage, false);
+    const ids = [];
+    let offset = 0;
+    do {
+      const response = await request(`/api/dev/support/tickets?filter=unanswered&offset=${offset}`, { headers });
+      assert.equal(response.status, 200);
+      const page = await response.json();
+      ids.push(...page.tickets.map((ticket) => ticket.id));
+      offset = page.nextOffset;
+    } while (offset !== null);
+    assert.equal(new Set(ids).size, summary.support.unansweredTickets);
+    assert.equal(ids.includes('dashboard-ticket-0'), false);
+    assert.equal(ids.includes('dashboard-ticket-1'), false);
+    assert.equal(ids.includes('dashboard-ticket-104'), true);
+    const closed = await (await request('/api/dev/support/tickets?filter=closed', { headers })).json();
+    assert.ok(closed.tickets.every((ticket) => ticket.status === 'closed'));
+    assert.ok(closed.tickets.some((ticket) => ticket.id === 'dashboard-ticket-1'));
+    assert.equal((await request('/api/dev/support/tickets?filter=invalid', { headers })).status, 400);
+    assert.equal((await request('/api/dev/support/tickets?offset=-1', { headers })).status, 400);
+  } finally {
+    restoreEnv('ADMIN_USER_IDS', previousAdminIds);
+  }
+});

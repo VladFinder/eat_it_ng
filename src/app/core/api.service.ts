@@ -121,9 +121,12 @@ export class ApiService {
     );
   }
 
-  getDevSupportTickets(): Observable<{ tickets: SupportTicket[] }> {
-    return this.http.get<{ tickets: SupportTicket[] }>(
-      `${this.baseUrl}/dev/support/tickets`,
+  getDevSupportTickets(
+    filter = 'all',
+    offset = 0,
+  ): Observable<{ tickets: SupportTicket[]; nextOffset: number | null }> {
+    return this.http.get<{ tickets: SupportTicket[]; nextOffset: number | null }>(
+      `${this.baseUrl}/dev/support/tickets?filter=${encodeURIComponent(filter)}&offset=${offset}`,
       this.options(),
     );
   }
