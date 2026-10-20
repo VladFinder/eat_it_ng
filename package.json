@@ -16,7 +16,11 @@
     "android:apk": "npm run android:sync && node server/android-command.mjs assembleDebug",
     "android:aab": "npm run android:sync && node server/android-command.mjs bundleRelease",
     "watch": "ng build --watch --configuration development",
-    "test": "ng test"
+    "test": "ng test",
+    "ota:init": "node scripts/ota.mjs init",
+    "ota:publish": "node scripts/ota.mjs publish",
+    "test:ota": "node --test scripts/ota.test.mjs",
+    "ota:runtime": "node scripts/ota.mjs runtime"
   },
   "private": true,
   "packageManager": "npm@10.8.2",
@@ -40,6 +44,7 @@
     "@angular/router": "^21.2.25",
     "@capacitor/android": "^7.6.0",
     "@capacitor/core": "^7.6.0",
+    "@capgo/capacitor-updater": "7.51.23",
     "@ngrx/effects": "^21.1.0",
     "@ngrx/entity": "^21.1.0",
     "@ngrx/store": "^21.1.0",

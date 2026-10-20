@@ -52,3 +52,6 @@ __screenshots__/
 # System files
 .DS_Store
 Thumbs.db
+
+# Private OTA signing key and locally packaged updates
+/.ota/

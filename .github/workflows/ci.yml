@@ -27,6 +27,7 @@ jobs:
       - run: npm run build -- --configuration production
       - run: npm test -- --watch=false
       - run: npm run test:server
+      - run: npm run test:ota
 
       - name: Upload web build
         uses: actions/upload-artifact@v5
@@ -141,6 +142,11 @@ jobs:
             sudo systemctl restart eat-it-api
             for attempt in 1 2 3 4 5 6 7 8 9 10; do
               if curl --fail http://127.0.0.1:3010/api/health; then
+                if test -f /opt/eat-it/ota-private.pem; then
+                  npm run ota:publish -- --key /opt/eat-it/ota-private.pem --output /var/www/eat-it/updates
+                else
+                  echo "OTA skipped: configure /opt/eat-it/ota-private.pem (see docs/LIVE_UPDATES.md)"
+                fi
                 exit 0
               fi
               sleep 2

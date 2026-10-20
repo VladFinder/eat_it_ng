@@ -1,3 +1,5 @@
+import { LiveUpdateService } from './core/live-update.service';
+import { LiveUpdateComponent } from './core/live-update.component';
 import { RECIPE_MEAL_TYPES, RecipeMealType } from './core/recipe-meal-types';
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -182,20 +184,21 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
 
 @Component({
   selector: 'app-root',
-  imports: [CommonModule, FormsModule, LoadMoreDirective],
+  imports: [CommonModule, FormsModule, LoadMoreDirective, LiveUpdateComponent],
   templateUrl: './app.html',
   styleUrl: './app.scss',
 })
 export class App implements OnDestroy, OnInit {
+  protected readonly liveUpdate = inject(LiveUpdateService);
   private readonly api = inject(ApiService);
   private readonly injector = inject(Injector);
-  private randomTimer: ReturnType<typeof window.setTimeout> | null = null;
+  private randomTimer: number | null = null;
   private randomRequestId = 0;
   private previousRandomRecipeId: string | null = null;
   private recipeMatchesPending: Promise<boolean> | null = null;
   private recipeMatchesKey = '';
-  private toastTimer: ReturnType<typeof window.setTimeout> | null = null;
-  private refreshTimer: ReturnType<typeof window.setInterval> | null = null;
+  private toastTimer: number | null = null;
+  private refreshTimer: number | null = null;
   protected readonly accountDeletionPage = new URLSearchParams(window.location.search).has(
     'delete-account',
   );

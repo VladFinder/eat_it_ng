@@ -1,3 +1,4 @@
+import { Capacitor } from '@capacitor/core';
 import { bootstrapApplication } from '@angular/platform-browser';
 import { appConfig } from './app/app.config';
 import { App } from './app/app';
@@ -5,7 +6,7 @@ import { App } from './app/app';
 bootstrapApplication(App, appConfig)
   .catch((err) => console.error(err));
 
-if ('serviceWorker' in navigator) {
+if (!Capacitor.isNativePlatform() && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     void navigator.serviceWorker.register('/sw.js').catch((error) => {
       console.error('Service worker registration failed', error);

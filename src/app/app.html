@@ -1,4 +1,6 @@
-﻿@if (!currentUser()) {
+<app-live-update />
+<div [attr.inert]="liveUpdate.phase() !== 'idle' ? '' : null">
+@if (!currentUser()) {
   <main class="auth-shell">
     <section class="auth-card">
       <div>
@@ -3060,3 +3062,4 @@
     </section>
   }
 }
+</div>
