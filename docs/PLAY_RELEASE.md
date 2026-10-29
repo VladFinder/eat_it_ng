@@ -3,12 +3,18 @@
 ## What is in the repository
 
 - Application ID: `space.eatit.app`.
-- Current release: version code `3`, version name `2.0.1` (OTA runtime `2.0.1`).
+- Current release: version code `4`, version name `2.0.2` (OTA runtime `2.0.2`).
+- Minimum supported Android version: Android 7.0 (API 24), required for Google Play automatic protection.
 - Release command: `npm run android:aab`.
 - The generated bundle is `android/app/build/outputs/bundle/release/app-release.aab`.
 - A signing keystore is never committed. Store it securely: the same key is required for every future update.
 - Local Android builds require JDK 21 and Android SDK 36 (Android Gradle Plugin 8.10.1). A Java 8 JRE is not sufficient.
 - The AAB command fails if release signing is absent or incomplete; it will not create an uploadable-looking unsigned bundle.
+
+## Changes in 2.0.2
+
+- Raise the minimum Android SDK from 23 to 24 for Google Play automatic protection.
+- Increment the Play upload version code to 4 and isolate compatible OTA updates under runtime 2.0.2.
 
 ## Changes in 2.0.1
 

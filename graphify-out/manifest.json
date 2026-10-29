@@ -30,9 +30,9 @@
     "semantic_hash": ""
   },
   "android/app/build.gradle": {
-    "mtime": 1793264289.6127613,
-    "seen": 1793264380.719212,
-    "ast_hash": "668cd68b037be1489ccfa8d93722660d",
+    "mtime": 1793266196.9761581,
+    "seen": 1793266211.207562,
+    "ast_hash": "b6b732e99af45f551c0faffe79109e9a",
     "semantic_hash": ""
   },
   "android/app/capacitor.build.gradle": {
@@ -84,10 +84,10 @@
     "semantic_hash": "f6cd925b3f859e23c3d819fe2459e0e4"
   },
   "android/variables.gradle": {
-    "mtime": 1789908108.3518384,
-    "seen": 1793263007.990446,
-    "ast_hash": "3d085b7bea827baba30345c6583baa5f",
-    "semantic_hash": "3d085b7bea827baba30345c6583baa5f"
+    "mtime": 1793266196.9730506,
+    "seen": 1793266211.212422,
+    "ast_hash": "94558f68ef2ed32649d78bad5b166be9",
+    "semantic_hash": ""
   },
   "angular.json": {
     "mtime": 1789921669.2284613,
@@ -408,9 +408,9 @@
     "semantic_hash": ""
   },
   "src/app/core/ota-trust.json": {
-    "mtime": 1793264289.6692245,
-    "seen": 1793264380.725823,
-    "ast_hash": "5ce50a99776f2fb97bc844e75f7f56ee",
+    "mtime": 1793266197.9720354,
+    "seen": 1793266211.233346,
+    "ast_hash": "ad9caf50e87008543c21323da9254c96",
     "semantic_hash": ""
   },
   "src/app/core/recipe-meal-types.ts": {
@@ -468,15 +468,15 @@
     "semantic_hash": ""
   },
   "docs/LIVE_UPDATES.md": {
-    "mtime": 1793264289.6138198,
-    "seen": 1793264380.72777,
-    "ast_hash": "4c870999da473a1a75352a11ff267e74",
+    "mtime": 1793266196.978074,
+    "seen": 1793266211.2342029,
+    "ast_hash": "2a4f67c82ffa0e579d0d2734b7625809",
     "semantic_hash": ""
   },
   "docs/PLAY_RELEASE.md": {
-    "mtime": 1793264289.61426,
-    "seen": 1793264380.727777,
-    "ast_hash": "a60d7f26599e2a6f23e4c371465aefda",
+    "mtime": 1793266196.976735,
+    "seen": 1793266211.234207,
+    "ast_hash": "65e47d99b43f6d5db8427bb0fc7b5ea3",
     "semantic_hash": ""
   },
   "docs/ROADMAP.md": {
