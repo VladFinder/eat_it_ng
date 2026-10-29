@@ -25,6 +25,7 @@ import {
   RecipePickSource,
 } from './core/recipe-picker';
 import { LoadMoreDirective } from './core/load-more.directive';
+import { IconComponent, IconName } from './ui/icon.component';
 import { ApiService } from './core/api.service';
 import {
   AppNotification,
@@ -186,7 +187,7 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
 
 @Component({
   selector: 'app-root',
-  imports: [CommonModule, FormsModule, LoadMoreDirective, LiveUpdateComponent],
+  imports: [CommonModule, FormsModule, LoadMoreDirective, LiveUpdateComponent, IconComponent],
   templateUrl: './app.html',
   styleUrl: './app.scss',
 })
@@ -206,8 +207,8 @@ export class App implements OnDestroy, OnInit {
     'delete-account',
   );
 
-  protected readonly tabs: { id: TabId; label: string; icon: string }[] = [
-    { id: 'fridge', label: 'Запасы', icon: 'fridge' },
+  protected readonly tabs: { id: TabId; label: string; icon: IconName }[] = [
+    { id: 'fridge', label: 'Запасы', icon: 'home' },
     { id: 'shopping', label: 'Покупки', icon: 'cart' },
     { id: 'pick', label: 'Подобрать', icon: 'dice' },
     { id: 'recipes', label: 'Рецепты', icon: 'book' },

@@ -154,7 +154,7 @@
             aria-label="Уведомления"
             (click)="toggleNotifications()"
           >
-            <span aria-hidden="true">🔔</span>
+            <app-icon name="bell" />
             @if (unreadNotifications() > 0) {
               <strong>{{ unreadNotifications() }}</strong>
             }
@@ -183,8 +183,13 @@
               {{ unreadNotifications() ? unreadNotifications() + ' новых' : 'Все прочитано' }}
             </h2>
           </div>
-          <button class="icon-button close-button" type="button" (click)="closeNotifications()">
-            ×
+          <button
+            class="icon-button close-button"
+            type="button"
+            aria-label="Закрыть"
+            (click)="closeNotifications()"
+          >
+            <app-icon name="close" />
           </button>
         </div>
 
@@ -280,8 +285,13 @@
             <p class="section-label">Тикет</p>
             <h2>{{ activeSupportTicket()?.subject }}</h2>
           </div>
-          <button class="icon-button close-button" type="button" (click)="closeSupportDialog()">
-            ×
+          <button
+            class="icon-button close-button"
+            type="button"
+            aria-label="Закрыть"
+            (click)="closeSupportDialog()"
+          >
+            <app-icon name="close" />
           </button>
         </div>
         <div class="message-list">
@@ -329,8 +339,13 @@
             <p class="section-label">Недельное меню</p>
             <h2>{{ planningDish()?.title }}</h2>
           </div>
-          <button class="icon-button close-button" type="button" (click)="closeMealPlanner()">
-            ×
+          <button
+            class="icon-button close-button"
+            type="button"
+            aria-label="Закрыть"
+            (click)="closeMealPlanner()"
+          >
+            <app-icon name="close" />
           </button>
         </div>
         <form class="meal-plan-form" (ngSubmit)="savePlannedMeal()">
@@ -390,7 +405,7 @@
             [disabled]="saving()"
             (click)="closeRecipeEditor()"
           >
-            ×
+            <app-icon name="close" />
           </button>
         </div>
         <form #editorForm="ngForm" class="recipe-editor-form" (ngSubmit)="saveRecipe()">
@@ -504,7 +519,14 @@
             <p class="section-label">Рецепт</p>
             <h2>{{ activeRecipe()?.title }}</h2>
           </div>
-          <button class="icon-button close-button" type="button" (click)="closeRecipe()">×</button>
+          <button
+            class="icon-button close-button"
+            type="button"
+            aria-label="Закрыть"
+            (click)="closeRecipe()"
+          >
+            <app-icon name="close" />
+          </button>
         </div>
         <p>
           {{ activeRecipe()?.time }} · {{ activeRecipe()?.mine ? 'ваш рецепт' : 'из каталога' }}
@@ -610,8 +632,13 @@
             <p class="section-label">Новая позиция</p>
             <h2>Добавить в «{{ activeTabLabel() }}»</h2>
           </div>
-          <button class="icon-button close-button" type="button" (click)="closeFridgeAdd()">
-            ×
+          <button
+            class="icon-button close-button"
+            type="button"
+            aria-label="Закрыть"
+            (click)="closeFridgeAdd()"
+          >
+            <app-icon name="close" />
           </button>
         </div>
         <form class="add-form" (ngSubmit)="addFridgeItem()">
@@ -705,8 +732,13 @@
             <p class="section-label">Запасы</p>
             <h2>{{ item.name }}</h2>
           </div>
-          <button class="icon-button close-button" type="button" (click)="closeFridgeMenu()">
-            ×
+          <button
+            class="icon-button close-button"
+            type="button"
+            aria-label="Закрыть"
+            (click)="closeFridgeMenu()"
+          >
+            <app-icon name="close" />
           </button>
         </div>
         <form class="add-form" (ngSubmit)="saveFridgeMenu()">
@@ -796,8 +828,13 @@
             <p class="section-label">Покупки</p>
             <h2>{{ item.name }}</h2>
           </div>
-          <button class="icon-button close-button" type="button" (click)="closeShoppingMenu()">
-            ×
+          <button
+            class="icon-button close-button"
+            type="button"
+            aria-label="Закрыть"
+            (click)="closeShoppingMenu()"
+          >
+            <app-icon name="close" />
           </button>
         </div>
         <form class="add-form" (ngSubmit)="saveShoppingMenu()">
@@ -854,8 +891,13 @@
             <p class="section-label">{{ activeDevTicket()?.user?.email }}</p>
             <h2>{{ activeDevTicket()?.subject }}</h2>
           </div>
-          <button class="icon-button close-button" type="button" (click)="closeDevTicketDialog()">
-            ×
+          <button
+            class="icon-button close-button"
+            type="button"
+            aria-label="Закрыть"
+            (click)="closeDevTicketDialog()"
+          >
+            <app-icon name="close" />
           </button>
         </div>
         <div class="message-list">
@@ -1714,13 +1756,13 @@
             (click)="openFridgeAdd()"
             aria-label="Добавить"
           >
-            +
+            <app-icon name="plus" />
           </button>
         </div>
 
         <div class="inventory-tools" aria-label="Поиск, фильтры и сортировка запасов">
           <label class="search-field inventory-search">
-            <span aria-hidden="true">⌕</span>
+            <app-icon class="search-icon" name="search" />
             <input
               name="fridge-search"
               type="search"
@@ -1862,7 +1904,7 @@
                       (click)="openFridgeMenu(item)"
                       aria-label="Меню товара"
                     >
-                      ⋮
+                      <app-icon name="more" />
                     </button>
                   </article>
                 </div>
@@ -1911,7 +1953,7 @@
                       (click)="openFridgeMenu(item)"
                       aria-label="Меню товара"
                     >
-                      ⋮
+                      <app-icon name="more" />
                     </button>
                   </article>
                 </div>
@@ -2004,7 +2046,7 @@
 
         <div class="inventory-tools" aria-label="Поиск и сортировка покупок">
           <label class="search-field inventory-search">
-            <span aria-hidden="true">⌕</span>
+            <app-icon class="search-icon" name="search" />
             <input
               name="shopping-search"
               type="search"
@@ -2048,9 +2090,9 @@
           <div class="list">
             @for (item of visibleShoppingItems(); track item.id) {
               <article class="shopping-row" [class.done]="item.checked">
-                <button class="check-button" type="button" (click)="toggleShoppingItem(item)">
+                <button class="check-button" type="button" [attr.aria-label]="(item.checked ? 'Снять отметку: ' : 'Отметить покупку: ') + item.name" [attr.aria-pressed]="item.checked" (click)="toggleShoppingItem(item)">
                   @if (item.checked) {
-                    ✓
+                    <app-icon name="check" />
                   }
                 </button>
                 <div class="item-content">
@@ -2071,7 +2113,7 @@
                   (click)="openShoppingMenu(item)"
                   aria-label="Меню покупки"
                 >
-                  ⋮
+                  <app-icon name="more" />
                 </button>
               </article>
             } @empty {
@@ -2139,8 +2181,8 @@
             [disabled]="randomBusy() || saving()"
             (click)="randomizeRecipe()"
           >
-            <span aria-hidden="true">⚄</span
-            >{{
+            <app-icon name="dice" />
+            {{
               randomBusy() ? 'Подбираем…' : randomRecipe() ? 'Подобрать ещё' : 'Подобрать рецепт'
             }}
           </button>
@@ -2196,8 +2238,8 @@
             [attr.aria-pressed]="pickMode() === 'any'"
             (click)="pickMode.set('any'); changePickSettings()"
           >
-            <span aria-hidden="true">🛒</span
-            ><span
+            <app-icon name="cart" />
+            <span
               ><strong>Докупить всё</strong
               ><small>Подойдёт даже с пустым холодильником</small></span
             >
@@ -2252,7 +2294,7 @@
                 autofocus
                 (click)="closeRandomResult()"
               >
-                ×
+                <app-icon name="close" />
               </button>
               <div class="random-result-image">
                 <img
@@ -2268,7 +2310,7 @@
                   [attr.aria-pressed]="recipe.liked"
                   (click)="toggleRecipeLike(recipe.id)"
                 >
-                  {{ recipe.liked ? '♥' : '♡' }}
+                  <app-icon name="heart" [filled]="recipe.liked" />
                 </button>
               </div>
               <div class="random-result-copy">
@@ -2286,7 +2328,7 @@
                   <p class="random-missing">{{ (recipe.missedIngredients ?? []).join(', ') }}</p>
                 }
                 <button class="primary-action" type="button" (click)="openRandomRecipe()">
-                  Открыть рецепт <span aria-hidden="true">↗</span>
+                  Открыть рецепт <app-icon name="external" />
                 </button>
                 @if (recipe.missedIngredients?.length) {
                   <button
@@ -2304,7 +2346,7 @@
                   [disabled]="saving() || randomBusy()"
                   (click)="randomizeRecipe()"
                 >
-                  <span aria-hidden="true">⚄</span> Бросить ещё раз
+                  <app-icon name="dice" /> Бросить ещё раз
                 </button>
                 @if (toastMessage()) {
                   <p class="random-result-feedback" role="status">{{ toastMessage() }}</p>
@@ -2323,14 +2365,14 @@
       <section class="screen">
         <p class="catalog-intro">Ищите новые вкусы или просто листайте рецепты</p>
         <button
-          class="secondary-action create-recipe-button"
+          class="secondary-action create-recipe-button action-with-icon"
           type="button"
           (click)="openRecipeEditor()"
         >
-          ＋ Добавить свой рецепт
+          <app-icon name="plus" /> Добавить свой рецепт
         </button>
         <label class="search-field">
-          <span aria-hidden="true">⌕</span>
+          <app-icon class="search-icon" name="search" />
           <input
             name="recipe-search"
             [ngModel]="recipeSearch()"
@@ -2421,16 +2463,16 @@
                         [disabled]="saving()"
                         (click)="deletePlannedMeal(entry)"
                       >
-                        ×
+                        <app-icon name="close" />
                       </button>
                     </article>
                   } @empty {
                     <button
-                      class="meal-plan-empty"
+                      class="meal-plan-empty action-with-icon"
                       type="button"
                       (click)="selectRecipeTab('all')"
                     >
-                      + Выбрать блюдо
+                      <app-icon name="plus" /> Выбрать блюдо
                     </button>
                   }
                 </section>
@@ -2442,12 +2484,12 @@
               type="button"
               (click)="setTab('profile'); setProfileSection('subscription')"
             >
-              <span class="plus-teaser-icon">★</span>
+              <span class="plus-teaser-icon"><app-icon name="star" [filled]="true" /></span>
               <span class="plus-teaser-copy">
                 <strong>Недельное меню доступно в Homie Plus</strong>
                 <span>Планируйте завтраки, обеды и ужины для всей семьи.</span>
               </span>
-              <span class="row-chevron">›</span>
+              <app-icon class="row-chevron" name="chevron" />
             </button>
           }
         } @else {
@@ -2497,7 +2539,7 @@
                   [attr.aria-pressed]="recipe.liked"
                   (click)="$event.stopPropagation(); toggleRecipeLike(recipe.id)"
                 >
-                  {{ recipe.liked ? '♥' : '♡' }}
+                  <app-icon name="heart" [filled]="recipe.liked" />
                 </button>
               </article>
             } @empty {
@@ -2564,13 +2606,13 @@
           @if (hasPlus()) {
             <span class="plan-badge">Plus</span>
           } @else {
-            <span class="row-chevron">›</span>
+            <app-icon class="row-chevron" name="chevron" />
           }
         </div>
 
         @if (profileSection() === 'menu') {
           <button class="plus-teaser" type="button" (click)="setProfileSection('subscription')">
-            <span class="plus-teaser-icon">★</span>
+            <span class="plus-teaser-icon"><app-icon name="star" [filled]="true" /></span>
             <span class="plus-teaser-copy">
               <span class="plus-teaser-title">
                 <strong>Homie Plus</strong>
@@ -2581,63 +2623,70 @@
                 >Умные рецепты · Гибкие уведомления · Аналитика</span
               >
             </span>
-            <span class="row-chevron">›</span>
+            <app-icon class="row-chevron" name="chevron" />
           </button>
 
           <div class="profile-menu">
             <button type="button" (click)="setProfileSection('household')">
-              <span>⌂</span>
+              <app-icon name="home" />
               Дом и участники
-              <strong>›</strong>
+              <app-icon class="row-chevron" name="chevron" />
             </button>
             <button type="button" (click)="setProfileSection('notifications')">
-              <span>◉</span>
+              <app-icon name="bell" />
               Уведомления
-              <strong>›</strong>
+              <app-icon class="row-chevron" name="chevron" />
             </button>
             <button type="button" (click)="restartOnboarding()">
-              <span>?</span>
+              <app-icon name="help" />
               Как пользоваться
-              <strong>›</strong>
+              <app-icon class="row-chevron" name="chevron" />
             </button>
             <button type="button" (click)="setProfileSection('support')">
-              <span>✉</span>
+              <app-icon name="mail" />
               Поддержка
-              <strong>›</strong>
+              <app-icon class="row-chevron" name="chevron" />
             </button>
             <button type="button" (click)="setProfileSection('feedback')">
-              <span>!</span>
+              <app-icon name="feedback" />
               Обратная связь
-              <strong>›</strong>
+              <app-icon class="row-chevron" name="chevron" />
             </button>
             <button type="button" (click)="setProfileSection('about')">
-              <span aria-hidden="true">ⓘ</span>
+              <app-icon name="info" />
               О приложении
-              <strong aria-hidden="true">›</strong>
+              <app-icon class="row-chevron" name="chevron" />
             </button>
             @if (hasDevAccess()) {
               <button type="button" (click)="openDevCenter()">
-                <span>⚙</span>
+                <app-icon name="settings" />
                 Dev center
-                <strong>›</strong>
+                <app-icon class="row-chevron" name="chevron" />
               </button>
             }
             <button type="button" (click)="logout()">
-              <span>↩</span>
+              <app-icon name="logout" />
               Выйти
-              <strong>›</strong>
+              <app-icon class="row-chevron" name="chevron" />
             </button>
             <button class="danger-menu-item" type="button" (click)="deleteAccount()">
-              <span>×</span>
+              <app-icon name="close" />
               Удалить аккаунт
-              <strong>›</strong>
+              <app-icon class="row-chevron" name="chevron" />
             </button>
           </div>
         }
 
         @if (profileSection() === 'about') {
           <div class="subscreen-head">
-            <button class="back-button" type="button" aria-label="Назад в профиль" (click)="setProfileSection('menu')">‹</button>
+            <button
+              class="back-button"
+              type="button"
+              aria-label="Назад в профиль"
+              (click)="setProfileSection('menu')"
+            >
+              <app-icon name="back" />
+            </button>
             <div>
               <p class="section-label">Профиль</p>
               <h2>О приложении</h2>
@@ -2690,7 +2739,14 @@
 
         @if (profileSection() === 'subscription') {
           <div class="subscreen-head">
-            <button class="back-button" type="button" (click)="setProfileSection('menu')">‹</button>
+            <button
+              class="back-button"
+              type="button"
+              aria-label="Назад в профиль"
+              (click)="setProfileSection('menu')"
+            >
+              <app-icon name="back" />
+            </button>
             <div>
               <p class="section-label">Профиль</p>
               <h2>Homie Plus</h2>
@@ -2759,7 +2815,14 @@
 
         @if (profileSection() === 'support') {
           <div class="subscreen-head">
-            <button class="back-button" type="button" (click)="setProfileSection('menu')">‹</button>
+            <button
+              class="back-button"
+              type="button"
+              aria-label="Назад в профиль"
+              (click)="setProfileSection('menu')"
+            >
+              <app-icon name="back" />
+            </button>
             <div>
               <p class="section-label">Профиль</p>
               <h2>Поддержка</h2>
@@ -2818,7 +2881,14 @@
 
         @if (profileSection() === 'notifications') {
           <div class="subscreen-head">
-            <button class="back-button" type="button" (click)="setProfileSection('menu')">‹</button>
+            <button
+              class="back-button"
+              type="button"
+              aria-label="Назад в профиль"
+              (click)="setProfileSection('menu')"
+            >
+              <app-icon name="back" />
+            </button>
             <div>
               <p class="section-label">Профиль</p>
               <h2>Уведомления</h2>
@@ -2919,7 +2989,14 @@
 
         @if (profileSection() === 'feedback') {
           <div class="subscreen-head">
-            <button class="back-button" type="button" (click)="setProfileSection('menu')">‹</button>
+            <button
+              class="back-button"
+              type="button"
+              aria-label="Назад в профиль"
+              (click)="setProfileSection('menu')"
+            >
+              <app-icon name="back" />
+            </button>
             <div>
               <p class="section-label">Профиль</p>
               <h2>Обратная связь</h2>
@@ -2951,7 +3028,14 @@
 
         @if (profileSection() === 'household') {
           <div class="subscreen-head">
-            <button class="back-button" type="button" (click)="setProfileSection('menu')">‹</button>
+            <button
+              class="back-button"
+              type="button"
+              aria-label="Назад в профиль"
+              (click)="setProfileSection('menu')"
+            >
+              <app-icon name="back" />
+            </button>
             <div>
               <p class="section-label">Профиль</p>
               <h2>Дом и участники</h2>
@@ -3012,7 +3096,7 @@
     <nav class="bottom-nav" aria-label="Главная навигация">
       @for (tab of tabs; track tab.id) {
         <button type="button" [class.active]="activeTab() === tab.id" (click)="setTab(tab.id)">
-          <span class="nav-icon" [attr.data-icon]="tab.icon" aria-hidden="true"></span>
+          <app-icon class="nav-icon" [name]="tab.icon" />
           <span>{{ tab.label }}</span>
         </button>
       }
@@ -3072,7 +3156,7 @@
               <span>🗑 ←</span><strong>Йогурт</strong><span>🛒 →</span>
             </div>
             <div class="preview-row">
-              <span class="check-button" aria-hidden="true">✓</span>
+              <span class="check-button" aria-hidden="true"><app-icon name="check" /></span>
               <strong>Молоко · 1 л</strong>
             </div>
             <div class="preview-row">

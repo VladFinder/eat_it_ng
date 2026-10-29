@@ -348,9 +348,9 @@
     "semantic_hash": ""
   },
   "src/app/app.ts": {
-    "mtime": 1793283035.4077058,
-    "seen": 1793283051.296845,
-    "ast_hash": "871c3e5be40b7796d437c058772f02d4",
+    "mtime": 1793295737.609718,
+    "seen": 1793296095.786068,
+    "ast_hash": "a935939db5115a76b7d3bfea41bf86b1",
     "semantic_hash": ""
   },
   "src/app/core/api.service.spec.ts": {
@@ -510,9 +510,9 @@
     "semantic_hash": ""
   },
   "src/app/app.html": {
-    "mtime": 1793282681.7543476,
-    "seen": 1793283051.300349,
-    "ast_hash": "14e0b8b8c048e631321de8fa784b2ac1",
+    "mtime": 1793296317.1775813,
+    "seen": 1793296362.272866,
+    "ast_hash": "10d8c14b888c85187ea3493f3f7ad899",
     "semantic_hash": ""
   },
   "src/index.html": {
@@ -783,6 +783,12 @@
     "mtime": 1793283035.0038304,
     "seen": 1793283051.2992032,
     "ast_hash": "7d29b8d80de4ea12a8a98c9e23717223",
+    "semantic_hash": ""
+  },
+  "src/app/ui/icon.component.ts": {
+    "mtime": 1793296317.22883,
+    "seen": 1793296362.2712479,
+    "ast_hash": "ca29186d8f8baa6fd0b43d75c48904b9",
     "semantic_hash": ""
   },
   "package-lock.json": {
