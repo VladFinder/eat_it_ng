@@ -7,6 +7,8 @@ import {
   AppNotification,
   AuthProviders,
   AuthResponse,
+  NativeOAuthAttempt,
+  NativeOAuthResult,
   AuthUser,
   DevSummary,
   DevUser,
@@ -216,6 +218,27 @@ export class ApiService {
 
   oauthUrl(provider: 'google' | 'apple'): string {
     return `${this.baseUrl}/auth/${provider}`;
+  }
+
+  startNativeOAuth(
+    provider: 'google' | 'apple',
+    challenge: string,
+  ): Observable<NativeOAuthAttempt> {
+    return this.http.post<NativeOAuthAttempt>(`${this.baseUrl}/auth/native/start`, {
+      provider,
+      challenge,
+    });
+  }
+
+  pollNativeOAuth(id: string, verifier: string): Observable<NativeOAuthResult> {
+    return this.http.post<NativeOAuthResult>(`${this.baseUrl}/auth/native/poll`, { id, verifier });
+  }
+
+  cancelNativeOAuth(id: string, verifier: string): Observable<{ success: boolean }> {
+    return this.http.post<{ success: boolean }>(`${this.baseUrl}/auth/native/cancel`, {
+      id,
+      verifier,
+    });
   }
 
   setSessionToken(token: string): void {

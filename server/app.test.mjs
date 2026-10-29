@@ -7,6 +7,7 @@ import { PrismaClient } from '@prisma/client';
 import { createApiServer, findOrCreateOAuthUser } from './app.mjs';
 import { createAuthLimiter, clientAddress } from './security.mjs';
 import { createSession } from './auth.mjs';
+import { createHash, randomBytes } from 'node:crypto';
 
 const projectRoot = resolve(import.meta.dirname, '..');
 const databasePath = resolve(projectRoot, 'data', 'eat-it-test.db');
@@ -322,7 +323,18 @@ before(async () => {
     .filter(Boolean)) {
     await prisma.$executeRawUnsafe(sql);
   }
-  server = createApiServer(prisma, { error() {} });
+  server = createApiServer(prisma, { error() {} }, {
+    async exchangeGoogleCode(code, verifier) {
+      assert.equal(code, 'native-test-code');
+      assert.ok(verifier);
+      return {
+        subject: 'native-google-subject',
+        email: 'native-google@example.test',
+        emailVerified: true,
+        displayName: 'Native Google',
+      };
+    },
+  });
   await new Promise((resolveListen) => server.listen(0, '127.0.0.1', resolveListen));
   const address = server.address();
   baseUrl = `http://127.0.0.1:${address.port}`;
@@ -2861,4 +2873,180 @@ test('dev summary aggregates beyond list limits and support filters page all una
   } finally {
     restoreEnv('ADMIN_USER_IDS', previousAdminIds);
   }
+});
+
+async function withNativeGoogleEnvironment(run) {
+  const previous = Object.fromEntries(
+    ['APP_URL', 'GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET'].map((name) => [
+      name,
+      process.env[name],
+    ]),
+  );
+  process.env.APP_URL = baseUrl;
+  process.env.GOOGLE_CLIENT_ID = 'google-client';
+  process.env.GOOGLE_CLIENT_SECRET = 'google-secret';
+  try {
+    await run();
+  } finally {
+    for (const [name, value] of Object.entries(previous)) restoreEnv(name, value);
+  }
+}
+
+async function nativeGoogleAttempt() {
+  const verifier = randomBytes(32).toString('base64url');
+  const challenge = createHash('sha256').update(verifier).digest('base64url');
+  const response = await request('/api/auth/native/start', {
+    method: 'POST',
+    skipAuth: true,
+    headers: { Origin: 'https://localhost' },
+    body: JSON.stringify({ provider: 'google', challenge }),
+  });
+  assert.equal(response.status, 201);
+  assert.equal(response.headers.get('cache-control'), 'no-store');
+  const attempt = await response.json();
+  assert.equal(attempt.loginUrl.includes(verifier), false);
+  const browser = await fetch(attempt.loginUrl, { redirect: 'manual' });
+  assert.equal(browser.status, 302);
+  const oauthUrl = new URL(browser.headers.get('location'));
+  const cookies = browser.headers
+    .getSetCookie()
+    .map((cookie) => cookie.split(';')[0])
+    .join('; ');
+  return { ...attempt, verifier, cookies, state: oauthUrl.searchParams.get('state') };
+}
+
+async function pollNative(attempt, verifier = attempt.verifier) {
+  return request('/api/auth/native/poll', {
+    method: 'POST',
+    skipAuth: true,
+    headers: { Origin: 'https://localhost' },
+    body: JSON.stringify({ id: attempt.id, verifier }),
+  });
+}
+
+test('native Google sign-in hands a verified session to the initiating app once, not the browser', async () => {
+  await withNativeGoogleEnvironment(async () => {
+    const attempt = await nativeGoogleAttempt();
+    assert.equal((await pollNative(attempt)).status, 202);
+    assert.equal((await pollNative(attempt, randomBytes(32).toString('base64url'))).status, 410);
+    assert.equal((await pollNative(attempt)).status, 202);
+    const before = await prisma.session.count();
+    const callback = await fetch(
+      `${baseUrl}/api/auth/google/callback?code=native-test-code&state=${attempt.state}`,
+      {
+        headers: { Cookie: attempt.cookies },
+        redirect: 'manual',
+      },
+    );
+    assert.equal(callback.status, 200);
+    assert.equal(callback.headers.get('location'), null);
+    assert.match(callback.headers.get('content-type'), /text\/html/);
+    assert.equal(callback.headers.get('referrer-policy'), 'no-referrer');
+    assert.doesNotMatch(callback.headers.get('set-cookie'), /eat_it_session=/);
+    assert.match(await callback.text(), /Вход выполнен/);
+    assert.equal(await prisma.session.count(), before);
+    const response = await pollNative(attempt);
+    assert.equal(response.status, 200);
+    const login = await response.json();
+    assert.equal(login.user.email, 'native-google@example.test');
+    const me = await request('/api/auth/me', {
+      skipAuth: true,
+      headers: { Authorization: `Bearer ${login.token}` },
+    });
+    assert.equal(me.status, 200);
+    assert.equal((await me.json()).user.id, login.user.id);
+    assert.equal((await pollNative(attempt)).status, 410);
+    assert.equal(await prisma.session.count(), before + 1);
+  });
+});
+
+test('native OAuth cannot reuse a launch link, substitute browser state or poll without proof', async () => {
+  await withNativeGoogleEnvironment(async () => {
+    const a = await nativeGoogleAttempt();
+    const b = await nativeGoogleAttempt();
+    assert.equal((await fetch(a.loginUrl, { redirect: 'manual' })).status, 400);
+    const swapped = a.cookies.replace(
+      `eat_it_google_native=${a.id}`,
+      `eat_it_google_native=${b.id}`,
+    );
+    const callback = await fetch(
+      `${baseUrl}/api/auth/google/callback?code=native-test-code&state=${a.state}`,
+      {
+        headers: { Cookie: swapped },
+        redirect: 'manual',
+      },
+    );
+    assert.equal(callback.status, 400);
+    assert.equal((await pollNative(a)).status, 202);
+    assert.equal((await pollNative(b)).status, 202);
+    const missing = await request('/api/auth/native/poll', {
+      method: 'POST',
+      skipAuth: true,
+      body: JSON.stringify({ id: a.id }),
+    });
+    assert.equal(missing.status, 400);
+  });
+});
+
+test('Google cancellation and failed exchanges reach the app without creating a browser session', async () => {
+  await withNativeGoogleEnvironment(async () => {
+    for (const query of ['error=access_denied', 'code=bad-exchange']) {
+      const attempt = await nativeGoogleAttempt();
+      const response = await fetch(
+        `${baseUrl}/api/auth/google/callback?${query}&state=${attempt.state}`,
+        {
+          headers: { Cookie: attempt.cookies },
+          redirect: 'manual',
+        },
+      );
+      assert.equal(response.status, 400);
+      assert.match(await response.text(), /Вход не завершён/);
+      assert.doesNotMatch(response.headers.get('set-cookie'), /eat_it_session=/);
+      assert.equal((await pollNative(attempt)).status, 400);
+      assert.equal((await pollNative(attempt)).status, 410);
+    }
+  });
+});
+
+test('native cancellation invalidates the attempt and rejects untrusted origins', async () => {
+  await withNativeGoogleEnvironment(async () => {
+    const attempt = await nativeGoogleAttempt();
+    const untrusted = await request('/api/auth/native/cancel', {
+      method: 'POST',
+      skipAuth: true,
+      headers: { Origin: 'https://attacker.example' },
+      body: JSON.stringify({ id: attempt.id, verifier: attempt.verifier }),
+    });
+    assert.equal(untrusted.status, 403);
+    assert.equal((await pollNative(attempt)).status, 202);
+    const cancel = await request('/api/auth/native/cancel', {
+      method: 'POST',
+      skipAuth: true,
+      headers: { Origin: 'https://localhost' },
+      body: JSON.stringify({ id: attempt.id, verifier: attempt.verifier }),
+    });
+    assert.equal(cancel.status, 200);
+    assert.equal((await pollNative(attempt)).status, 410);
+  });
+});
+
+test('ordinary website Google sign-in still uses the browser cookie and website redirect', async () => {
+  await withNativeGoogleEnvironment(async () => {
+    const start = await fetch(`${baseUrl}/api/auth/google`, { redirect: 'manual' });
+    const state = new URL(start.headers.get('location')).searchParams.get('state');
+    const cookies = start.headers
+      .getSetCookie()
+      .map((cookie) => cookie.split(';')[0])
+      .join('; ');
+    const callback = await fetch(
+      `${baseUrl}/api/auth/google/callback?code=native-test-code&state=${state}`,
+      {
+        headers: { Cookie: cookies },
+        redirect: 'manual',
+      },
+    );
+    assert.equal(callback.status, 302);
+    assert.equal(callback.headers.get('location'), baseUrl + '/');
+    assert.match(callback.headers.get('set-cookie'), /eat_it_session=/);
+  });
 });

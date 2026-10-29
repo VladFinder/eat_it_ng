@@ -115,6 +115,14 @@ export interface AuthUser {
   isAdmin?: boolean;
 }
 
+export interface NativeOAuthAttempt {
+  id: string;
+  loginUrl: string;
+  expiresAt: string;
+}
+
+export type NativeOAuthResult = AuthResponse | { pending: true };
+
 export interface AuthResponse {
   user: AuthUser;
   token: string;

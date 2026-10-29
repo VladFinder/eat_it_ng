@@ -102,9 +102,9 @@
     "semantic_hash": ""
   },
   "package.json": {
-    "mtime": 1792479033.3868885,
-    "seen": 1793263007.990459,
-    "ast_hash": "7e4c9d88c1c631b839e9ea86166e3a97",
+    "mtime": 1793281908.225194,
+    "seen": 1793283051.295425,
+    "ast_hash": "d3a6a9ab7d5ec569b48db63565a5097c",
     "semantic_hash": ""
   },
   "prisma/migrations/20260607193000_initial_core/migration.sql": {
@@ -264,15 +264,15 @@
     "semantic_hash": ""
   },
   "server/app.mjs": {
-    "mtime": 1791960098.124318,
-    "seen": 1793263007.9904919,
-    "ast_hash": "3e39317e1b53e5e839aa4ad88f0b31c6",
+    "mtime": 1793282531.4447043,
+    "seen": 1793283051.295999,
+    "ast_hash": "6d2a396fcbb1140c78e82c4b8bb29ca2",
     "semantic_hash": ""
   },
   "server/app.test.mjs": {
-    "mtime": 1791959822.3064668,
-    "seen": 1793263007.990497,
-    "ast_hash": "e16370dcfb487c3b2565e99b23fdab3e",
+    "mtime": 1793282531.5721092,
+    "seen": 1793283051.296003,
+    "ast_hash": "d1f2544bebfd6087d7c69c739ad42c69",
     "semantic_hash": ""
   },
   "server/auth.mjs": {
@@ -324,9 +324,9 @@
     "semantic_hash": "836b290dab59b835a1031c493d4d3ea8"
   },
   "server/validation.mjs": {
-    "mtime": 1791959644.8486395,
-    "seen": 1793263007.9905338,
-    "ast_hash": "af14e8d10ee4ca19588b1f62f16844b3",
+    "mtime": 1793281701.3821788,
+    "seen": 1793283051.296658,
+    "ast_hash": "11429d21a170ee23567f86942b80521a",
     "semantic_hash": ""
   },
   "src/app/app.config.ts": {
@@ -342,15 +342,15 @@
     "semantic_hash": ""
   },
   "src/app/app.spec.ts": {
-    "mtime": 1793264355.4314964,
-    "seen": 1793264380.7245069,
-    "ast_hash": "6862386d261c927f77bf1b9f97291395",
+    "mtime": 1793283035.5475285,
+    "seen": 1793283051.296842,
+    "ast_hash": "732c8e3e5b096605af2e54f0b920780f",
     "semantic_hash": ""
   },
   "src/app/app.ts": {
-    "mtime": 1793264289.668085,
-    "seen": 1793264380.724514,
-    "ast_hash": "5fbd087d308341aa78a5f3bf4fd5af21",
+    "mtime": 1793283035.4077058,
+    "seen": 1793283051.296845,
+    "ast_hash": "871c3e5be40b7796d437c058772f02d4",
     "semantic_hash": ""
   },
   "src/app/core/api.service.spec.ts": {
@@ -360,9 +360,9 @@
     "semantic_hash": ""
   },
   "src/app/core/api.service.ts": {
-    "mtime": 1791960163.4344912,
-    "seen": 1793263007.990558,
-    "ast_hash": "7a4b0a0bf64aa877a437dd3c67f10afc",
+    "mtime": 1793283035.4511368,
+    "seen": 1793283051.2969458,
+    "ast_hash": "bfef7e4bf48ec147102582d0cf9a6610",
     "semantic_hash": ""
   },
   "src/app/core/live-update-manifest.spec.ts": {
@@ -402,9 +402,9 @@
     "semantic_hash": ""
   },
   "src/app/core/models.ts": {
-    "mtime": 1791959644.8509133,
-    "seen": 1793263007.990587,
-    "ast_hash": "51f96873061e0cf0100d83856a4b9979",
+    "mtime": 1793281636.9008791,
+    "seen": 1793283051.297824,
+    "ast_hash": "cc98af194b6ccfd4ee1ee436fba00174",
     "semantic_hash": ""
   },
   "src/app/core/ota-trust.json": {
@@ -510,9 +510,9 @@
     "semantic_hash": ""
   },
   "src/app/app.html": {
-    "mtime": 1793264355.4102373,
-    "seen": 1793264380.7286558,
-    "ast_hash": "c9f76c45024deca588357bd5ab409ceb",
+    "mtime": 1793282681.7543476,
+    "seen": 1793283051.300349,
+    "ast_hash": "14e0b8b8c048e631321de8fa784b2ac1",
     "semantic_hash": ""
   },
   "src/index.html": {
@@ -753,6 +753,36 @@
     "mtime": 1793264289.6638072,
     "seen": 1793264380.7350762,
     "ast_hash": "0baa4b0a29bf7da2f8ae88abaa0f644b",
+    "semantic_hash": ""
+  },
+  "server/native-oauth.mjs": {
+    "mtime": 1793281701.2247283,
+    "seen": 1793283051.296248,
+    "ast_hash": "c3987906648ab2abae8ea414c3554c34",
+    "semantic_hash": ""
+  },
+  "server/native-oauth.test.mjs": {
+    "mtime": 1793282136.3965552,
+    "seen": 1793283051.2962508,
+    "ast_hash": "1ee4b82085999a9eac07bcfe3dd4c8a2",
+    "semantic_hash": ""
+  },
+  "src/app/core/native-oauth.service.spec.ts": {
+    "mtime": 1793282534.9130526,
+    "seen": 1793283051.2978292,
+    "ast_hash": "3bacc3d8b51e2bb9b684fd8567426dd9",
+    "semantic_hash": ""
+  },
+  "src/app/core/native-oauth.service.ts": {
+    "mtime": 1793282534.6062338,
+    "seen": 1793283051.297834,
+    "ast_hash": "026b04e8572c3c1f18c9ab3f5d90f056",
+    "semantic_hash": ""
+  },
+  "docs/NATIVE_OAUTH.md": {
+    "mtime": 1793283035.0038304,
+    "seen": 1793283051.2992032,
+    "ast_hash": "7d29b8d80de4ea12a8a98c9e23717223",
     "semantic_hash": ""
   },
   "package-lock.json": {

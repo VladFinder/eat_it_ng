@@ -51,6 +51,17 @@
           </div>
         }
 
+        @if (nativeOAuth.pending()) {
+          <section class="panel" role="status" aria-live="polite">
+            <strong>Завершите вход в браузере</strong>
+            <p>
+              После входа в аккаунт вернитесь в Homie.
+              Приложение войдёт в аккаунт автоматически.
+            </p>
+            <button type="button" (click)="nativeOAuth.cancel()">Отменить вход</button>
+          </section>
+        }
+
         <form class="auth-form" (ngSubmit)="submitAuth()">
           @if (authMode() === 'register' && !accountDeletionPage) {
             <label>
@@ -98,10 +109,10 @@
           <div class="oauth-section">
             <span>или</span>
             @if (authProviders().google) {
-              <button type="button" (click)="startOAuth('google')">Продолжить с Google</button>
+              <button type="button" [disabled]="saving()" (click)="startOAuth('google')">Продолжить с Google</button>
             }
             @if (authProviders().apple) {
-              <button type="button" (click)="startOAuth('apple')">Продолжить с Apple</button>
+              <button type="button" [disabled]="saving()" (click)="startOAuth('apple')">Продолжить с Apple</button>
             }
           </div>
         }

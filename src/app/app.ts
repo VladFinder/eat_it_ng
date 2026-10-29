@@ -1,5 +1,6 @@
 import { LiveUpdateService } from './core/live-update.service';
 import { LiveUpdateComponent } from './core/live-update.component';
+import { NativeOAuthService } from './core/native-oauth.service';
 import { RECIPE_MEAL_TYPES, RecipeMealType } from './core/recipe-meal-types';
 import { CommonModule } from '@angular/common';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -29,6 +30,7 @@ import {
   AppNotification,
   AuthProviders,
   AuthUser,
+  AuthResponse,
   DevSummary,
   DevRecipe,
   DevProduct,
@@ -190,6 +192,7 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
 })
 export class App implements OnDestroy, OnInit {
   protected readonly liveUpdate = inject(LiveUpdateService);
+  protected readonly nativeOAuth = inject(NativeOAuthService);
   private readonly api = inject(ApiService);
   private readonly injector = inject(Injector);
   private randomTimer: number | null = null;
@@ -686,7 +689,7 @@ export class App implements OnDestroy, OnInit {
       window.location.replace('/?delete-account=1');
       return;
     }
-    void this.initializeSession();
+    void this.initializeSession().then(() => this.resumeNativeOAuth());
   }
 
   ngOnDestroy(): void {
@@ -723,17 +726,7 @@ export class App implements OnDestroy, OnInit {
                 password: this.authForm.password,
               }),
             );
-      this.api.setSessionToken(response.token);
-      this.currentUser.set(response.user);
-      this.loadAccountPreferences(response.user.id);
-      this.authForm.password = '';
-      if (this.accountDeletionPage) {
-        return;
-      }
-      await this.loadState();
-      void this.syncPushState();
-      this.openOnboardingIfNeeded(response.user);
-      this.startRealtimeRefresh();
+      await this.acceptAuthentication(response);
     } catch (error) {
       this.authError.set(this.errorMessage(error, 'Не удалось войти в аккаунт.'));
     } finally {
@@ -746,11 +739,54 @@ export class App implements OnDestroy, OnInit {
     this.authError.set('');
   }
 
-  protected startOAuth(provider: 'google' | 'apple'): void {
+  protected async startOAuth(provider: 'google' | 'apple'): Promise<void> {
+    if (this.saving()) return;
+    if (this.nativeOAuth.isNative) {
+      await this.completeNativeOAuth(this.nativeOAuth.signIn(provider));
+      return;
+    }
     if (this.accountDeletionPage) {
       sessionStorage.setItem('eat-it.delete-account.after-oauth', 'true');
     }
     window.location.assign(this.api.oauthUrl(provider));
+  }
+
+  private async resumeNativeOAuth(): Promise<void> {
+    if (!this.currentUser() && this.nativeOAuth.hasPending()) {
+      await this.completeNativeOAuth(this.nativeOAuth.resume());
+    }
+  }
+
+  private async completeNativeOAuth(result: Promise<AuthResponse | null>): Promise<void> {
+    this.saving.set(true);
+    this.authError.set('');
+    try {
+      const response = await result;
+      if (response) await this.acceptAuthentication(response);
+    } catch (error) {
+      const fallback = 'Не удалось завершить вход. Проверьте подключение и попробуйте снова.';
+      this.authError.set(
+        error instanceof HttpErrorResponse
+          ? this.errorMessage(error, fallback)
+          : error instanceof Error && error.name === 'Error'
+            ? error.message
+            : fallback,
+      );
+    } finally {
+      this.saving.set(false);
+    }
+  }
+
+  private async acceptAuthentication(response: AuthResponse): Promise<void> {
+    this.api.setSessionToken(response.token);
+    this.currentUser.set(response.user);
+    this.loadAccountPreferences(response.user.id);
+    this.authForm.password = '';
+    if (this.accountDeletionPage) return;
+    await this.loadState();
+    void this.syncPushState();
+    this.openOnboardingIfNeeded(response.user);
+    this.startRealtimeRefresh();
   }
 
   protected nextOnboardingStep(): void {

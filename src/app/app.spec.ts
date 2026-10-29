@@ -5,9 +5,11 @@ import { describe, beforeEach, expect, it, vi } from 'vitest';
 import { App } from './app';
 import { ApiService } from './core/api.service';
 import { LiveUpdateService } from './core/live-update.service';
+import { NativeOAuthService } from './core/native-oauth.service';
 
 describe('App', () => {
   let apiService: {
+    setSessionToken: ReturnType<typeof vi.fn>;
     clearSessionToken?: ReturnType<typeof vi.fn>;
     me: ReturnType<typeof vi.fn>;
     getAuthProviders: ReturnType<typeof vi.fn>;
@@ -37,6 +39,7 @@ describe('App', () => {
 
   beforeEach(async () => {
     apiService = {
+      setSessionToken: vi.fn(),
       me: vi.fn().mockReturnValue(
         of({
           user: {
@@ -443,6 +446,91 @@ describe('App', () => {
       element.querySelector<HTMLButtonElement>('[aria-label="Назад в профиль"]')!.click();
       fixture.detectChanges();
       expect(element.querySelector('.profile-menu')).toBeTruthy();
+    } finally {
+      fixture.destroy();
+    }
+  });
+
+  it('completes native Google sign-in inside the app and stores the app session', async () => {
+    const result = {
+      token: 'native-google-token',
+      expiresAt: '2026-12-01T00:00:00Z',
+      user: {
+        id: 'native-google-user',
+        email: 'native@example.test',
+        displayName: 'Google user',
+        householdId: 'household-1',
+        authProvider: 'google',
+      },
+    };
+    const native = {
+      isNative: true,
+      pending: signal(false),
+      hasPending: () => false,
+      signIn: vi.fn().mockResolvedValue(result),
+      cancel: vi.fn(),
+    };
+    TestBed.overrideProvider(NativeOAuthService, { useValue: native });
+    const fixture = TestBed.createComponent(App);
+    try {
+      fixture.detectChanges();
+      await fixture.whenStable();
+      const app = fixture.componentInstance;
+      await app['initializeSession']();
+      app['currentUser'].set(null);
+      await app['startOAuth']('google');
+      expect(native.signIn).toHaveBeenCalledWith('google');
+      expect(apiService.setSessionToken).toHaveBeenCalledWith(result.token);
+      expect(app['currentUser']()?.id).toBe(result.user.id);
+      expect(app['saving']()).toBe(false);
+      expect(apiService.getState).toHaveBeenCalled();
+    } finally {
+      fixture.destroy();
+    }
+  });
+
+  it('shows manual return guidance and lets the user cancel native Google sign-in', async () => {
+    let reject!: (error: Error) => void;
+    const result = new Promise<never>((_, fail) => {
+      reject = fail;
+    });
+    const native = {
+      isNative: true,
+      pending: signal(false),
+      hasPending: () => false,
+      signIn: vi.fn().mockImplementation(() => {
+        native.pending.set(true);
+        return result;
+      }),
+      cancel: vi.fn().mockImplementation(() => {
+        native.pending.set(false);
+        reject(new Error('Вход отменён. Можно попробовать снова.'));
+      }),
+    };
+    TestBed.overrideProvider(NativeOAuthService, { useValue: native });
+    const fixture = TestBed.createComponent(App);
+    try {
+      fixture.detectChanges();
+      await fixture.whenStable();
+      const app = fixture.componentInstance;
+      await app['initializeSession']();
+      app['currentUser'].set(null);
+      app['onboardingOpen'].set(false);
+      const operation = app['startOAuth']('google');
+      fixture.detectChanges();
+      const element = fixture.nativeElement as HTMLElement;
+      expect(element.textContent).toContain('Завершите вход в браузере');
+      expect(element.textContent).toContain('вернитесь в Homie');
+      const cancel = Array.from(element.querySelectorAll<HTMLButtonElement>('button')).find(
+        (button) => button.textContent?.includes('Отменить вход'),
+      );
+      expect(cancel).toBeTruthy();
+      cancel!.click();
+      await operation;
+      expect(app['currentUser']()).toBeNull();
+      expect(app['saving']()).toBe(false);
+      expect(app['authError']()).toContain('Вход отменён');
+      expect(apiService.setSessionToken).not.toHaveBeenCalled();
     } finally {
       fixture.destroy();
     }

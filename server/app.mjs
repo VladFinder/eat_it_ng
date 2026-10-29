@@ -3,6 +3,7 @@ import { spoonacularMealTypes } from './recipe-types.mjs';
 import { ZodError } from 'zod';
 import webpush from 'web-push';
 import { clientAddress, createAuthLimiter, isAllowedWriteOrigin } from './security.mjs';
+import { createNativeOAuthStore, nativeOAuthPage } from './native-oauth.mjs';
 import {
   authenticate,
   clearSessionCookie,
@@ -35,6 +36,8 @@ import {
   householdMemberSchema,
   householdUpdateSchema,
   loginSchema,
+  nativeOAuthStartSchema,
+  nativeOAuthProofSchema,
   mealPlanCreateSchema,
   notificationPreferencesSchema,
   notificationUpdateSchema,
@@ -1964,8 +1967,18 @@ async function findShoppingItem(prisma, id, householdId) {
   return item;
 }
 
-export function createApiServer(prisma, logger = console) {
+export function createApiServer(prisma, logger = console, oauth = {}) {
   const limitAuth = createAuthLimiter();
+  const nativeOAuth = createNativeOAuthStore();
+  const googleExchange = oauth.exchangeGoogleCode ?? exchangeGoogleCode;
+  const appleExchange = oauth.exchangeAppleCode ?? exchangeAppleCode;
+  const finishNative = (provider, request, response, state, result, cookies) => {
+    const id = cookieValue(request, `eat_it_${provider}_native`);
+    if (!id) return false;
+    const completed = nativeOAuth.finish(provider, id, state, result);
+    nativeOAuthPage(response, completed && Boolean(result.userId), cookies);
+    return true;
+  };
   return createServer(async (request, response) => {
     const method = request.method ?? 'GET';
     let url;
@@ -2003,6 +2016,93 @@ export function createApiServer(prisma, logger = console) {
 
       if (method === 'GET' && url.pathname === '/api/health') {
         json(response, 200, { status: 'ok' });
+        return;
+      }
+
+      if (method === 'POST' && url.pathname === '/api/auth/native/start') {
+        response.setHeader('Cache-Control', 'no-store');
+        const retryAfter = limitAuth(`native-start:${clientAddress(request)}`, 120);
+        if (retryAfter) {
+          json(
+            response,
+            429,
+            { error: 'Слишком много попыток входа. Попробуйте позже.' },
+            { 'Retry-After': String(retryAfter) },
+          );
+          return;
+        }
+        const input = nativeOAuthStartSchema.parse(await readJson(request));
+        const configured =
+          input.provider === 'google'
+            ? process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET
+            : process.env.APPLE_CLIENT_ID &&
+              process.env.APPLE_TEAM_ID &&
+              process.env.APPLE_KEY_ID &&
+              process.env.APPLE_PRIVATE_KEY;
+        if (!configured) {
+          json(response, 503, { error: 'Этот способ входа сейчас недоступен.' });
+          return;
+        }
+        const attempt = nativeOAuth.create(input.provider, input.challenge);
+        if (!attempt) {
+          json(response, 503, { error: 'Слишком много запросов на вход. Попробуйте позже.' });
+          return;
+        }
+        const loginUrl = new URL(
+          `/api/auth/${input.provider}`,
+          process.env.APP_URL ?? 'https://homie-web.app',
+        );
+        loginUrl.searchParams.set('native', attempt.ticket);
+        json(response, 201, {
+          id: attempt.id,
+          loginUrl: loginUrl.toString(),
+          expiresAt: new Date(attempt.expiresAt).toISOString(),
+        });
+        return;
+      }
+
+      if (
+        method === 'POST' &&
+        ['/api/auth/native/poll', '/api/auth/native/cancel'].includes(url.pathname)
+      ) {
+        response.setHeader('Cache-Control', 'no-store');
+        const retryAfter = limitAuth(`native:${clientAddress(request)}`, 6_000);
+        if (retryAfter) {
+          json(
+            response,
+            429,
+            { error: 'Слишком много запросов. Попробуйте позже.' },
+            { 'Retry-After': String(retryAfter) },
+          );
+          return;
+        }
+        const { id, verifier } = nativeOAuthProofSchema.parse(await readJson(request));
+        if (url.pathname.endsWith('/cancel')) {
+          nativeOAuth.cancel(id, verifier);
+          json(response, 200, { success: true });
+          return;
+        }
+        const result = nativeOAuth.consume(id, verifier);
+        if (!result) {
+          json(response, 410, { error: 'Время ожидания входа истекло. Начните вход заново.' });
+        } else if (result.pending) {
+          json(response, 202, { pending: true });
+        } else if (result.error) {
+          json(response, 400, {
+            error:
+              result.error === 'cancelled'
+                ? 'Вход отменён. Можно попробовать снова.'
+                : 'Не удалось завершить вход. Попробуйте снова.',
+          });
+        } else {
+          const user = await prisma.user.findUnique({ where: { id: result.userId } });
+          if (!user) {
+            json(response, 410, { error: 'Начните вход заново.' });
+            return;
+          }
+          const session = await createSession(prisma, user.id);
+          authResponse(response, 200, user, session, request);
+        }
         return;
       }
 
@@ -2074,9 +2174,18 @@ export function createApiServer(prisma, logger = console) {
           return;
         }
         const authorization = googleAuthorization();
+        const ticket = url.searchParams.get('native');
+        const nativeId = ticket ? nativeOAuth.begin('google', ticket, authorization.state) : null;
+        if (ticket && !nativeId) {
+          nativeOAuthPage(response, false);
+          return;
+        }
         redirect(response, authorization.url, [
           oauthCookie('eat_it_google_state', authorization.state, isSecureRequest(request)),
           oauthCookie('eat_it_google_verifier', authorization.verifier, isSecureRequest(request)),
+          nativeId
+            ? oauthCookie('eat_it_google_native', nativeId, isSecureRequest(request))
+            : clearOauthCookie('eat_it_google_native', isSecureRequest(request)),
         ]);
         return;
       }
@@ -2085,8 +2194,20 @@ export function createApiServer(prisma, logger = console) {
         const clearCookies = [
           clearOauthCookie('eat_it_google_state', isSecureRequest(request)),
           clearOauthCookie('eat_it_google_verifier', isSecureRequest(request)),
+          clearOauthCookie('eat_it_google_native', isSecureRequest(request)),
         ];
         if (url.searchParams.get('error')) {
+          if (
+            finishNative(
+              'google',
+              request,
+              response,
+              url.searchParams.get('state'),
+              { error: 'cancelled' },
+              clearCookies,
+            )
+          )
+            return;
           redirect(response, appLocation({ auth_error: 'google_cancelled' }), clearCookies);
           return;
         }
@@ -2095,12 +2216,25 @@ export function createApiServer(prisma, logger = console) {
         const verifier = cookieValue(request, 'eat_it_google_verifier');
         const code = url.searchParams.get('code');
         if (!state || state !== url.searchParams.get('state') || !verifier || !code) {
+          if (
+            finishNative(
+              'google',
+              request,
+              response,
+              url.searchParams.get('state'),
+              { error: 'failed' },
+              clearCookies,
+            )
+          )
+            return;
           redirect(response, appLocation({ auth_error: 'google_failed' }), clearCookies);
           return;
         }
         try {
-          const profile = await exchangeGoogleCode(code, verifier);
+          const profile = await googleExchange(code, verifier);
           const user = await findOrCreateOAuthUser(prisma, 'google', profile);
+          if (finishNative('google', request, response, state, { userId: user.id }, clearCookies))
+            return;
           const session = await createSession(prisma, user.id);
           redirect(response, appLocation(), [
             sessionCookie(session.token, session.expiresAt, isSecureRequest(request)),
@@ -2108,6 +2242,8 @@ export function createApiServer(prisma, logger = console) {
           ]);
         } catch (error) {
           logger.error(`${method} ${url.pathname}`, error);
+          if (finishNative('google', request, response, state, { error: 'failed' }, clearCookies))
+            return;
           redirect(response, appLocation({ auth_error: 'google_failed' }), clearCookies);
         }
         return;
@@ -2124,9 +2260,18 @@ export function createApiServer(prisma, logger = console) {
           return;
         }
         const authorization = appleAuthorization();
+        const ticket = url.searchParams.get('native');
+        const nativeId = ticket ? nativeOAuth.begin('apple', ticket, authorization.state) : null;
+        if (ticket && !nativeId) {
+          nativeOAuthPage(response, false);
+          return;
+        }
         redirect(response, authorization.url, [
           oauthCookie('eat_it_apple_state', authorization.state, true, 'None'),
           oauthCookie('eat_it_apple_nonce', authorization.nonce, true, 'None'),
+          nativeId
+            ? oauthCookie('eat_it_apple_native', nativeId, true, 'None')
+            : clearOauthCookie('eat_it_apple_native', true, 'None'),
         ]);
         return;
       }
@@ -2136,8 +2281,20 @@ export function createApiServer(prisma, logger = console) {
         const clearCookies = [
           clearOauthCookie('eat_it_apple_state', true, 'None'),
           clearOauthCookie('eat_it_apple_nonce', true, 'None'),
+          clearOauthCookie('eat_it_apple_native', true, 'None'),
         ];
         if (form.get('error')) {
+          if (
+            finishNative(
+              'apple',
+              request,
+              response,
+              form.get('state'),
+              { error: 'cancelled' },
+              clearCookies,
+            )
+          )
+            return;
           redirect(response, appLocation({ auth_error: 'apple_cancelled' }), clearCookies);
           return;
         }
@@ -2146,12 +2303,25 @@ export function createApiServer(prisma, logger = console) {
         const nonce = cookieValue(request, 'eat_it_apple_nonce');
         const code = form.get('code');
         if (!state || state !== form.get('state') || !nonce || !code) {
+          if (
+            finishNative(
+              'apple',
+              request,
+              response,
+              form.get('state'),
+              { error: 'failed' },
+              clearCookies,
+            )
+          )
+            return;
           redirect(response, appLocation({ auth_error: 'apple_failed' }), clearCookies);
           return;
         }
         try {
-          const profile = await exchangeAppleCode(code, nonce);
+          const profile = await appleExchange(code, nonce);
           const user = await findOrCreateOAuthUser(prisma, 'apple', profile);
+          if (finishNative('apple', request, response, state, { userId: user.id }, clearCookies))
+            return;
           const session = await createSession(prisma, user.id);
           redirect(response, appLocation(), [
             sessionCookie(session.token, session.expiresAt, true),
@@ -2159,6 +2329,8 @@ export function createApiServer(prisma, logger = console) {
           ]);
         } catch (error) {
           logger.error(`${method} ${url.pathname}`, error);
+          if (finishNative('apple', request, response, state, { error: 'failed' }, clearCookies))
+            return;
           redirect(response, appLocation({ auth_error: 'apple_failed' }), clearCookies);
         }
         return;

@@ -32,6 +32,20 @@ export const loginSchema = z.object({
   password: z.string().min(1).max(128),
 });
 
+export const nativeOAuthStartSchema = z
+  .object({
+    provider: z.enum(['google', 'apple']),
+    challenge: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
+  })
+  .strict();
+
+export const nativeOAuthProofSchema = z
+  .object({
+    id: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
+    verifier: z.string().regex(/^[A-Za-z0-9_-]{43,128}$/),
+  })
+  .strict();
+
 export const householdUpdateSchema = z.object({
   name,
 });
