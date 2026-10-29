@@ -1,0 +1,20 @@
+{
+  "15": "live-update.service.ts",
+  "19": "db.mjs",
+  "20": "ShoppingItem",
+  "23": "Repository Guidelines",
+  "24": ".runMutation",
+  "25": "LoadMoreDirective",
+  "26": "createAndSendNotification",
+  "27": "FridgeItem",
+  "31": "vitest",
+  "32": "auth.mjs",
+  "33": ".compareFridgeItems",
+  "34": "@capacitor/cli",
+  "35": "@angular/forms",
+  "37": "LiveUpdateService",
+  "47": "@angular/platform-browser",
+  "49": "@capacitor/android@^7.6.0",
+  "52": "@ngrx/entity@^21.1.0",
+  "53": "@ngrx/store@^21.1.0"
+}
