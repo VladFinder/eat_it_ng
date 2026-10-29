@@ -2662,6 +2662,11 @@
                     <dd>{{ liveUpdate.phase() === 'checking' ? 'Определяем…' : 'Не удалось определить' }}</dd>
                   </div>
                 }
+              } @else {
+                <div>
+                  <dt>Версия приложения</dt>
+                  <dd>{{ liveUpdate.releaseVersion }}</dd>
+                </div>
               }
             </dl>
             @if (liveUpdate.isAndroid) {

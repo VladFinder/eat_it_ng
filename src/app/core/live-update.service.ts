@@ -21,6 +21,7 @@ interface UpdateState {
 export class LiveUpdateService {
   private readonly verifyManifest = inject(UPDATE_MANIFEST_VERIFIER);
   readonly isAndroid = Capacitor.getPlatform() === 'android';
+  readonly releaseVersion = trust.runtime;
   readonly versionInfo = signal<{ appVersion: string; updateVersion: string | null } | null>(null);
   readonly phase = signal<'idle' | 'checking' | 'downloading' | 'installing' | 'error'>(
     this.isAndroid ? 'checking' : 'idle',

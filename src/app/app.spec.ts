@@ -409,6 +409,7 @@ describe('App', () => {
     TestBed.overrideProvider(LiveUpdateService, {
       useValue: {
         isAndroid: platform === 'android',
+        releaseVersion: '2.0.1',
         versionInfo: signal(info),
         phase: signal('idle'),
         start: vi.fn().mockResolvedValue(undefined),
@@ -435,7 +436,8 @@ describe('App', () => {
         expect(about?.textContent).toContain(info.appVersion);
         expect(about?.textContent).toContain('Версия обновления');
       } else {
-        expect(about?.textContent).not.toContain('Версия приложения');
+        expect(about?.textContent).toContain('Версия приложения');
+        expect(about?.textContent).toContain('2.0.1');
         expect(about?.textContent).not.toContain('Версия обновления');
       }
       element.querySelector<HTMLButtonElement>('[aria-label="Назад в профиль"]')!.click();

@@ -1,7 +1,7 @@
 # Graph Report - eat_it_ng  (2026-10-29)
 
 ## Corpus Check
-- 85 files · ~61,488 words
+- 85 files · ~61,512 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 31 file(s) not represented in the graph (top: .xml 10, (none) 5, .example 2)
 
@@ -11,7 +11,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `76989607`
+- Built from commit: `a6cfa48d`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
