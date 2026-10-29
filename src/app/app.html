@@ -2599,6 +2599,11 @@
               Обратная связь
               <strong>›</strong>
             </button>
+            <button type="button" (click)="setProfileSection('about')">
+              <span aria-hidden="true">ⓘ</span>
+              О приложении
+              <strong aria-hidden="true">›</strong>
+            </button>
             @if (hasDevAccess()) {
               <button type="button" (click)="openDevCenter()">
                 <span>⚙</span>
@@ -2617,6 +2622,54 @@
               <strong>›</strong>
             </button>
           </div>
+        }
+
+        @if (profileSection() === 'about') {
+          <div class="subscreen-head">
+            <button class="back-button" type="button" aria-label="Назад в профиль" (click)="setProfileSection('menu')">‹</button>
+            <div>
+              <p class="section-label">Профиль</p>
+              <h2>О приложении</h2>
+            </div>
+          </div>
+
+          <section class="panel about-app" aria-labelledby="about-app-title">
+            <div class="about-app-brand">
+              <img class="avatar" src="/play-assets/homie-icon-192.png" width="56" height="56" alt="">
+              <div>
+                <h3 id="about-app-title">Homie</h3>
+                <p>Запасы, покупки и рецепты для вашего дома</p>
+              </div>
+            </div>
+            <dl class="about-app-details">
+              <div>
+                <dt>Платформа</dt>
+                <dd>{{ liveUpdate.isAndroid ? 'Android' : 'Веб-версия' }}</dd>
+              </div>
+              @if (liveUpdate.isAndroid) {
+                @if (liveUpdate.versionInfo(); as info) {
+                  <div>
+                    <dt>Версия приложения</dt>
+                    <dd>{{ info.appVersion }}</dd>
+                  </div>
+                  <div>
+                    <dt>Версия обновления</dt>
+                    <dd>{{ info.updateVersion ?? 'В составе приложения' }}</dd>
+                  </div>
+                } @else {
+                  <div>
+                    <dt>Версия приложения</dt>
+                    <dd>{{ liveUpdate.phase() === 'checking' ? 'Определяем…' : 'Не удалось определить' }}</dd>
+                  </div>
+                }
+              }
+            </dl>
+            @if (liveUpdate.isAndroid) {
+              <p>Версия приложения меняется при установке новой APK. Версия обновления — при обновлении интерфейса и функций без переустановки.</p>
+            } @else {
+              <p>Вы используете Homie в браузере. Веб-версия обновляется на сайте и не требует установки APK.</p>
+            }
+          </section>
         }
 
         @if (profileSection() === 'subscription') {

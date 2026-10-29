@@ -1,8 +1,10 @@
 import { TestBed } from '@angular/core/testing';
+import { signal } from '@angular/core';
 import { of, Subject, throwError } from 'rxjs';
 import { describe, beforeEach, expect, it, vi } from 'vitest';
 import { App } from './app';
 import { ApiService } from './core/api.service';
+import { LiveUpdateService } from './core/live-update.service';
 
 describe('App', () => {
   let apiService: {
@@ -389,6 +391,59 @@ describe('App', () => {
     const compiled = fixture.nativeElement as HTMLElement;
     expect(compiled.querySelector('h1')?.textContent).toContain('С возвращением');
     expect(compiled.textContent).toContain('Проверяем сессию');
+  });
+
+  it.each([
+    { platform: 'web', info: null, expected: 'Веб-версия' },
+    {
+      platform: 'android',
+      info: { appVersion: '2.0.0', updateVersion: null },
+      expected: 'В составе приложения',
+    },
+    {
+      platform: 'android',
+      info: { appVersion: '2.0.0', updateVersion: '2.0.0-20261029-abc123' },
+      expected: '2.0.0-20261029-abc123',
+    },
+  ])('opens app information from the profile: $expected', async ({ platform, info, expected }) => {
+    TestBed.overrideProvider(LiveUpdateService, {
+      useValue: {
+        isAndroid: platform === 'android',
+        versionInfo: signal(info),
+        phase: signal('idle'),
+        start: vi.fn().mockResolvedValue(undefined),
+      },
+    });
+    const fixture = TestBed.createComponent(App);
+    try {
+      await fixture.whenStable();
+      const app = fixture.componentInstance;
+      await app['initializeSession']();
+      app['onboardingOpen'].set(false);
+      app['setTab']('profile');
+      fixture.detectChanges();
+      const element = fixture.nativeElement as HTMLElement;
+      const aboutButton = Array.from(element.querySelectorAll<HTMLButtonElement>('.profile-menu button'))
+        .find((button) => button.textContent?.includes('О приложении'));
+      expect(aboutButton).toBeTruthy();
+      aboutButton!.click();
+      fixture.detectChanges();
+      const about = element.querySelector('.about-app');
+      expect(about?.textContent).toContain('Homie');
+      expect(about?.textContent).toContain(expected);
+      if (info) {
+        expect(about?.textContent).toContain(info.appVersion);
+        expect(about?.textContent).toContain('Версия обновления');
+      } else {
+        expect(about?.textContent).not.toContain('Версия приложения');
+        expect(about?.textContent).not.toContain('Версия обновления');
+      }
+      element.querySelector<HTMLButtonElement>('[aria-label="Назад в профиль"]')!.click();
+      fixture.detectChanges();
+      expect(element.querySelector('.profile-menu')).toBeTruthy();
+    } finally {
+      fixture.destroy();
+    }
   });
 
   it('stores household items without expiry date', async () => {

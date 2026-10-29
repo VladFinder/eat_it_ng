@@ -2,3 +2,37 @@
   display: block;
   min-height: 100dvh;
 }
+
+.about-app-brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.about-app-brand h3 {
+  margin: 0 0 4px;
+}
+
+.about-app-details {
+  display: grid;
+  gap: 14px;
+  margin: 0;
+}
+
+.about-app-details > div {
+  display: grid;
+  gap: 6px;
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
+
+.about-app-details dt {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.about-app-details dd {
+  margin: 0;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}

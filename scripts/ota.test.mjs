@@ -2,7 +2,17 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { generateKeyPairSync, verify, constants } from 'node:crypto';
 import { nativeFingerprint, signManifest } from './ota.mjs';
-import { readFileSync } from 'node:fs';
+import {
+  readFileSync,
+  cpSync,
+  mkdtempSync,
+  rmSync,
+  mkdirSync,
+  writeFileSync,
+  symlinkSync,
+} from 'node:fs';
+import { join, basename } from 'node:path';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 test('OTA release signer signs exactly the payload and tampering invalidates the signature', () => {
@@ -39,4 +49,38 @@ test('checked-in runtime fingerprint matches the native shell and pinned plugin 
     trust.nativeFingerprint,
     'Native shell changed: bump APK version and run ota:runtime before shipping',
   );
+});
+
+test('native fingerprint is stable before and after cap sync but detects native source edits', () => {
+  const root = fileURLToPath(new URL('../', import.meta.url));
+  const fixture = mkdtempSync(join(tmpdir(), 'homie-native-'));
+  try {
+    cpSync(join(root, 'android'), join(fixture, 'android'), {
+      recursive: true,
+      filter: (path) =>
+        ![
+          '.gradle',
+          'build',
+          'assets',
+          'capacitor-cordova-android-plugins',
+          'key.properties',
+          'local.properties',
+        ].includes(basename(path)) && !/\.(jks|keystore)$/.test(path),
+    });
+    for (const file of ['capacitor.config.ts', 'package.json', 'package-lock.json']) {
+      cpSync(join(root, file), join(fixture, file));
+    }
+    symlinkSync(join(root, 'node_modules'), join(fixture, 'node_modules'), 'junction');
+    const generatedConfig = join(fixture, 'android/app/src/main/res/xml/config.xml');
+    rmSync(generatedConfig, { force: true });
+    const cleanFingerprint = nativeFingerprint(fixture);
+    mkdirSync(join(fixture, 'android/app/src/main/res/xml'), { recursive: true });
+    writeFileSync(generatedConfig, '<widget><access origin="*" /></widget>');
+    assert.equal(nativeFingerprint(fixture), cleanFingerprint);
+    const manifest = join(fixture, 'android/app/src/main/AndroidManifest.xml');
+    writeFileSync(manifest, readFileSync(manifest, 'utf8') + '\n<!-- native edit -->\n');
+    assert.notEqual(nativeFingerprint(fixture), cleanFingerprint);
+  } finally {
+    rmSync(fixture, { recursive: true, force: true });
+  }
 });

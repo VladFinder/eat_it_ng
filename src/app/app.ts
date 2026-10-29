@@ -56,7 +56,7 @@ type FridgeSort = 'newest' | 'oldest' | 'expiry' | 'name';
 type ShoppingSort = 'newest' | 'oldest' | 'name' | 'status';
 type AuthMode = 'login' | 'register';
 type ProfileSection =
-  'menu' | 'subscription' | 'household' | 'notifications' | 'support' | 'feedback';
+  'menu' | 'subscription' | 'household' | 'notifications' | 'support' | 'feedback' | 'about';
 type DevSection =
   | 'overview'
   | 'users'

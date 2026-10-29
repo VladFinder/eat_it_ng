@@ -3,12 +3,18 @@
 ## What is in the repository
 
 - Application ID: `space.eatit.app`.
-- First release: version code `1`, version name `1.0`.
+- Current release: version code `3`, version name `2.0.1` (OTA runtime `2.0.1`).
 - Release command: `npm run android:aab`.
 - The generated bundle is `android/app/build/outputs/bundle/release/app-release.aab`.
 - A signing keystore is never committed. Store it securely: the same key is required for every future update.
-- Local Android builds require JDK 21 (or another JDK compatible with Android Gradle Plugin 8.7). A Java 8 JRE is not sufficient.
+- Local Android builds require JDK 21 and Android SDK 36 (Android Gradle Plugin 8.10.1). A Java 8 JRE is not sufficient.
 - The AAB command fails if release signing is absent or incomplete; it will not create an uploadable-looking unsigned bundle.
+
+## Changes in 2.0.1
+
+- Profile → About the app shows the installed APK version and the active OTA version. The bundled web interface is identified separately from a downloaded update.
+- Browser favicons and the iPhone Home Screen icon use the selected Homie Play Store artwork.
+- Native compatibility checks ignore Capacitor's generated `res/xml/config.xml`, whose source configuration is already included in the fingerprint. A clean checkout and a synced checkout produce the same fingerprint.
 
 ## Security configuration for this release
 

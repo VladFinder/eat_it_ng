@@ -20,8 +20,10 @@ interface UpdateState {
 @Injectable({ providedIn: 'root' })
 export class LiveUpdateService {
   private readonly verifyManifest = inject(UPDATE_MANIFEST_VERIFIER);
+  readonly isAndroid = Capacitor.getPlatform() === 'android';
+  readonly versionInfo = signal<{ appVersion: string; updateVersion: string | null } | null>(null);
   readonly phase = signal<'idle' | 'checking' | 'downloading' | 'installing' | 'error'>(
-    Capacitor.getPlatform() === 'android' ? 'checking' : 'idle',
+    this.isAndroid ? 'checking' : 'idle',
   );
   readonly percent = signal(0);
   readonly message = signal('');
@@ -60,6 +62,10 @@ export class LiveUpdateService {
         localStorage.setItem(STATE_KEY, JSON.stringify(state));
       }
       const native = await CapacitorUpdater.getBuiltinVersion();
+      this.versionInfo.set({
+        appVersion: native.version,
+        updateVersion: current.id === 'builtin' ? null : current.version,
+      });
       if (native.version !== trust.runtime) throw new Error('Native runtime mismatch');
       const response = await fetch(`${UPDATE_ORIGIN}/${trust.runtime}/latest.json`, {
         cache: 'no-store',

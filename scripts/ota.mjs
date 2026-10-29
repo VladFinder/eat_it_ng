@@ -10,7 +10,7 @@ import {
   chmodSync,
   rmSync,
 } from 'node:fs';
-import { resolve, join } from 'node:path';
+import { resolve, join, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { parseArgs } from 'node:util';
@@ -33,6 +33,8 @@ export function nativeFingerprint(projectRoot) {
     for (const entry of readdirSync(join(projectRoot, directory), { withFileTypes: true })) {
       if (entry.name === 'assets') continue;
       const path = join(directory, entry.name);
+      // cap sync generates this ignored file from capacitor.config.ts, already hashed above.
+      if (path === join('android/app/src/main/res/xml', 'config.xml')) continue;
       if (entry.isSymbolicLink()) throw new Error(`Native symlink not allowed: ${path}`);
       if (entry.isDirectory()) walk(path);
       else files.push(path);
@@ -50,7 +52,9 @@ export function nativeFingerprint(projectRoot) {
     })
     .map(([name, range]) => [name, range, lock.packages[`node_modules/${name}`]?.integrity]);
   const hash = createHash('sha256').update(JSON.stringify(nativePackages.sort()));
-  for (const file of files.sort()) hash.update(file).update(readFileSync(join(projectRoot, file)));
+  for (const file of files.sort()) {
+    hash.update(file.split(sep).join('/')).update(readFileSync(join(projectRoot, file)));
+  }
   return hash.digest('hex');
 }
 

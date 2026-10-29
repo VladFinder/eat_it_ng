@@ -67,6 +67,34 @@ describe('Android live updates', () => {
     const updater = TestBed.inject(LiveUpdateService);
     await updater.start();
     expect(updater.phase()).toBe('idle');
+    expect(updater.versionInfo()).toBeNull();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+  it('identifies the bundle included in the APK without inventing an OTA version', async () => {
+    vi.mocked(fetch).mockResolvedValue(new Response('', { status: 404 }));
+    const updater = TestBed.inject(LiveUpdateService);
+    await updater.start();
+    expect(updater.versionInfo()).toEqual({ appVersion: trust.runtime, updateVersion: null });
+  });
+  it('keeps the active OTA version available when checking for updates fails offline', async () => {
+    vi.mocked(CapacitorUpdater.current).mockResolvedValue({
+      bundle: { ...bundle, id: 'installed', version: '2.0.5' },
+      native: trust.runtime,
+    });
+    vi.mocked(fetch).mockRejectedValue(new Error('offline'));
+    const updater = TestBed.inject(LiveUpdateService);
+    await updater.start();
+    expect(updater.phase()).toBe('error');
+    expect(updater.versionInfo()).toEqual({
+      appVersion: trust.runtime,
+      updateVersion: '2.0.5',
+    });
+  });
+  it('reports the installed native version even when it differs from the OTA runtime', async () => {
+    vi.mocked(CapacitorUpdater.getBuiltinVersion).mockResolvedValue({ version: '3.0.0' });
+    const updater = TestBed.inject(LiveUpdateService);
+    await updater.start();
+    expect(updater.versionInfo()?.appVersion).toBe('3.0.0');
     expect(fetch).not.toHaveBeenCalled();
   });
   it('checks, downloads with a checksum, records pending and activates', async () => {
@@ -83,6 +111,8 @@ describe('Android live updates', () => {
       failed: null,
     });
     expect(updater.percent()).toBe(100);
+    // A downloaded or pending bundle is not the version currently running.
+    expect(updater.versionInfo()).toEqual({ appVersion: trust.runtime, updateVersion: null });
   });
   it('reports native download progress and ignores unrelated bundles', async () => {
     const updater = TestBed.inject(LiveUpdateService);
