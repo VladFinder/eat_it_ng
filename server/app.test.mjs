@@ -38,6 +38,7 @@ let prisma;
 let server;
 let baseUrl;
 let authToken;
+let barcodeLookups = [];
 
 before(async () => {
   mkdirSync(resolve(projectRoot, 'data'), { recursive: true });
@@ -323,7 +324,17 @@ before(async () => {
     .filter(Boolean)) {
     await prisma.$executeRawUnsafe(sql);
   }
+  const barcodeMigration = readFileSync(new URL('../prisma/migrations/20261030080000_household_barcodes/migration.sql', import.meta.url), 'utf8');
+  for (const sql of barcodeMigration.split(';').map((part) => part.trim()).filter(Boolean)) {
+    await prisma.$executeRawUnsafe(sql);
+  }
   server = createApiServer(prisma, { error() {} }, {
+    async lookupBarcode(barcode) {
+      barcodeLookups.push(barcode);
+      if (barcode === '04006381333931') return { name: 'Молоко', brand: 'Тест', packageQuantity: '1 л', category: 'products', unit: 'шт.', source: 'open_food_facts' };
+      if (barcode === '00036000291452') throw Object.assign(new Error('База временно недоступна'), { status: 503 });
+      return null;
+    },
     async exchangeGoogleCode(code, verifier) {
       assert.equal(code, 'native-test-code');
       assert.ok(verifier);
@@ -3049,4 +3060,54 @@ test('ordinary website Google sign-in still uses the browser cookie and website 
     assert.equal(callback.headers.get('location'), baseUrl + '/');
     assert.match(callback.headers.get('set-cookie'), /eat_it_session=/);
   });
+});
+
+test('barcode lookup requires auth, validates GTIN and separates provider outages from missing products', async () => {
+  const beforeCalls = barcodeLookups.length;
+  assert.equal((await request('/api/barcodes/4006381333931', { skipAuth: true })).status, 401);
+  for (const code of ['4006381333932', 'abcdef', '123456789']) {
+    assert.equal((await request('/api/barcodes/' + code)).status, 400);
+  }
+  assert.equal(barcodeLookups.length, beforeCalls);
+  const response = await request('/api/barcodes/4006381333931');
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('cache-control'), 'no-store');
+  const result = await response.json();
+  assert.equal(result.barcode, '04006381333931');
+  assert.equal(result.product.name, 'Молоко');
+  assert.equal((await (await request('/api/barcodes/96385074')).json()).product, null);
+  assert.equal((await request('/api/barcodes/036000291452')).status, 503);
+});
+
+test('scanned products save with learned names scoped to the household, shared with members, and deleted with the home', async () => {
+  const register = async (email) => {
+    const response = await request('/api/auth/register', { method: 'POST', skipAuth: true, body: JSON.stringify({ displayName: 'Barcode test', email, password: 'barcode-test-password' }) });
+    assert.equal(response.status, 201);
+    return response.json();
+  };
+  const owner = await register('barcode-owner@example.test');
+  const other = await register('barcode-other@example.test');
+  const ownerHeaders = { Authorization: `Bearer ${owner.token}` };
+  const otherHeaders = { Authorization: `Bearer ${other.token}` };
+  const input = { barcode: '96385074', name: 'Название нашего дома', category: 'household', quantity: 2, unit: 'упак.' };
+  const invalid = await request('/api/shopping', { method: 'POST', headers: ownerHeaders, body: JSON.stringify({ ...input, quantity: -1 }) });
+  assert.equal(invalid.status, 400);
+  assert.equal(await prisma.householdBarcodeProduct.count({ where: { householdId: owner.user.householdId } }), 0);
+  const created = await request('/api/shopping', { method: 'POST', headers: ownerHeaders, body: JSON.stringify({ ...input, householdId: other.user.householdId }) });
+  assert.equal(created.status, 201);
+  const item = await created.json();
+  assert.equal(item.name, input.name);
+  const lookup = await (await request('/api/barcodes/00000096385074', { headers: ownerHeaders })).json();
+  assert.equal(lookup.product.name, input.name);
+  assert.equal(lookup.product.source, 'household');
+  assert.equal(lookup.product.category, 'household');
+  assert.equal((await (await request('/api/barcodes/96385074', { headers: otherHeaders })).json()).product, null);
+  await prisma.user.update({ where: { id: other.user.id }, data: { householdId: owner.user.householdId } });
+  assert.equal((await (await request('/api/barcodes/96385074', { headers: otherHeaders })).json()).product.name, input.name);
+  const stock = await request('/api/fridge', { method: 'POST', headers: otherHeaders, body: JSON.stringify({ ...input, name: 'Уточнённое название', expiresAt: null }) });
+  assert.equal(stock.status, 201);
+  assert.equal((await (await request('/api/barcodes/96385074', { headers: ownerHeaders })).json()).product.name, 'Уточнённое название');
+  assert.equal((await request('/api/auth/account', { method: 'DELETE', headers: ownerHeaders })).status, 200);
+  assert.equal((await request('/api/auth/account', { method: 'DELETE', headers: otherHeaders })).status, 200);
+  assert.equal(await prisma.householdBarcodeProduct.count({ where: { householdId: owner.user.householdId } }), 0);
 });

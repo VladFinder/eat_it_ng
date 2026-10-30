@@ -1,0 +1,167 @@
+<dialog
+  #dialog
+  class="barcode-dialog"
+  aria-labelledby="barcode-title"
+  (cancel)="$event.preventDefault(); close()"
+  (click)="onDialogClick($event)"
+>
+  <section class="barcode-content">
+    <header class="notifications-head">
+      <div>
+        <p class="section-label">Добавить товар</p>
+        <h2 id="barcode-title">По штрихкоду</h2>
+      </div>
+      <button
+        class="icon-button close-button"
+        type="button"
+        aria-label="Закрыть сканер"
+        [disabled]="saving()"
+        (click)="close()"
+      >
+        <app-icon name="close" />
+      </button>
+    </header>
+    <p>Наведите камеру на полоски штрихкода или введите номер под ними.</p>
+    <button
+      class="secondary-action action-with-icon"
+      type="button"
+      [disabled]="saving() || lookingUp() || scanning()"
+      (click)="scan()"
+    >
+      <app-icon name="barcode" /> {{ scanning() ? 'Открываем камеру…' : 'Сканировать камерой' }}
+    </button>
+    <div class="barcode-camera" [hidden]="!scanning() || scanner.native">
+      <video
+        #video
+        muted
+        playsinline
+        autoplay
+        aria-label="Камера для сканирования штрихкода"
+      ></video>
+      <p>Расположите штрихкод горизонтально и держите упаковку неподвижно.</p>
+    </div>
+    @if (scanning()) {
+      <button class="secondary-action" type="button" (click)="stopCamera()">
+        Остановить сканирование
+      </button>
+    }
+    @if (cameraError()) {
+      <p class="barcode-notice" role="status">{{ cameraError() }}</p>
+    }
+    <form class="barcode-search" (ngSubmit)="lookup()">
+      <label
+        >Номер штрихкода<input
+          name="barcode"
+          type="text"
+          inputmode="numeric"
+          autocomplete="off"
+          maxlength="64"
+          [disabled]="saving()"
+          [ngModel]="code"
+          (ngModelChange)="changeCode($event)"
+          placeholder="Например, 4006381333931"
+      /></label>
+      <button
+        class="primary-action"
+        type="submit"
+        [disabled]="saving() || lookingUp() || !code.trim()"
+      >
+        {{ lookingUp() ? 'Ищем товар…' : 'Найти товар' }}
+      </button>
+    </form>
+    @if (lookingUp()) {
+      <p role="status">Ищем данные по штрихкоду…</p>
+    }
+    @if (error()) {
+      <p class="barcode-notice" role="alert">{{ error() }}</p>
+    }
+    @if (ready()) {
+      @if (product(); as product) {
+        <div class="barcode-product" role="status">
+          <strong>{{
+            product.source === 'household' ? 'Товар сохранён в вашем доме' : 'Товар найден'
+          }}</strong>
+          @if (product.packageQuantity) {
+            <p>Упаковка: {{ product.packageQuantity }}</p>
+          }
+          @if (product.source === 'open_food_facts') {
+            <a href="https://world.openfoodfacts.org" target="_blank" rel="noopener noreferrer"
+              >Данные Open Food Facts</a
+            >
+          }
+        </div>
+      } @else {
+        <p class="barcode-notice">
+          {{ lookupFailed() ? 'Можно добавить товар вручную.' : 'Нет данных о товаре.' }} Введите
+          название — Homie запомнит его для следующих сканирований в вашем доме.
+        </p>
+      }
+      <form class="barcode-item-form" (ngSubmit)="save()">
+        <fieldset [disabled]="saving()">
+          <label
+            >Название<input name="barcode-name" [(ngModel)]="form.name" maxlength="120" required
+          /></label>
+          <label
+            >Куда добавить<select name="barcode-target" [(ngModel)]="form.target">
+              <option value="shopping">В покупки</option>
+              <option value="fridge">В запасы</option>
+            </select></label
+          >
+          <label
+            >Раздел<select name="barcode-category" [(ngModel)]="form.category">
+              <option value="products">Продукты</option>
+              <option value="household">Бытовая химия</option>
+              <option value="medicine">Аптечка</option>
+            </select></label
+          >
+          <div class="barcode-quantity">
+            <label
+              >Количество<input
+                name="barcode-quantity"
+                type="number"
+                [(ngModel)]="form.quantity"
+                min="0.01"
+                max="1000000"
+                step="any"
+                required
+            /></label>
+            <label
+              >Единица<select name="barcode-unit" [(ngModel)]="form.unit">
+                @for (unit of units; track unit) {
+                  <option [ngValue]="unit">{{ unit }}</option>
+                }
+              </select></label
+            >
+          </div>
+          @if (form.target === 'fridge' && form.category !== 'household') {
+            <label class="checkbox-row"
+              ><input type="checkbox" name="barcode-no-expiry" [(ngModel)]="noExpiry" />Без
+              срока</label
+            >
+            @if (!noExpiry) {
+              <label
+                >Годен до<input
+                  name="barcode-expiry"
+                  type="date"
+                  [(ngModel)]="form.expiresAt"
+                  required
+              /></label>
+            }
+            <p class="barcode-hint">
+              Срок годности конкретной упаковки укажите отдельно. Обычный штрихкод его не содержит.
+            </p>
+          }
+          <button class="primary-action" type="submit" [disabled]="!form.name.trim() || saving()">
+            {{
+              saving()
+                ? 'Добавляем…'
+                : form.target === 'fridge'
+                  ? 'Добавить в запасы'
+                  : 'Добавить в покупки'
+            }}
+          </button>
+        </fieldset>
+      </form>
+    }
+  </section>
+</dialog>

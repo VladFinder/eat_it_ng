@@ -26,6 +26,7 @@ import {
 } from './core/recipe-picker';
 import { LoadMoreDirective } from './core/load-more.directive';
 import { IconComponent, IconName } from './ui/icon.component';
+import { BarcodeAddComponent, BarcodeAddition } from './barcode-add/barcode-add.component';
 import { ApiService } from './core/api.service';
 import {
   AppNotification,
@@ -187,7 +188,7 @@ const ONBOARDING_STEPS: OnboardingStep[] = [
 
 @Component({
   selector: 'app-root',
-  imports: [CommonModule, FormsModule, LoadMoreDirective, LiveUpdateComponent, IconComponent],
+  imports: [CommonModule, FormsModule, LoadMoreDirective, LiveUpdateComponent, IconComponent, BarcodeAddComponent],
   templateUrl: './app.html',
   styleUrl: './app.scss',
 })
@@ -282,6 +283,7 @@ export class App implements OnDestroy, OnInit {
   };
   protected readonly profileSection = signal<ProfileSection>('menu');
   protected readonly fridgeAddOpen = signal(false);
+  protected readonly barcodeTarget = signal<'fridge' | 'shopping' | null>(null);
   protected readonly fridgeMenuItem = signal<FridgeItem | null>(null);
   protected readonly shoppingMenuItem = signal<ShoppingItem | null>(null);
   protected readonly activeRecipe = signal<Recipe | null>(null);
@@ -941,6 +943,21 @@ export class App implements OnDestroy, OnInit {
       this.newFridgeItem.autoAddToShopping = false;
       this.fridgeAddOpen.set(false);
     });
+  }
+
+  protected acceptBarcodeAddition(result: BarcodeAddition): void {
+    if (!this.currentUser()) return;
+    if (result.target === 'fridge') {
+      this.fridgeItems.update((items) => [result.item, ...items]);
+      this.activeCategory.set(result.item.category);
+    } else {
+      this.shoppingItems.update((items) => [result.item, ...items]);
+      this.activeShoppingFilter.set('all');
+    }
+    this.barcodeTarget.set(null);
+    this.setTab(result.target);
+    if (this.recipes().length) void this.refreshRecipeMatches();
+    this.showToast(result.target === 'fridge' ? 'Товар добавлен в запасы' : 'Товар добавлен в покупки');
   }
 
   protected openFridgeMenu(item: FridgeItem): void {
@@ -2821,6 +2838,7 @@ export class App implements OnDestroy, OnInit {
   }
 
   private resetSession(): void {
+    this.barcodeTarget.set(null);
     this.stateRevision++;
     this.catalogRequest++;
     if (this.recipeSearchTimer !== null) window.clearTimeout(this.recipeSearchTimer);

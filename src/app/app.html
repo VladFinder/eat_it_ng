@@ -1,5 +1,11 @@
 <app-live-update />
 <div [attr.inert]="liveUpdate.phase() !== 'idle' ? '' : null">
+@if (barcodeTarget(); as target) {
+  @if (currentUser()) {
+    <app-barcode-add [initialTarget]="target" [initialCategory]="target === 'fridge' ? activeCategory() : newShoppingItem.category"
+      (closed)="barcodeTarget.set(null)" (added)="acceptBarcodeAddition($event)" />
+  }
+}
 @if (!currentUser()) {
   <main class="auth-shell">
     <section class="auth-card">
@@ -1760,6 +1766,9 @@
           </button>
         </div>
 
+        <button class="secondary-action action-with-icon" type="button" [disabled]="saving()" (click)="barcodeTarget.set('fridge')">
+          <app-icon name="barcode" /> Добавить по штрихкоду
+        </button>
         <div class="inventory-tools" aria-label="Поиск, фильтры и сортировка запасов">
           <label class="search-field inventory-search">
             <app-icon class="search-icon" name="search" />
@@ -1978,6 +1987,9 @@
             />
             <button class="primary-action shopping-submit" type="submit">Добавить</button>
           </form>
+          <button class="secondary-action action-with-icon" type="button" [disabled]="saving()" (click)="barcodeTarget.set('shopping')">
+            <app-icon name="barcode" /> Добавить по штрихкоду
+          </button>
           <div class="shopping-details">
             <input
               name="shopping-quantity"

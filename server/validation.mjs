@@ -1,5 +1,10 @@
 import { recipeMealTypes } from './recipe-types.mjs';
 import { z } from 'zod';
+import { normalizeBarcode } from './barcodes.mjs';
+
+export const barcodeSchema = z.string().max(64).transform(normalizeBarcode).refine(
+  (value) => value !== null, 'Введите корректный штрихкод EAN/UPC/GTIN',
+);
 
 export const units = ['шт.', 'г', 'кг', 'мг', 'мл', 'л', 'упак.', 'бан.', 'бут.'];
 export const categories = ['products', 'household', 'medicine'];
@@ -116,6 +121,7 @@ const fridgeFields = {
 
 export const fridgeCreateSchema = z.object({
   ...fridgeFields,
+  barcode: barcodeSchema.optional(),
   reminderDays: reminderDays.default(1),
   autoAddToShopping: z.boolean().default(false),
   category: category.default('products'),
@@ -139,6 +145,7 @@ const shoppingFields = {
 
 export const shoppingCreateSchema = z.object({
   name,
+  barcode: barcodeSchema.optional(),
   quantity: quantity.default(1),
   unit: unit.default('шт.'),
   category: category.default('products'),

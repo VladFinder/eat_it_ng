@@ -182,14 +182,29 @@ export interface NotificationPreferences {
 export type FridgeInput = Pick<
   FridgeItem,
   'name' | 'quantity' | 'unit' | 'expiresAt' | 'reminderDays' | 'autoAddToShopping' | 'category'
->;
+> & { barcode?: string };
 
 export type ShoppingInput = {
+  barcode?: string;
   name: string;
   quantity?: number;
   unit?: Unit;
   category?: ItemCategory;
 };
+
+export interface BarcodeProduct {
+  name: string;
+  brand: string;
+  packageQuantity: string;
+  category: ItemCategory;
+  unit: Unit;
+  source: 'household' | 'open_food_facts';
+}
+
+export interface BarcodeLookupResult {
+  barcode: string;
+  product: BarcodeProduct | null;
+}
 
 export interface SupportTicket {
   id: string;

@@ -4,6 +4,7 @@ import { Capacitor } from '@capacitor/core';
 import { Observable } from 'rxjs';
 import {
   AppState,
+  BarcodeLookupResult,
   AppNotification,
   AuthProviders,
   AuthResponse,
@@ -39,6 +40,12 @@ export class ApiService {
   private readonly http = inject(HttpClient);
   private readonly baseUrl = Capacitor.isNativePlatform() ? 'https://homie-web.app/api' : '/api';
   private readonly tokenKey = 'eat-it.session-token';
+
+  lookupBarcode(code: string): Observable<BarcodeLookupResult> {
+    return this.http.get<BarcodeLookupResult>(
+      `${this.baseUrl}/barcodes/${encodeURIComponent(code)}`, this.options(),
+    );
+  }
 
   register(input: {
     displayName: string;

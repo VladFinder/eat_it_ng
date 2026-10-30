@@ -107,6 +107,21 @@ model Household {
   dishes               Dish[]
   mealPlanEntries      MealPlanEntry[]
   householdInvitations HouseholdInvitation[]
+  barcodeProducts      HouseholdBarcodeProduct[]
+}
+
+model HouseholdBarcodeProduct {
+  id          String    @id @default(cuid())
+  householdId String
+  barcode     String
+  name        String
+  category    String    @default("products")
+  unit        String    @default("шт.")
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  household   Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  @@unique([householdId, barcode])
 }
 
 model MealPlanEntry {

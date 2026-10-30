@@ -3,13 +3,24 @@
 ## What is in the repository
 
 - Application ID: `space.eatit.app`.
-- Current release: version code `5`, version name `2.0.3` (OTA runtime `2.0.3`).
+- Current release: version code `6`, version name `2.0.4` (OTA runtime `2.0.4`).
 - Minimum supported Android version: Android 7.0 (API 24), required for Google Play automatic protection.
 - Release command: `npm run android:aab`.
 - The generated bundle is `android/app/build/outputs/bundle/release/app-release.aab`.
 - A signing keystore is never committed. Store it securely: the same key is required for every future update.
 - Local Android builds require JDK 21 and Android SDK 36 (Android Gradle Plugin 8.10.1). A Java 8 JRE is not sufficient.
 - The AAB command fails if release signing is absent or incomplete; it will not create an uploadable-looking unsigned bundle.
+
+## Changes in 2.0.4
+
+- Add barcode scanning, manual GTIN entry, product lookup and confirmation before adding to purchases or stock.
+- Include `@capacitor-mlkit/barcode-scanning` 7.5.0 and Google scanner module metadata. The native Google scan UI needs no CAMERA permission for Homie; camera hardware is optional and minimum Android remains API 24.
+- Google Play Services is required for the native scan UI; the scanner module may need an initial download. Manual entry remains available.
+- Browser scanning uses a local ZXing decoder, loaded only when the user starts scanning. Camera access needs HTTPS and user permission. Frames are not uploaded to Homie.
+- Product lookup uses Open Food Facts and keeps manually confirmed barcode names private to the household. Deploy the API and the additive HouseholdBarcodeProduct schema together.
+- Include the Google sign-in handoff and centered button icons already delivered by OTA.
+- Privacy page documents camera processing and the barcode-only provider request. Verify the updated description against the actual release when completing Play Console declarations.
+- Signed release still needs a physical-device smoke test, especially initial scanner-module installation, cancel, repeated scans and upgrade from 2.0.3.
 
 ## Changes in 2.0.3
 

@@ -200,6 +200,15 @@ async function seedLocalRecipeCatalog(prismaClient) {
 }
 
 export async function ensureDatabaseSchema(prismaClient = prisma) {
+  await ensureTable(prismaClient, 'HouseholdBarcodeProduct', `CREATE TABLE "HouseholdBarcodeProduct" (
+    "id" TEXT NOT NULL PRIMARY KEY, "householdId" TEXT NOT NULL, "barcode" TEXT NOT NULL,
+    "name" TEXT NOT NULL, "category" TEXT NOT NULL DEFAULT 'products', "unit" TEXT NOT NULL DEFAULT 'шт.',
+    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, "updatedAt" DATETIME NOT NULL,
+    FOREIGN KEY ("householdId") REFERENCES "Household" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+  )`);
+  await prismaClient.$executeRawUnsafe(
+    'CREATE UNIQUE INDEX IF NOT EXISTS "HouseholdBarcodeProduct_householdId_barcode_key" ON "HouseholdBarcodeProduct"("householdId", "barcode")',
+  );
   await ensureColumn(prismaClient, 'Household', 'plan', "TEXT NOT NULL DEFAULT 'free'");
   await ensureColumn(
     prismaClient,

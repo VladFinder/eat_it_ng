@@ -3138,7 +3138,7 @@ a.secondary-action {
   }
 }
 
-body:has(.notification-backdrop, .onboarding-layer) {
+body:has(.notification-backdrop, .onboarding-layer, .barcode-dialog[open]) {
   overflow: hidden;
 }
 

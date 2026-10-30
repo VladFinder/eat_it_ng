@@ -4,6 +4,7 @@ import { ZodError } from 'zod';
 import webpush from 'web-push';
 import { clientAddress, createAuthLimiter, isAllowedWriteOrigin } from './security.mjs';
 import { createNativeOAuthStore, nativeOAuthPage } from './native-oauth.mjs';
+import { createBarcodeLookup, rememberHouseholdBarcode } from './barcodes.mjs';
 import {
   authenticate,
   clearSessionCookie,
@@ -23,6 +24,7 @@ import {
   oauthCookie,
 } from './oauth.mjs';
 import {
+  barcodeSchema,
   recipeCatalogQuerySchema,
   adminRecipeTranslationSchema,
   adminProductTranslationSchema,
@@ -1969,6 +1971,7 @@ async function findShoppingItem(prisma, id, householdId) {
 
 export function createApiServer(prisma, logger = console, oauth = {}) {
   const limitAuth = createAuthLimiter();
+  const lookupBarcode = oauth.lookupBarcode ?? createBarcodeLookup();
   const nativeOAuth = createNativeOAuthStore();
   const googleExchange = oauth.exchangeGoogleCode ?? exchangeGoogleCode;
   const appleExchange = oauth.exchangeAppleCode ?? exchangeAppleCode;
@@ -2342,6 +2345,31 @@ export function createApiServer(prisma, logger = console, oauth = {}) {
         return;
       }
       const { user } = auth;
+
+      const barcodeRoute = routeMatch(url.pathname, /^\/api\/barcodes\/(?<code>[^/]+)$/);
+      if (barcodeRoute && method === 'GET') {
+        let rawCode;
+        try { rawCode = decodeURIComponent(barcodeRoute.code); } catch {
+          json(response, 400, { error: 'Некорректный штрихкод' });
+          return;
+        }
+        const barcode = barcodeSchema.parse(rawCode);
+        const retryAfter = limitAuth(`barcode:${user.id}`, 120);
+        if (retryAfter) {
+          json(response, 429, { error: 'Слишком много запросов. Попробуйте позже.' }, {
+            'Retry-After': String(retryAfter),
+          });
+          return;
+        }
+        const saved = await prisma.householdBarcodeProduct.findUnique({
+          where: { householdId_barcode: { householdId: user.householdId, barcode } },
+        });
+        const product = saved
+          ? { name: saved.name, category: saved.category, unit: saved.unit, brand: '', packageQuantity: '', source: 'household' }
+          : await lookupBarcode(barcode);
+        json(response, 200, { barcode, product });
+        return;
+      }
 
       if (method === 'GET' && url.pathname === '/api/auth/me') {
         json(response, 200, { user: { ...serializeUser(user), isAdmin: isAdmin(user) } });
@@ -3421,9 +3449,13 @@ export function createApiServer(prisma, logger = console, oauth = {}) {
       }
 
       if (method === 'POST' && url.pathname === '/api/fridge') {
-        const input = fridgeCreateSchema.parse(await readJson(request));
-        const item = await prisma.fridgeItem.create({
-          data: { ...input, householdId: user.householdId, expiresAt: toDate(input.expiresAt) },
+        const { barcode, ...input } = fridgeCreateSchema.parse(await readJson(request));
+        const item = await prisma.$transaction(async (transaction) => {
+          const created = await transaction.fridgeItem.create({
+            data: { ...input, householdId: user.householdId, expiresAt: toDate(input.expiresAt) },
+          });
+          await rememberHouseholdBarcode(transaction, user.householdId, barcode, input);
+          return created;
         });
         json(response, 201, serializeFridgeItem(item));
         return;
@@ -3501,12 +3533,13 @@ export function createApiServer(prisma, logger = console, oauth = {}) {
       }
 
       if (method === 'POST' && url.pathname === '/api/shopping') {
-        const input = shoppingCreateSchema.parse(await readJson(request));
-        const item = await prisma.shoppingItem.create({
-          data: {
-            ...input,
-            householdId: user.householdId,
-          },
+        const { barcode, ...input } = shoppingCreateSchema.parse(await readJson(request));
+        const item = await prisma.$transaction(async (transaction) => {
+          const created = await transaction.shoppingItem.create({
+            data: { ...input, householdId: user.householdId },
+          });
+          await rememberHouseholdBarcode(transaction, user.householdId, barcode, input);
+          return created;
         });
         await notifyHouseholdShoppingChange(prisma, user, item, 'added', logger);
         json(response, 201, serializeShoppingItem(item));

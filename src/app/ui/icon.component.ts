@@ -1,6 +1,7 @@
 import { Component, input } from '@angular/core';
 
 const ICON_PATHS = {
+  barcode: 'M4 3H2v4M20 3h2v4M4 21H2v-4M20 21h2v-4M6 7v10M9 7v10M13 7v10M15 7v10M18 7v10',
   back: 'm15 6-6 6 6 6',
   chevron: 'm9 6 6 6-6 6',
   close: 'm6 6 12 12M18 6 6 18',

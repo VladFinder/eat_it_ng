@@ -1,17 +1,17 @@
-# Graph Report - eat_it_ng  (2026-10-29)
+# Graph Report - eat_it_ng  (2026-10-30)
 
 ## Corpus Check
-- 91 files · ~66,141 words
+- 101 files · ~71,499 words
 - Verdict: corpus is large enough that graph structure adds value.
-- Unclassified: 29 file(s) not represented in the graph (top: .xml 8, (none) 5, .example 2)
+- Unclassified: 30 file(s) not represented in the graph (top: .xml 8, (none) 5, .scss 3)
 
 ## Summary
-- 935 nodes · 1783 edges · 101 communities (40 shown, 61 thin omitted)
-- Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 23 edges (avg confidence: 0.87)
+- 1000 nodes · 1931 edges · 103 communities (42 shown, 61 thin omitted)
+- Extraction: 99% EXTRACTED · 1% INFERRED · 0% AMBIGUOUS · INFERRED: 25 edges (avg confidence: 0.87)
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `0b82ea87`
+- Built from commit: `83c4f4a7`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -32,11 +32,13 @@
 - live-update.service.ts
 - OAuth Authentication
 - Recipe Picker Session
+- Recipe Catalog State
 - ref_node_fs
 - ShoppingItem
 - Android Instrumentation Tests
 - api.service.ts
 - Repository Guidelines
+- .runMutation
 - createAndSendNotification
 - db.mjs
 - CI Build Pipeline
@@ -44,9 +46,9 @@
 - Angular Bootstrap
 - NativeOAuthService
 - auth.mjs
-- @capacitor/cli
+- barcode-scanner.service.ts
 - app.test.mjs
-- RecipeSuggestion
+- BarcodeAddComponent
 - native-oauth.mjs
 - CI Cache Configuration
 - ota.mjs
@@ -58,14 +60,14 @@
 - Notification Data Flow
 - CI Branch Triggers
 - Вход через Google в установленном Android-приложении
-- Meal Planning
-- DevUser
+- barcodes.mjs
+- Household
 - Android Splash Composition
-- @ngrx/entity@^21.1.0
 - DevRecipe
 - Android Main Activity
 - Play Store Compliance
 - Production Migration Docs
+- LoadMoreDirective
 - Domain and OTA Migration
 - Android Splash Assets
 - Android Splash Assets
@@ -103,22 +105,21 @@
 - Product Inventory Screenshot
 - Shopping List Screenshot
 - Web Application Shell
+- Добавление товаров по штрихкоду
 
 ## God Nodes (most connected - your core abstractions)
-1. `App` - 193 edges
-2. `ApiService` - 73 edges
-3. `createApiServer()` - 68 edges
+1. `App` - 194 edges
+2. `ApiService` - 76 edges
+3. `createApiServer()` - 70 edges
 4. `scripts` - 20 edges
-5. `NativeOAuthService` - 15 edges
-6. `@angular/core` - 14 edges
-7. `FridgeItem` - 14 edges
-8. `AuthResponse` - 14 edges
-9. `RecipeSuggestion` - 13 edges
-10. `ShoppingItem` - 12 edges
+5. `@angular/core` - 18 edges
+6. `BarcodeAddComponent` - 16 edges
+7. `FridgeItem` - 15 edges
+8. `NativeOAuthService` - 15 edges
+9. `AuthResponse` - 14 edges
+10. `ShoppingItem` - 13 edges
 
 ## Surprising Connections (you probably didn't know these)
-- `recipeAccount()` --calls--> `createSession()`  [EXTRACTED]
-  server/app.test.mjs → server/auth.mjs
 - `Google Play release` --publishes_url_for--> `Public account deletion page`  [EXTRACTED]
   docs/PLAY_RELEASE.md → public/delete-account.html
 - `Google Play release` --publishes_url_for--> `Homie privacy policy`  [EXTRACTED]
@@ -127,6 +128,8 @@
   README.md → docs/SERVER_MIGRATION.md
 - `sendPushNotification()` --calls--> `isTrustedPushEndpoint()`  [EXTRACTED]
   server/app.mjs → server/validation.mjs
+- `createApiServer()` --calls--> `authenticate()`  [EXTRACTED]
+  server/app.mjs → server/auth.mjs
 
 ## Import Cycles
 - None detected.
@@ -136,11 +139,11 @@
 - **Совместная работа участников дома** — src_app_app_household_group, src_app_app_notification_center, src_app_app_inventory_management, src_app_app_shopping_list, src_app_app_recipe_catalog [INFERRED 0.85]
 - **Основной цикл управления домашним питанием** — src_app_app_inventory_management, src_app_app_shopping_list, src_app_app_recipe_catalog, src_app_app_recipe_detail, src_app_app_meal_planner [INFERRED 0.95]
 
-## Communities (101 total, 61 thin omitted)
+## Communities (103 total, 61 thin omitted)
 
 ### Community 0 - "API Validation Layer"
 Cohesion: 0.05
-Nodes (56): zod, CAPACITOR_ORIGINS, catalogPageRequests, catalogTranslationWork, dayKey(), DEFAULT_ADMIN_EMAILS, emptyDailyBuckets(), ENGLISH_INGREDIENT_ALIASES (+48 more)
+Nodes (57): zod, CAPACITOR_ORIGINS, catalogPageRequests, catalogTranslationWork, dayKey(), DEFAULT_ADMIN_EMAILS, emptyDailyBuckets(), ENGLISH_INGREDIENT_ALIASES (+49 more)
 
 ### Community 2 - "Angular Workspace Configuration"
 Cohesion: 0.05
@@ -152,19 +155,19 @@ Nodes (40): adminEmails(), appLocation(), applyCapacitorCors(), authResponse(), 
 
 ### Community 4 - "Frontend API Models"
 Cohesion: 0.09
-Nodes (7): ApiService, DevProduct, FeedbackItem, Household, NotificationPreferences, SupportMessage, SupportTicket
+Nodes (8): ApiService, DevProduct, FeedbackItem, NotificationPreferences, RecipeInput, RecipeSuggestion, SupportMessage, SupportTicket
 
 ### Community 5 - "Package Dependencies"
 Cohesion: 0.07
-Nodes (28): dependencies, @angular/cdk@^21.2.14, @angular/common@^21.2.25, @angular/compiler@^21.2.25, @angular/core@^21.2.25, @angular/forms@^21.2.25, @angular/material@^21.2.14, @capacitor/android@^7.6.0 (+20 more)
+Nodes (38): dependencies, @angular/cdk@^21.2.14, @angular/common@^21.2.25, @angular/compiler@^21.2.25, @angular/core@^21.2.25, @angular/forms@^21.2.25, @angular/material@^21.2.14, @capacitor/android@^7.6.0 (+30 more)
 
 ### Community 6 - "Recipe Domain Types"
-Cohesion: 0.07
+Cohesion: 0.08
 Nodes (28): AuthMode, DevSection, DishIdea, FridgeSort, FridgeStatusFilter, LEGACY_DEMO_RECIPE_TITLES, ONBOARDING_STEPS, OnboardingStep (+20 more)
 
 ### Community 7 - "Shared Data Models"
-Cohesion: 0.09
-Nodes (11): AppState, AuthProviders, DevSummary, FridgeInput, FridgeItem, HouseholdSubscription, ItemCategory, NativeOAuthAttempt (+3 more)
+Cohesion: 0.10
+Nodes (13): AppState, AuthProviders, BarcodeLookupResult, DevSummary, FridgeInput, FridgeItem, HouseholdSubscription, ItemCategory (+5 more)
 
 ### Community 9 - "Dish Matching Logic"
 Cohesion: 0.19
@@ -175,8 +178,8 @@ Cohesion: 0.10
 Nodes (20): scripts, admin:grant, android:aab, android:apk, android:sync, build, db:generate, db:migrate (+12 more)
 
 ### Community 12 - "Capacitor Build Tooling"
-Cohesion: 0.13
-Nodes (20): devDependencies, @angular/build@^21.2.24, @angular/cli@^21.2.24, @angular/compiler-cli@^21.2.25, jsdom@^28.0.0, prettier@^3.8.1, prisma@^6.19.3, typescript@~5.9.2 (+12 more)
+Cohesion: 0.10
+Nodes (19): config, devDependencies, @angular/build@^21.2.24, @angular/cli@^21.2.24, @angular/compiler-cli@^21.2.25, @capacitor/cli@^7.6.0, jsdom@^28.0.0, prettier@^3.8.1 (+11 more)
 
 ### Community 13 - "Main Application Interface"
 Cohesion: 0.19
@@ -187,7 +190,7 @@ Cohesion: 0.22
 Nodes (17): catalogPageKey(), fetchCatalogPage(), fetchPopularRecipeSuggestions(), fetchRecipeInformationBulk(), fetchRecipeSuggestions(), loadCatalogPage(), plainText(), recipeSteps() (+9 more)
 
 ### Community 15 - "live-update.service.ts"
-Cohesion: 0.07
+Cohesion: 0.09
 Nodes (15): @capgo/capacitor-updater@7.51.23, @capgo/capacitor-updater, LiveUpdateComponent, manifest, pair, subtle, trust, UpdateManifest (+7 more)
 
 ### Community 16 - "OAuth Authentication"
@@ -195,12 +198,12 @@ Cohesion: 0.21
 Nodes (14): appleAuthorization(), appleClientSecret(), appleKeys, baseUrl(), challenge(), clearOauthCookie(), cookieValue(), exchangeAppleCode() (+6 more)
 
 ### Community 19 - "ref_node_fs"
-Cohesion: 0.18
+Cohesion: 0.16
 Nodes (7): email, envPath, result, databasePath, prismaCli, projectRoot, result
 
 ### Community 22 - "api.service.ts"
-Cohesion: 0.24
-Nodes (11): @angular/common, @angular/core, @capacitor/core, rxjs, vitest, NativeOAuthResult, RecipeShoppingResult, NATIVE_OAUTH_CRYPTO (+3 more)
+Cohesion: 0.19
+Nodes (11): @angular/common, @angular/core, @capacitor/core, rxjs, vitest, BarcodeProduct, NativeOAuthResult, NATIVE_OAUTH_CRYPTO (+3 more)
 
 ### Community 23 - "Repository Guidelines"
 Cohesion: 0.22
@@ -231,19 +234,19 @@ Cohesion: 0.24
 Nodes (4): AuthResponse, ActiveSignIn, encode(), NativeOAuthService
 
 ### Community 32 - "auth.mjs"
-Cohesion: 0.31
-Nodes (8): authenticate(), clearSessionCookie(), createSession(), hashPassword(), hashToken(), readSessionToken(), scrypt, verifyPassword()
+Cohesion: 0.27
+Nodes (9): recipeAccount(), authenticate(), clearSessionCookie(), createSession(), hashPassword(), hashToken(), readSessionToken(), scrypt (+1 more)
 
-### Community 34 - "@capacitor/cli"
-Cohesion: 0.50
-Nodes (3): config, @capacitor/cli@^7.6.0, @capacitor/cli
+### Community 34 - "barcode-scanner.service.ts"
+Cohesion: 0.11
+Nodes (11): @capacitor-mlkit/barcode-scanning@7.5.0, @zxing/browser@0.1.5, @capacitor-mlkit/barcode-scanning, @zxing/browser, normalizeBarcode(), BARCODE_CAMERA, BARCODE_DECODER, BarcodeScannerService (+3 more)
 
 ### Community 35 - "app.test.mjs"
-Cohesion: 0.21
-Nodes (8): databasePath, nativeGoogleAttempt(), pollNative(), projectRoot, recipeAccount(), request(), restoreEnv(), withNativeGoogleEnvironment()
+Cohesion: 0.19
+Nodes (8): barcodeLookups, databasePath, nativeGoogleAttempt(), pollNative(), projectRoot, request(), restoreEnv(), withNativeGoogleEnvironment()
 
 ### Community 37 - "native-oauth.mjs"
-Cohesion: 0.24
+Cohesion: 0.22
 Nodes (4): createNativeOAuthStore(), digest(), matches(), nativeOAuthPage()
 
 ### Community 38 - "CI Cache Configuration"
@@ -251,7 +254,7 @@ Cohesion: 0.25
 Nodes (8): with, cache, distribution, if-no-files-found, java-version, name, node-version, path
 
 ### Community 39 - "ota.mjs"
-Cohesion: 0.31
+Cohesion: 0.43
 Nodes (6): main(), nativeFingerprint(), root, run(), signManifest(), trustPath
 
 ### Community 40 - "serve-swipe-fixture.mjs"
@@ -282,13 +285,17 @@ Nodes (5): on, pull_request, push, branches, branches
 Cohesion: 0.33
 Nodes (5): Безопасность и ограничения, Вход через Google в установленном Android-приложении, Поведение, Проверка на устройстве, Публикация
 
+### Community 48 - "barcodes.mjs"
+Cohesion: 0.36
+Nodes (6): createBarcodeLookup(), lookup(), normalizeBarcode(), rememberHouseholdBarcode(), text(), unavailable()
+
+### Community 49 - "Household"
+Cohesion: 0.20
+Nodes (3): AuthUser, DevUser, Household
+
 ### Community 50 - "Android Splash Composition"
 Cohesion: 0.67
 Nodes (4): Android landscape HDPI resource, Blue geometric logo, Landscape Android splash screen, White background
-
-### Community 52 - "@ngrx/entity@^21.1.0"
-Cohesion: 0.33
-Nodes (4): @ngrx/entity@^21.1.0, @ngrx/store-devtools@^21.1.0, @ngrx/entity, @ngrx/store-devtools
 
 ### Community 55 - "Play Store Compliance"
 Cohesion: 0.67
@@ -298,25 +305,29 @@ Nodes (3): Google Play release, Public account deletion page, Homie privacy poli
 Cohesion: 0.67
 Nodes (3): Production VPS migration, Homie application, Production deployment
 
+### Community 102 - "Добавление товаров по штрихкоду"
+Cohesion: 0.40
+Nodes (4): Данные и API, Добавление товаров по штрихкоду, Проверка на сайте и устройстве, Сканирование
+
 ## Knowledge Gaps
 - **45 isolated node(s):** `Homie web application shell`, `Public account deletion page`, `Production VPS migration`, `Homie application`, `homie-web.app domain` (+40 more)
-  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 296 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
+  These have ≤1 connection - possible missing edges or undocumented components. (Counts symbols only; 315 node(s) total have ≤1 connection when file, concept and rationale nodes are included.)
 - **61 thin communities (<3 nodes) omitted from report** — run `graphify query` to explore isolated nodes.
 
 ## Suggested Questions
 _Questions this graph is uniquely positioned to answer:_
 
-- **Why does `App` connect `Angular Application Logic` to `.cancelSwipe`, `Recipe Domain Types`, `Shared Data Models`, `UI Mutation Workflows`, `.loadState`, `Notification Data Flow`, `live-update.service.ts`, `Recipe Picker Session`, `Recipe Catalog State`, `ShoppingItem`, `.runMutation`, `.acceptAuthentication`, `Angular Bootstrap`?**
-  _High betweenness centrality (0.240) - this node is a cross-community bridge._
+- **Why does `App` connect `Angular Application Logic` to `.cancelSwipe`, `Recipe Domain Types`, `Shared Data Models`, `UI Mutation Workflows`, `.loadState`, `Notification Data Flow`, `Recipe Picker Session`, `Recipe Catalog State`, `app.spec.ts`, `.runMutation`, `.acceptAuthentication`, `Angular Bootstrap`?**
+  _High betweenness centrality (0.229) - this node is a cross-community bridge._
 - **Are the 7 inferred relationships involving `createApiServer()` (e.g. with `serializeDevUser()` and `serializeFridgeItem()`) actually correct?**
   _`createApiServer()` has 7 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `Homie web application shell`, `Public account deletion page`, `Production VPS migration` to the rest of the system?**
   _45 weakly-connected nodes found - possible documentation gaps or missing edges._
 - **Should `API Validation Layer` be split into smaller, more focused modules?**
-  _Cohesion score 0.052600818234950324 - nodes in this community are weakly interconnected._
-- **Why does `ApiService` connect `Frontend API Models` to `RecipeSuggestion`, `Recipe Domain Types`, `Shared Data Models`, `Notification Data Flow`, `live-update.service.ts`, `Meal Planning`, `DevUser`, `DevRecipe`, `api.service.ts`, `NativeOAuthService`?**
-  _High betweenness centrality (0.085) - this node is a cross-community bridge._
+  _Cohesion score 0.0519774011299435 - nodes in this community are weakly interconnected._
+- **Why does `zod` connect `API Validation Layer` to `Package Dependencies`?**
+  _High betweenness centrality (0.084) - this node is a cross-community bridge._
 - **Should `Angular Application Logic` be split into smaller, more focused modules?**
-  _Cohesion score 0.04612159329140461 - nodes in this community are weakly interconnected._
-- **Why does `zod` connect `API Validation Layer` to `Capacitor Build Tooling`, `Package Dependencies`?**
-  _High betweenness centrality (0.080) - this node is a cross-community bridge._
+  _Cohesion score 0.04441846873173583 - nodes in this community are weakly interconnected._
+- **Why does `ApiService` connect `Frontend API Models` to `Recipe Domain Types`, `Shared Data Models`, `Notification Data Flow`, `Household`, `ShoppingItem`, `app.spec.ts`, `api.service.ts`, `DevRecipe`, `NativeOAuthService`?**
+  _High betweenness centrality (0.084) - this node is a cross-community bridge._

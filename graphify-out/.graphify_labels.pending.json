@@ -12,14 +12,17 @@
   "31": "NativeOAuthService",
   "32": "auth.mjs",
   "33": ".cancelSwipe",
-  "34": "@capacitor/cli",
+  "34": "barcode-scanner.service.ts",
   "35": "app.test.mjs",
-  "36": "RecipeSuggestion",
+  "36": "BarcodeAddComponent",
   "37": "native-oauth.mjs",
   "39": "ota.mjs",
   "40": "serve-swipe-fixture.mjs",
   "47": "Вход через Google в установленном Android-приложении",
-  "49": "DevUser",
-  "52": "@ngrx/entity@^21.1.0",
-  "53": "DevRecipe"
+  "48": "barcodes.mjs",
+  "49": "Household",
+  "52": "app.spec.ts",
+  "53": "DevRecipe",
+  "57": "LoadMoreDirective",
+  "102": "Добавление товаров по штрихкоду"
 }
