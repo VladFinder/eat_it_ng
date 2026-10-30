@@ -1,7 +1,7 @@
 # Graph Report - eat_it_ng  (2026-10-30)
 
 ## Corpus Check
-- 102 files · ~71,810 words
+- 102 files · ~71,906 words
 - Verdict: corpus is large enough that graph structure adds value.
 - Unclassified: 30 file(s) not represented in the graph (top: .xml 8, (none) 5, .scss 3)
 
@@ -11,7 +11,7 @@
 - Token cost: 0 input · 0 output
 
 ## Graph Freshness
-- Built from commit: `5f034b65`
+- Built from commit: `07fd15d9`
 - Run `git rev-parse HEAD` and compare to check if the graph is stale.
 - Run `graphify update .` after code changes (no API cost).
 
@@ -317,7 +317,7 @@ Nodes (4): Данные и API, Добавление товаров по штр�
 _Questions this graph is uniquely positioned to answer:_
 
 - **Why does `App` connect `Angular Application Logic` to `.cancelSwipe`, `Recipe Domain Types`, `.compareFridgeItems`, `UI Mutation Workflows`, `.runMutation`, `Notification Data Flow`, `live-update.service.ts`, `Recipe Picker Session`, `Recipe Catalog State`, `.consumeFridgeItem`, `RecipeSuggestion`, `api.service.ts`, `ShoppingItem`, `.acceptAuthentication`, `Angular Bootstrap`?**
-  _High betweenness centrality (0.209) - this node is a cross-community bridge._
+  _High betweenness centrality (0.208) - this node is a cross-community bridge._
 - **Are the 7 inferred relationships involving `createApiServer()` (e.g. with `serializeDevUser()` and `serializeFridgeItem()`) actually correct?**
   _`createApiServer()` has 7 INFERRED edges - model-reasoned connections that need verification._
 - **What connects `Homie web application shell`, `Public account deletion page`, `Production VPS migration` to the rest of the system?**

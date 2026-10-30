@@ -388,6 +388,31 @@ describe('App', () => {
     expect(app).toBeTruthy();
   });
 
+  it('keeps a barcode addition when a realtime refresh returns an older shopping snapshot', async () => {
+    const fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance;
+    await fixture.whenStable();
+    await app['initializeSession']();
+    app['stopRealtimeRefresh']();
+    const response = new Subject();
+    apiService.getState.mockReturnValue(response);
+    const pending = app['refreshState']();
+    const item = {
+      id: 'scanned-item', name: 'Молоко', quantity: 1, unit: 'шт.' as const,
+      category: 'products' as const, checked: false,
+      createdAt: '2026-10-30T00:00:00Z', updatedAt: '2026-10-30T00:00:00Z',
+    };
+    app['acceptBarcodeAddition']({ target: 'shopping', item });
+    response.next({
+      fridgeItems: [], shoppingItems: [],
+      household: { id: 'household-1', name: 'Дом', members: [] },
+    });
+    response.complete();
+    await pending;
+    expect(app['shoppingItems']()).toEqual([item]);
+    fixture.destroy();
+  });
+
   it('should render the authentication screen', async () => {
     const fixture = TestBed.createComponent(App);
     await fixture.whenStable();

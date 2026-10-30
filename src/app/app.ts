@@ -947,6 +947,7 @@ export class App implements OnDestroy, OnInit {
 
   protected acceptBarcodeAddition(result: BarcodeAddition): void {
     if (!this.currentUser()) return;
+    this.stateRevision++;
     if (result.target === 'fridge') {
       this.fridgeItems.update((items) => [result.item, ...items]);
       this.activeCategory.set(result.item.category);

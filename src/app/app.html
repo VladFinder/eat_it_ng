@@ -1766,7 +1766,7 @@
           </button>
         </div>
 
-        <button class="secondary-action action-with-icon" type="button" [disabled]="saving()" (click)="barcodeTarget.set('fridge')">
+        <button class="secondary-action action-with-icon" type="button" [disabled]="saving() || loading()" (click)="barcodeTarget.set('fridge')">
           <app-icon name="barcode" /> Добавить по штрихкоду
         </button>
         <div class="inventory-tools" aria-label="Поиск, фильтры и сортировка запасов">
@@ -1987,7 +1987,7 @@
             />
             <button class="primary-action shopping-submit" type="submit">Добавить</button>
           </form>
-          <button class="secondary-action action-with-icon" type="button" [disabled]="saving()" (click)="barcodeTarget.set('shopping')">
+          <button class="secondary-action action-with-icon" type="button" [disabled]="saving() || loading()" (click)="barcodeTarget.set('shopping')">
             <app-icon name="barcode" /> Добавить по штрихкоду
           </button>
           <div class="shopping-details">
