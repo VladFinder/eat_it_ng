@@ -52,6 +52,9 @@ jobs:
           chmod +x gradlew
           ./gradlew assembleDebug
 
+      - name: Validate 16 KB native libraries
+        run: python3 scripts/check-android-native-pages.py android/app/build/outputs/apk/debug/app-debug.apk
+
       - name: Upload debug APK
         uses: actions/upload-artifact@v5
         with:
@@ -100,6 +103,7 @@ jobs:
           cd android
           chmod +x gradlew
           ./gradlew bundleRelease
+          python3 ../scripts/check-android-native-pages.py app/build/outputs/bundle/release/app-release.aab
       - name: Upload signed Android App Bundle
         uses: actions/upload-artifact@v5
         with:

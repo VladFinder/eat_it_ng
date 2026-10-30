@@ -16,6 +16,7 @@
 - Add barcode scanning, manual GTIN entry, product lookup and confirmation before adding to purchases or stock.
 - Include `@capacitor-mlkit/barcode-scanning` 7.5.0 and Google scanner module metadata. The native Google scan UI needs no CAMERA permission for Homie; camera hardware is optional and minimum Android remains API 24.
 - Google Play Services is required for the native scan UI; the scanner module may need an initial download. Manual entry remains available.
+- Pin CameraX 1.4.2 instead of the plugin's 1.1 defaults. CI rejects 64-bit ELF libraries and uncompressed APK entries that lack 16 KB alignment before delivering an Android build.
 - Browser scanning uses a local ZXing decoder, loaded only when the user starts scanning. Camera access needs HTTPS and user permission. Frames are not uploaded to Homie.
 - Product lookup uses Open Food Facts and keeps manually confirmed barcode names private to the household. Deploy the API and the additive HouseholdBarcodeProduct schema together.
 - Include the Google sign-in handoff and centered button icons already delivered by OTA.
